@@ -90,6 +90,12 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 
 **Any change under `src/` or `dashboard/` ships npm + DMG + Windows**, because both `TokenTrackerBar/EmbeddedServer/` (macOS) and `TokenTrackerWin/EmbeddedServer/` (Windows) bundle the CLI runtime and built dashboard. Bumping only `package.json` leaves desktop-app users on the stale embedded copy.
 
+### Repository routing
+
+This checkout publishes the `@ipv9/tokentracker-cli` package from the `pitimon/TokenTracker` release track. Treat `origin` (`git@github.com:pitimon/TokenTracker.git`) as the writable repository for issues, branches, PRs, releases, and npm-related work. Treat `upstream` (`git@github.com:mm7894215/TokenTracker.git`) as read-only reference material only; do not open issues, PRs, push branches, close trackers, or trigger workflows there unless the user explicitly asks for upstream contribution work.
+
+For every bugfix or release-bound change, create a `pitimon/TokenTracker` issue first, branch from `origin/main`, commit on a topic branch, push to `origin`, and open a PR back to `pitimon/TokenTracker:main`. Keep the issue/PR as the visible tracker even if npm has already been published manually. If a tracker or PR is accidentally created against `mm7894215/TokenTracker`, close it immediately with a note pointing to the correct `pitimon/TokenTracker` issue/PR.
+
 The macOS + Windows release is **one workflow**: `release-dmg.yml` (display name **`release (macOS + Windows)`**). A `create-release` job makes the `vX.Y.Z` release as a **draft**, then a macOS `build` job and a `windows` job (which calls the reusable `release-windows.yml` via `workflow_call`) both `needs: create-release` and run **in parallel**, each uploading its assets to the draft with `--clobber`. A final `publish` job (`needs: [build, windows]`) flips the draft live (`gh release edit --draft=false`) and notifies the Homebrew tap. The draft stays invisible until then, so `releases/latest` never serves a half-published release (and a failed platform leaves it unpublished rather than half-public). A **single** `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` ships **both** platforms. `release-windows.yml` can still be dispatched standalone for a Windows-only build.
 
 | Change scope | Bump `package.json` | Bump `project.yml` `MARKETING_VERSION` | Bump `TokenTrackerWin.csproj` `<Version>` | Trigger DMG workflow (→ also builds Windows) |
@@ -105,10 +111,14 @@ When the user says "release" or "发 release", that is explicit approval for the
 
 ### Steps
 
-1. Bump `package.json`, `project.yml`'s two `MARKETING_VERSION` entries (App + Widget targets), and `TokenTrackerWin/TokenTrackerWin.csproj`'s `<Version>` — keep all four in lockstep.
-2. `git commit && git push origin main` → `npm-publish.yml` auto-publishes when version is new.
-3. For DMG-eligible changes: `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` → cloud builds DMG **and** the Windows zip + installer (in parallel), attaching all to the GitHub Release.
-4. Homebrew tap `mm7894215/homebrew-tokentracker` self-updates via dispatch (~40s if `HOMEBREW_DISPATCH_TOKEN` set) or hourly cron (≤1h fallback). **Never edit the tap repo manually for routine releases.**
+1. Create or identify the `pitimon/TokenTracker` issue that describes the fix/release scope.
+2. Branch from `origin/main`; do not base release PRs on stale fork history or on `upstream/main` unless the user explicitly asks for an upstream contribution.
+3. Bump `package.json`, `project.yml`'s two `MARKETING_VERSION` entries (App + Widget targets), and `TokenTrackerWin/TokenTrackerWin.csproj`'s `<Version>` — keep all four in lockstep.
+4. Run validation (`npm run ci:local`; use focused tests while iterating, but do not skip the full local gate before publishing or opening the PR).
+5. Commit, push the topic branch to `origin`, and open a PR to `pitimon/TokenTracker:main` that references/closes the issue and records publish state.
+6. Publish npm only for a version that is not already in the registry. If manual publish happens before the PR is merged, verify `npm view @ipv9/tokentracker-cli version dist-tags --json` and record the published version in the PR.
+7. For DMG-eligible changes: `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` in `pitimon/TokenTracker` → cloud builds DMG **and** the Windows zip + installer (in parallel), attaching all to the GitHub Release.
+8. Homebrew tap `mm7894215/homebrew-tokentracker` self-updates via dispatch (~40s if `HOMEBREW_DISPATCH_TOKEN` set) or hourly cron (≤1h fallback). **Never edit the tap repo manually for routine releases.**
 
 Release notes: one English line, no markdown sections (`Fix token stats inflation caused by duplicate queue entries`).
 
