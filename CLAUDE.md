@@ -107,6 +107,12 @@ The macOS + Windows release is **one workflow**: `release-dmg.yml` (display name
 
 All four version locations must match or the workflows' "Verify version" steps fail (DMG checks `package.json` + `project.yml`; Windows checks `package.json` + `csproj`).
 
+### Version bump discipline
+
+Before publishing or marking a release PR ready, verify the registry state with `npm view @ipv9/tokentracker-cli version versions --json`. Never attempt to publish a version that already exists on npm; npm versions are immutable. If any code/docs changes are added after a manual publish, bump to the next patch version immediately and update all lockstep version locations again before publishing a follow-up package.
+
+Use `npm version X.Y.Z --no-git-tag-version` for `package.json` and `package-lock.json`, then update both `MARKETING_VERSION` entries in `TokenTrackerBar/project.yml` and the `<Version>` in `TokenTrackerWin/TokenTrackerWin.csproj` to the same `X.Y.Z`. Re-run `npm pack --dry-run` and confirm the tarball name/version matches the intended version before publishing.
+
 When the user says "release" or "发 release", that is explicit approval for the release commit(s) + push — do not ask again for commit/push permission within that scope.
 
 ### Steps
