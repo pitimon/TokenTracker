@@ -343,7 +343,7 @@ export function DashboardPage({
     tzOffsetMinutes,
   });
 
-  const [projectUsageLimit, setProjectUsageLimit] = useState(3);
+  const [projectUsageLimit, setProjectUsageLimit] = useState(10);
   const {
     entries: projectUsageEntries,
     loading: projectUsageLoading,
