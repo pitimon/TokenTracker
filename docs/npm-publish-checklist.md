@@ -38,6 +38,17 @@ Manual MFA publish flow:
 - Update the PR body with the published version, npm verification, and validation
   commands.
 
+GitHub Actions publish guardrails:
+
+- `.github/workflows/npm-publish.yml` runs `npm run ci:local` on Node 24 before
+  the publish job can run.
+- The publish job checks `@ipv9/tokentracker-cli@<package.json version>` first
+  and skips immutable versions already present on npm.
+- Homebrew tap dispatch is disabled by default. Configure both
+  `HOMEBREW_TAP_REPOSITORY` (`owner/repo`) and `HOMEBREW_DISPATCH_TOKEN` only
+  for this fork's intended tap; do not dispatch to upstream `mm7894215` by
+  accident.
+
 Privacy boundary for local services:
 
 - `scripts/install-local-service.sh` installs a local dashboard LaunchAgent and a
