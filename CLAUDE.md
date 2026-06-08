@@ -113,6 +113,10 @@ Before publishing or marking a release PR ready, verify the registry state with 
 
 Use `npm version X.Y.Z --no-git-tag-version` for `package.json` and `package-lock.json`, then update both `MARKETING_VERSION` entries in `TokenTrackerBar/project.yml` and the `<Version>` in `TokenTrackerWin/TokenTrackerWin.csproj` to the same `X.Y.Z`. Re-run `npm pack --dry-run` and confirm the tarball name/version matches the intended version before publishing.
 
+Manual npm publish can be delegated to the agent, but MFA stays with the human. Run `npm publish --access public` from this repo and let it pause on npm web auth. When npm prints `Authenticate your account at: https://www.npmjs.com/auth/cli/...`, send that URL to the user and wait; do not ask for or accept passwords, OTP codes, recovery codes, or npm tokens in chat. After the user approves in the browser, keep the terminal session alive until it exits with `+ @ipv9/tokentracker-cli@X.Y.Z`, then verify with `npm view @ipv9/tokentracker-cli version versions --json`.
+
+`npm publish` runs `prepublishOnly`, which refreshes `src/lib/pricing/seed-snapshot.json`. If that file changes during publish, inspect it structurally. A timestamp-only `_meta.generated_at` change with unchanged model count and zero model/rate changes is expected; commit and push that post-publish timestamp so the PR HEAD matches the published tarball. If model/rate contents change unexpectedly, stop and review before recording the release state.
+
 When the user says "release" or "发 release", that is explicit approval for the release commit(s) + push — do not ask again for commit/push permission within that scope.
 
 ### Steps
@@ -122,9 +126,11 @@ When the user says "release" or "发 release", that is explicit approval for the
 3. Bump `package.json`, `project.yml`'s two `MARKETING_VERSION` entries (App + Widget targets), and `TokenTrackerWin/TokenTrackerWin.csproj`'s `<Version>` — keep all four in lockstep.
 4. Run validation (`npm run ci:local`; use focused tests while iterating, but do not skip the full local gate before publishing or opening the PR).
 5. Commit, push the topic branch to `origin`, and open a PR to `pitimon/TokenTracker:main` that references/closes the issue and records publish state.
-6. Publish npm only for a version that is not already in the registry. If manual publish happens before the PR is merged, verify `npm view @ipv9/tokentracker-cli version dist-tags --json` and record the published version in the PR.
-7. For DMG-eligible changes: `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` in `pitimon/TokenTracker` → cloud builds DMG **and** the Windows zip + installer (in parallel), attaching all to the GitHub Release.
-8. Homebrew tap `mm7894215/homebrew-tokentracker` self-updates via dispatch (~40s if `HOMEBREW_DISPATCH_TOKEN` set) or hourly cron (≤1h fallback). **Never edit the tap repo manually for routine releases.**
+6. Publish npm only for a version that is not already in the registry. For manual MFA-protected publish, run `npm publish --access public`, give the npm auth URL to the user, wait for browser approval, then verify `npm view @ipv9/tokentracker-cli version versions --json`.
+7. After npm publish, check `git status`. If `prepublishOnly` changed only `src/lib/pricing/seed-snapshot.json` metadata, commit and push that timestamp-only follow-up before updating the PR release state. If contents changed beyond metadata, review before continuing.
+8. If manual publish happens before the PR is merged, record the published version and verification evidence in the PR.
+9. For DMG-eligible changes: `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` in `pitimon/TokenTracker` → cloud builds DMG **and** the Windows zip + installer (in parallel), attaching all to the GitHub Release.
+10. Homebrew tap `mm7894215/homebrew-tokentracker` self-updates via dispatch (~40s if `HOMEBREW_DISPATCH_TOKEN` set) or hourly cron (≤1h fallback). **Never edit the tap repo manually for routine releases.**
 
 Release notes: one English line, no markdown sections (`Fix token stats inflation caused by duplicate queue entries`).
 
