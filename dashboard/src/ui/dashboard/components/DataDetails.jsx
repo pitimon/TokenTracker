@@ -1,5 +1,38 @@
 import React, { useState } from "react";
 import { Card, Select } from "../../components";
+import { ProviderIcon } from "./ProviderIcon";
+
+function splitProjectKey(value) {
+  if (typeof value !== "string") return { owner: "", repo: "" };
+  const [owner, repo] = value.split("/");
+  return { owner: owner || "", repo: repo || "" };
+}
+
+function ProjectAvatar({ projectKey, projectRef }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const normalizedRef =
+    typeof projectRef === "string" ? projectRef.replace("https://github.com/", "") : "";
+  const { owner, repo } = splitProjectKey(projectKey || normalizedRef);
+  const repoId = owner && repo ? `${owner}/${repo}` : projectKey;
+  const avatarUrl = owner && !imageFailed ? `https://github.com/${owner}.png?size=80` : "";
+
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt=""
+        className="w-8 h-8 rounded-md oai-bg-elevated object-cover"
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div className="w-8 h-8 rounded-md oai-bg-elevated flex items-center justify-center text-oai-gray-500 dark:text-oai-gray-300">
+      <ProviderIcon provider={repoId} size={20} />
+    </div>
+  );
+}
 
 export function DataDetails({
   // Project props
@@ -97,9 +130,7 @@ export function DataDetails({
                 key={key}
                 className="flex items-center gap-3 p-2 rounded-lg"
               >
-                <div className="w-8 h-8 rounded-md oai-bg-elevated flex items-center justify-center oai-text-caption font-medium text-oai-gray-500 dark:text-oai-gray-300">
-                  {(entry?.project_key?.[0] || "?").toUpperCase()}
-                </div>
+                <ProjectAvatar projectKey={entry?.project_key} projectRef={ref} />
                 <div className="min-w-0 flex-1">
                   <div className="oai-text-body-sm font-medium text-oai-black dark:text-oai-white truncate">
                     {projectLabel}
