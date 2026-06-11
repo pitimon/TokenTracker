@@ -7,6 +7,7 @@ import { shouldFetchGithubStars } from "../util/should-fetch-github-stars.js";
 import { ProviderIcon } from "./ProviderIcon";
 
 const LIMIT_OPTIONS = [3, 6, 10];
+const DEFAULT_LIMIT = 10;
 const REPO_META_CACHE = new Map();
 
 function splitRepoKey(value) {
@@ -94,7 +95,7 @@ function useGithubRepoMeta(repoId) {
 
 export function ProjectUsagePanel({
   entries = [],
-  limit = 3,
+  limit = DEFAULT_LIMIT,
   onLimitChange,
   loading = false,
   error = null,
@@ -111,7 +112,7 @@ export function ProjectUsagePanel({
     6: copy("dashboard.projects.limit_top_6"),
     10: copy("dashboard.projects.limit_top_10"),
   };
-  const resolvedLimit = LIMIT_OPTIONS.includes(limit) ? limit : LIMIT_OPTIONS[0];
+  const resolvedLimit = LIMIT_OPTIONS.includes(limit) ? limit : DEFAULT_LIMIT;
 
   const sortedEntries = useMemo(() => {
     const list = Array.isArray(entries) ? entries.slice() : [];
@@ -122,7 +123,7 @@ export function ProjectUsagePanel({
     });
   }, [entries]);
 
-  const displayEntries = sortedEntries.slice(0, Math.max(1, limit));
+  const displayEntries = sortedEntries.slice(0, Math.max(1, resolvedLimit));
 
   const tokenFormatOptions = {
     thousandSuffix: copy("shared.unit.thousand_abbrev"),

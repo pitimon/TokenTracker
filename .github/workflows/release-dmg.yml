@@ -243,9 +243,10 @@ jobs:
   # release appears complete and atomically — releases/latest stays on the
   # previous version until this instant, never a partial release. If either
   # build fails, the release stays a draft (invisible) instead of going public
-  # half-empty. The Homebrew tap is notified HERE (not in the build job) so it
-  # fetches a release that is both public and fully populated — fixing the race
-  # where the tap saw vX.Y.Z before the DMG asset existed.
+  # half-empty. The optional Homebrew tap dispatch runs HERE (not in the build
+  # job) so it fetches a release that is both public and fully populated.
+  # HOMEBREW_TAP_REPOSITORY is opt-in so fork workflows never dispatch to
+  # upstream mm7894215 by accident.
   publish:
     needs: [build, windows]
     runs-on: ubuntu-latest
@@ -260,15 +261,20 @@ jobs:
       - name: Dispatch homebrew tap update
         env:
           HOMEBREW_DISPATCH_TOKEN: ${{ secrets.HOMEBREW_DISPATCH_TOKEN }}
+          HOMEBREW_TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
           VERSION: ${{ inputs.version }}
         run: |
           if [ -z "${HOMEBREW_DISPATCH_TOKEN:-}" ]; then
-            echo "HOMEBREW_DISPATCH_TOKEN not set — tap will update via hourly cron."
+            echo "HOMEBREW_DISPATCH_TOKEN not set — skipping tap dispatch."
+            exit 0
+          fi
+          if [ -z "${HOMEBREW_TAP_REPOSITORY:-}" ]; then
+            echo "HOMEBREW_TAP_REPOSITORY variable not set — skipping tap dispatch."
             exit 0
           fi
           curl -sSL -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $HOMEBREW_DISPATCH_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/mm7894215/homebrew-tokentracker/dispatches \
+            "https://api.github.com/repos/${HOMEBREW_TAP_REPOSITORY}/dispatches" \
             -d "{\"event_type\":\"tokentracker-release\",\"client_payload\":{\"source\":\"dmg\",\"version\":\"$VERSION\"}}"

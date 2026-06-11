@@ -54,6 +54,20 @@ describe("ProjectUsagePanel", () => {
     expect(screen.getByText(expected)).toBeInTheDocument();
   });
 
+  it("defaults to showing the top 10 projects", () => {
+    const entries = Array.from({ length: 12 }, (_, index) => ({
+      project_key: `octo/repo-${String(index + 1).padStart(2, "0")}`,
+      project_ref: `https://github.com/octo/repo-${String(index + 1).padStart(2, "0")}`,
+      total_tokens: 12 - index,
+    }));
+
+    render(<ProjectUsagePanel entries={entries} />);
+
+    expect(screen.getByText("repo-01")).toBeInTheDocument();
+    expect(screen.getByText("repo-10")).toBeInTheDocument();
+    expect(screen.queryByText("repo-11")).not.toBeInTheDocument();
+  });
+
   it("closes the limit popup on Escape", async () => {
     const limitAria = copy("dashboard.projects.limit_aria");
     const onLimitChange = vi.fn();
