@@ -48,4 +48,27 @@ describe("DataDetails", () => {
     expect(avatar).toBeInTheDocument();
     expect(screen.queryByText("P")).not.toBeInTheDocument();
   });
+
+  it("uses zebra striping on daily breakdown rows", () => {
+    const { container } = renderDetails({
+      dailyBreakdownRows: [
+        { day: "2026-06-12", total_tokens: 100 },
+        { day: "2026-06-11", total_tokens: 200 },
+      ],
+      dailyBreakdownColumns: [
+        { key: "day", label: "Date" },
+        { key: "total_tokens", label: "Total" },
+      ],
+      dailyBreakdownAriaSortFor: () => "none",
+      dailyBreakdownSortIconFor: () => "",
+      renderDailyBreakdownDate: (row) => row.day,
+      renderDetailCell: (row, key) => row[key] ?? "",
+      toggleSort: () => {},
+    });
+
+    const dailyRows = container.querySelectorAll("tbody tr");
+    expect(dailyRows).toHaveLength(2);
+    expect(dailyRows[0]).toHaveClass("odd:bg-transparent");
+    expect(dailyRows[0]).toHaveClass("even:bg-oai-gray-50/55");
+  });
 });

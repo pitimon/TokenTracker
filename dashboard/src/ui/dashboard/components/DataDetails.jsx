@@ -189,7 +189,7 @@ export function DataDetails({
                     key={String(
                       row?.[dailyBreakdownDateKey] || row?.day || row?.hour || row?.month || "",
                     )}
-                    className={`border-b border-oai-gray-100 dark:border-oai-gray-800 last:border-b-0 hover:bg-oai-gray-50/50 dark:hover:bg-oai-gray-800/50 transition-colors ${
+                    className={`border-b border-oai-gray-100 dark:border-oai-gray-800 last:border-b-0 odd:bg-transparent even:bg-oai-gray-50/55 dark:odd:bg-transparent dark:even:bg-white/[0.035] hover:bg-oai-gray-100/60 dark:hover:bg-oai-gray-800/70 transition-colors ${
                       row.missing ? "text-oai-gray-400 dark:text-oai-gray-400" : row.future ? "text-oai-gray-300 dark:text-oai-gray-600" : "text-oai-black dark:text-oai-white"
                     }`}
                   >
