@@ -422,6 +422,35 @@ test("index: getModelPricing finds LiteLLM mainstream models with correct unit c
   assert.equal(sonnet.cache_write, 3.75);
 });
 
+test("index: getModelPricing pins Claude Fable/Mythos 5 pricing from curated overrides", async () => {
+  pricing.resetPricingForTests();
+  const cachePath = tmpCachePath();
+  await pricing.ensurePricingLoaded({
+    cachePath,
+    fetchImpl: makeFetchImpl(FIXTURE_LITELLM),
+  });
+  for (const model of ["claude-fable-5", "claude-mythos-5"]) {
+    const pinned = pricing.getModelPricing(model);
+    assert.equal(pinned.input, 10);
+    assert.equal(pinned.output, 50);
+    assert.equal(pinned.cache_read, 1);
+    assert.equal(pinned.cache_write, 12.5);
+  }
+
+  assert.equal(
+    pricing.computeRowCost({
+      source: "claude",
+      model: "claude-fable-5",
+      input_tokens: 1_000_000,
+      cached_input_tokens: 500_000,
+      cache_creation_input_tokens: 250_000,
+      output_tokens: 100_000,
+      reasoning_output_tokens: 0,
+    }),
+    18.625,
+  );
+});
+
 test("index: computeRowCost scopes Antigravity-only model aliases by source", async () => {
   pricing.resetPricingForTests();
   const cachePath = tmpCachePath();
