@@ -67,6 +67,27 @@ export function DataDetails({
 }) {
   const [activeTab, setActiveTab] = useState("daily");
 
+  function getDailyCellClass(row, column, index) {
+    if (index === 0) return "text-oai-gray-500 dark:text-oai-gray-300";
+    if (column.key === "total_tokens" || column.key === "total_cost_usd") {
+      return "font-medium text-oai-black dark:text-oai-white tabular-nums";
+    }
+    if (column.key === "cost_per_million_tokens" && row?.cost_per_million_status === "high") {
+      return "font-semibold text-amber-700 dark:text-amber-300 tabular-nums";
+    }
+    if (column.key === "top_model") {
+      return "text-oai-gray-600 dark:text-oai-gray-300";
+    }
+    return "text-oai-gray-600 dark:text-oai-gray-300 tabular-nums";
+  }
+
+  function renderDailyCell(row, column, index) {
+    if (index === 0) {
+      return renderDailyBreakdownDate ? renderDailyBreakdownDate(row) : renderDetailDate(row);
+    }
+    return renderDetailCell(row, column.key);
+  }
+
   return (
     <Card>
       {/* Tab Switcher + Controls */}
@@ -161,10 +182,12 @@ export function DataDetails({
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10">
                 <tr className="border-b border-oai-gray-200 dark:border-oai-gray-700">
-                  {dailyBreakdownColumns.map((column) => (
+                  {dailyBreakdownColumns.map((column, index) => (
                     <th
                       key={column.key}
-                      aria-sort={dailyBreakdownAriaSortFor?.(column.key) || "none"}
+                      {...(dailyBreakdownAriaSortFor?.(column.key)
+                        ? { "aria-sort": dailyBreakdownAriaSortFor(column.key) }
+                        : {})}
                       className="text-left p-0 bg-white dark:bg-oai-gray-900"
                     >
                       <button
@@ -193,27 +216,14 @@ export function DataDetails({
                       row.missing ? "text-oai-gray-400 dark:text-oai-gray-400" : row.future ? "text-oai-gray-300 dark:text-oai-gray-600" : "text-oai-black dark:text-oai-white"
                     }`}
                   >
-                    <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300 whitespace-nowrap">
-                      {renderDailyBreakdownDate ? renderDailyBreakdownDate(row) : renderDetailDate(row)}
-                    </td>
-                    <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm font-medium text-oai-black dark:text-oai-white tabular-nums">
-                      {renderDetailCell(row, "total_tokens")}
-                    </td>
-                    <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
-                      {renderDetailCell(row, "input_tokens")}
-                    </td>
-                    <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
-                      {renderDetailCell(row, "output_tokens")}
-                    </td>
-                    <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
-                      {renderDetailCell(row, "cached_input_tokens")}
-                    </td>
-                    <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
-                      {renderDetailCell(row, "reasoning_output_tokens")}
-                    </td>
-                    <td className="px-2.5 sm:px-4 py-2 oai-text-body-sm text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
-                      {renderDetailCell(row, "conversation_count")}
-                    </td>
+                    {dailyBreakdownColumns.map((column, index) => (
+                      <td
+                        key={column.key}
+                        className={`px-2.5 sm:px-4 py-2 oai-text-body-sm whitespace-nowrap ${getDailyCellClass(row, column, index)}`}
+                      >
+                        {renderDailyCell(row, column, index)}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

@@ -20,6 +20,11 @@ function resolveModelName(model: any, fallback: any) {
   return fallback;
 }
 
+function isKnownZeroCostModel(name: any) {
+  const lower = String(name || "").toLowerCase();
+  return lower.includes("free") || lower.includes("hy3-preview");
+}
+
 export function resolveDisplayTokens(totals: any, fallback = 0) {
   const billableTokens = toFiniteNumber(totals?.billable_total_tokens);
   const totalTokens = toFiniteNumber(totals?.total_tokens);
@@ -76,18 +81,110 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
               : entry.totalCost > 0 && entry.totalTokens > 0
                 ? (modelTokens / entry.totalTokens) * entry.totalCost
                 : null;
-          return { id, name, share, usage: modelTokens, cost: modelCost };
+          const pricingMissing =
+            modelTokens > 0 &&
+            (modelCost == null || modelCost <= 0) &&
+            !isKnownZeroCostModel(name);
+          return { id, name, share, usage: modelTokens, cost: modelCost, pricingMissing };
         })
         .filter(Boolean);
+      const topCostModel = models
+        .filter((model: any) => Number.isFinite(Number(model?.cost)) && Number(model.cost) > 0)
+        .sort((a: any, b: any) => Number(b.cost) - Number(a.cost))[0] || null;
+      const missingPricingModels = models.filter((model: any) => model?.pricingMissing);
       return {
         source: entry.source,
         label,
         totalPercent: String(totalPercent),
         usd: entry.totalCost,
         usage: entry.totalTokens,
+        topCostModel,
+        missingPricingModels,
         models,
       };
     });
+}
+
+export function buildUsageInsights(modelBreakdown: any, { copyFn }: AnyRecord = {}) {
+  const safeCopy = typeof copyFn === "function" ? copyFn : (key: string) => key;
+  const fleet = buildFleetData(modelBreakdown, { copyFn: safeCopy });
+  const totalTokens = fleet.reduce((acc: number, source: any) => acc + (Number(source?.usage) || 0), 0);
+  const totalCost = fleet.reduce((acc: number, source: any) => acc + (Number(source?.usd) || 0), 0);
+  const allModels = fleet.flatMap((source: any) =>
+    (source.models || []).map((model: any) => ({
+      ...model,
+      source: source.label,
+    })),
+  );
+  const topCostModel =
+    allModels
+      .filter((model: any) => Number.isFinite(Number(model?.cost)) && Number(model.cost) > 0)
+      .sort((a: any, b: any) => Number(b.cost) - Number(a.cost))[0] || null;
+  const topUsageModel =
+    allModels
+      .filter((model: any) => Number.isFinite(Number(model?.usage)) && Number(model.usage) > 0)
+      .sort((a: any, b: any) => Number(b.usage) - Number(a.usage))[0] || null;
+  const missingPricingModels = allModels.filter((model: any) => model?.pricingMissing);
+  return {
+    totalTokens,
+    totalCost,
+    costPerMillionTokens: totalTokens > 0 ? totalCost / (totalTokens / 1_000_000) : null,
+    topCostModel,
+    topUsageModel,
+    missingPricingModels,
+  };
+}
+
+export function resolveDailyTopModel(row: any, fallback: any = "—") {
+  const entries = Object.entries(row?.models || {});
+  if (!entries.length) return fallback;
+  let bestName = null;
+  let bestTokens = -1;
+  for (const [name, value] of entries) {
+    const tokens = Number(value);
+    if (!Number.isFinite(tokens) || tokens <= bestTokens) continue;
+    bestName = name;
+    bestTokens = tokens;
+  }
+  return bestName || fallback;
+}
+
+export function enrichDailyRows(rows: any[], { fallback = "—" }: AnyRecord = {}) {
+  const enrichedRows = (Array.isArray(rows) ? rows : []).map((row: any) => {
+    const billable = resolveDisplayTokens(row);
+    const cost = toFiniteNumber(row?.total_cost_usd) ?? 0;
+    const costPerMillionTokens =
+      Number.isFinite(billable) && billable > 0 ? cost / (billable / 1_000_000) : null;
+    return {
+      ...row,
+      cost_per_million_tokens: costPerMillionTokens,
+      top_model: resolveDailyTopModel(row, fallback),
+    };
+  });
+  const costPerMillionValues = enrichedRows.reduce((acc: number[], row: any) => {
+    const value = toFiniteNumber(row?.cost_per_million_tokens);
+    if (value != null && value > 0) acc.push(value);
+    return acc;
+  }, []);
+  const averageCostPerMillion =
+    costPerMillionValues.length > 0
+      ? costPerMillionValues.reduce((acc: number, value: number) => acc + value, 0) /
+        costPerMillionValues.length
+      : null;
+
+  return enrichedRows.map((row: any) => {
+    const value = toFiniteNumber(row?.cost_per_million_tokens);
+    const isHigh =
+      value != null &&
+      averageCostPerMillion != null &&
+      averageCostPerMillion > 0 &&
+      value > averageCostPerMillion * 1.15;
+    return {
+      ...row,
+      cost_per_million_baseline: averageCostPerMillion,
+      cost_per_million_status: isHigh ? "high" : "normal",
+    };
+  });
 }
 
 export function buildTopModels(modelBreakdown: any, { limit = 3, copyFn }: AnyRecord = {}) {

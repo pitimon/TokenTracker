@@ -408,18 +408,33 @@ test("index: ensurePricingLoaded + getModelPricing returns CURATED for kiro entr
   assert.equal(kiro.cache_write, 3.75);
 });
 
-test("index: getModelPricing finds LiteLLM mainstream models with correct unit conversion", async () => {
+test("index: getModelPricing finds Claude Sonnet pricing from bundled tables", async () => {
   pricing.resetPricingForTests();
   const cachePath = tmpCachePath();
   await pricing.ensurePricingLoaded({
     cachePath,
     fetchImpl: makeFetchImpl(FIXTURE_LITELLM),
   });
-  const sonnet = pricing.getModelPricing("claude-sonnet-4-6");
-  assert.equal(sonnet.input, 3);
-  assert.equal(sonnet.output, 15);
-  assert.equal(sonnet.cache_read, 0.3);
-  assert.equal(sonnet.cache_write, 3.75);
+  for (const model of ["claude-sonnet-4-6", "claude-sonnet-5"]) {
+    const sonnet = pricing.getModelPricing(model);
+    assert.equal(sonnet.input, 3);
+    assert.equal(sonnet.output, 15);
+    assert.equal(sonnet.cache_read, 0.3);
+    assert.equal(sonnet.cache_write, 3.75);
+  }
+
+  assert.equal(
+    pricing.computeRowCost({
+      source: "claude",
+      model: "claude-sonnet-5",
+      input_tokens: 1_000_000,
+      cached_input_tokens: 500_000,
+      cache_creation_input_tokens: 250_000,
+      output_tokens: 100_000,
+      reasoning_output_tokens: 0,
+    }),
+    5.5875,
+  );
 });
 
 test("index: getModelPricing pins Claude Fable/Mythos 5 pricing from curated overrides", async () => {

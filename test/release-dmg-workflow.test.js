@@ -136,7 +136,7 @@ test("homebrew tap is notified only after publish (not mid-build)", () => {
   // The dispatch must come AFTER the un-draft, so the tap fetches a public,
   // fully-populated release — never a draft or an asset-less one.
   const undraft = content.indexOf("--draft=false");
-  const dispatch = content.indexOf("homebrew-tokentracker/dispatches");
+  const dispatch = content.indexOf('repos/${HOMEBREW_TAP_REPOSITORY}/dispatches');
   assert.ok(undraft > 0 && dispatch > 0, "both un-draft and dispatch must exist");
   assert.ok(dispatch > undraft, "homebrew dispatch must come after un-drafting");
 });

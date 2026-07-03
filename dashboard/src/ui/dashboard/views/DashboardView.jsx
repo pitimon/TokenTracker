@@ -53,6 +53,7 @@ export function DashboardView(props) {
     summaryValue,
     summaryUpdatedAtLabel,
     summaryCostValue,
+    usageInsights,
     summaryConversationsValue,
     rollingUsage,
     costInfoEnabled,
@@ -194,6 +195,7 @@ export function DashboardView(props) {
                     summaryValue={summaryValue}
                     summaryUpdatedAtLabel={summaryUpdatedAtLabel}
                     summaryCostValue={summaryCostValue}
+                    usageInsights={usageInsights}
                     onCostInfo={costInfoEnabled ? openCostModal : null}
                     fleetData={fleetData}
                     onRefresh={screenshotMode ? null : refreshAll}

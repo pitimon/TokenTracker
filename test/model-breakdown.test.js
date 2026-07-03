@@ -110,6 +110,62 @@ test("buildFleetData uses explicit per-model cost instead of proportional source
   assert.equal(fleetData[0].models[1].cost, 0.075171);
 });
 
+test("buildFleetData exposes top cost and missing-pricing metadata for collapsed provider cards", async () => {
+  const mod = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
+  const { buildFleetData, buildUsageInsights, enrichDailyRows } = mod;
+
+  const modelBreakdown = {
+    sources: [
+      {
+        source: "claude",
+        totals: { billable_total_tokens: 3000, total_cost_usd: "12.5" },
+        models: [
+          {
+            model: "claude-fable-5",
+            model_id: "claude-fable-5",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "10.5" },
+          },
+          {
+            model: "claude-sonnet-new",
+            model_id: "claude-sonnet-new",
+            totals: { billable_total_tokens: 2000, total_cost_usd: "0" },
+          },
+        ],
+      },
+    ],
+  };
+
+  const fleetData = buildFleetData(modelBreakdown);
+  assert.equal(fleetData[0].topCostModel.name, "claude-fable-5");
+  assert.equal(fleetData[0].missingPricingModels.length, 1);
+  assert.equal(fleetData[0].missingPricingModels[0].name, "claude-sonnet-new");
+
+  const insights = buildUsageInsights(modelBreakdown);
+  assert.equal(insights.topCostModel.name, "claude-fable-5");
+  assert.equal(insights.topUsageModel.name, "claude-sonnet-new");
+  assert.equal(insights.missingPricingModels.length, 1);
+  assert.equal(insights.costPerMillionTokens, 4166.666666666667);
+
+  const daily = enrichDailyRows([
+    {
+      day: "2026-07-03",
+      billable_total_tokens: 2_000_000,
+      total_cost_usd: "4",
+      models: { "claude-fable-5": 1_500_000, "claude-sonnet-5": 500_000 },
+    },
+    {
+      day: "2026-07-02",
+      billable_total_tokens: 2_000_000,
+      total_cost_usd: "1",
+      models: { "claude-sonnet-5": 2_000_000 },
+    },
+  ]);
+  assert.equal(daily[0].top_model, "claude-fable-5");
+  assert.equal(daily[0].cost_per_million_tokens, 2);
+  assert.equal(daily[0].cost_per_million_status, "high");
+  assert.equal(daily[1].cost_per_million_status, "normal");
+});
+
 test("buildTopModels aggregates by model name across sources", async () => {
   const mod = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
   const buildTopModels = mod.buildTopModels;

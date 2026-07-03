@@ -24,7 +24,13 @@ import {
 } from "../lib/format";
 import { getMockNow, isMockEnabled } from "../lib/mock-data";
 import { publishUsageLimitsPreloadState } from "../lib/dashboard-preload.js";
-import { buildFleetData, buildTopModels, resolveDisplayTokens } from "../lib/model-breakdown";
+import {
+  buildFleetData,
+  buildTopModels,
+  buildUsageInsights,
+  enrichDailyRows,
+  resolveDisplayTokens,
+} from "../lib/model-breakdown";
 import { safeWriteClipboardImage } from "../lib/safe-browser";
 import { isScreenshotModeEnabled } from "../lib/screenshot-mode";
 import {
@@ -439,7 +445,27 @@ export function DashboardPage({
   }, [period]);
   const detailsColumns = useMemo(() => getDetailsSortColumns(detailsDateKey), [detailsDateKey]);
   const dailyBreakdownDateKey = "day";
-  const dailyBreakdownColumns = useMemo(() => getDetailsSortColumns(dailyBreakdownDateKey), []);
+  const dailyBreakdownColumns = useMemo(
+    () => [
+      ...getDetailsSortColumns(dailyBreakdownDateKey),
+      {
+        key: "total_cost_usd",
+        label: copy("daily.sort.cost.label"),
+        title: copy("daily.sort.cost.title"),
+      },
+      {
+        key: "cost_per_million_tokens",
+        label: copy("daily.sort.cost_per_mtok.label"),
+        title: copy("daily.sort.cost_per_mtok.title"),
+      },
+      {
+        key: "top_model",
+        label: copy("daily.sort.top_model.label"),
+        title: copy("daily.sort.top_model.title"),
+      },
+    ],
+    [],
+  );
   const [sort, setSort] = useState(() => ({ key: "day", dir: "desc" }));
   useEffect(() => {
     setSort((prev) => {
@@ -509,9 +535,12 @@ export function DashboardPage({
 
   // Daily Breakdown 始终显示最近30天的日数据
   const dailyBreakdownRows = useMemo(() => {
-    return dailyBreakdownDaily
-      .filter((row) => !row?.future && row?.day)
-      .slice(-30);
+    return enrichDailyRows(
+      dailyBreakdownDaily
+        .filter((row) => !row?.future && row?.day)
+        .slice(-30),
+      { fallback: copy("shared.placeholder.short") },
+    );
   }, [dailyBreakdownDaily]);
   const dailyBreakdownSort = useMemo(() => {
     if (DETAILS_DATE_KEYS.has(sort.key)) {
@@ -538,6 +567,16 @@ export function DashboardPage({
     if (row?.missing) return copy("shared.status.unsynced");
     if (key === "total_tokens") {
       return toDisplayNumber(getBillableTotal(row));
+    }
+    if (key === "total_cost_usd") {
+      return formatUsdCurrency(row?.total_cost_usd, { currency, rate });
+    }
+    if (key === "cost_per_million_tokens") {
+      const value = toFiniteNumber(row?.cost_per_million_tokens);
+      return value == null ? copy("shared.placeholder.short") : formatUsdCurrency(value, { currency, rate });
+    }
+    if (key === "top_model") {
+      return row?.top_model || copy("shared.placeholder.short");
     }
     return toDisplayNumber(row?.[key]);
   }
@@ -568,7 +607,7 @@ export function DashboardPage({
   }
 
   function ariaSortFor(key) {
-    if (effectiveSort.key !== key) return "none";
+    if (effectiveSort.key !== key) return null;
     return effectiveSort.dir === "asc" ? "ascending" : "descending";
   }
 
@@ -578,7 +617,7 @@ export function DashboardPage({
   }
 
   function dailyAriaSortFor(key) {
-    if (dailyBreakdownSort.key !== key) return "none";
+    if (dailyBreakdownSort.key !== key) return null;
     return dailyBreakdownSort.dir === "asc" ? "ascending" : "descending";
   }
 
@@ -1198,6 +1237,10 @@ export function DashboardPage({
     () => buildFleetData(modelBreakdown, { copyFn: copy }),
     [modelBreakdown],
   );
+  const usageInsights = useMemo(
+    () => buildUsageInsights(modelBreakdown, { copyFn: copy }),
+    [modelBreakdown],
+  );
   const topModels = useMemo(
     () => buildTopModels(modelBreakdown, { limit: 3, copyFn: copy }),
     [modelBreakdown],
@@ -1297,6 +1340,7 @@ export function DashboardPage({
       summaryValue={summaryValue}
       summaryUpdatedAtLabel={summaryUpdatedAtLabel}
       summaryCostValue={summaryCostValue}
+      usageInsights={usageInsights}
       summaryConversationsValue={summaryConversationsValue}
       rollingUsage={rolling}
       costInfoEnabled={costInfoEnabled}

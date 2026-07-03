@@ -120,7 +120,11 @@ export function sortDetailRows(rows: any, { key, dir }: SortOptions) {
   const direction = dir === "asc" ? 1 : -1;
   const items = Array.isArray(rows) ? rows : [];
 
-  const cmp = DATE_KEYS.has(key) ? (a: any, b: any) => compareDateLike(a, b, key) : compareIntLike;
+  const cmp = DATE_KEYS.has(key)
+    ? (a: any, b: any) => compareDateLike(a, b, key)
+    : key === "top_model"
+      ? compareString
+      : compareIntLike;
   const pickValue = (row: any) => {
     if (key === "total_tokens" && row?.billable_total_tokens != null) {
       return row.billable_total_tokens;
