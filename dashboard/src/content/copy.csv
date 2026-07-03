@@ -236,6 +236,12 @@ daily.sort.reasoning.label,dashboard,DashboardPage,DailyTable,sort_label,"Reason
 daily.sort.reasoning.title,dashboard,DashboardPage,DailyTable,sort_title,"Sort by Reasoning output",,active
 daily.sort.conversations.label,dashboard,DashboardPage,DailyTable,sort_label,"Convs",,active
 daily.sort.conversations.title,dashboard,DashboardPage,DailyTable,sort_title,"Sort by Conversations",,active
+daily.sort.cost.label,dashboard,DashboardPage,DailyTable,sort_label,"Cost",,active
+daily.sort.cost.title,dashboard,DashboardPage,DailyTable,sort_title,"Sort by Cost",,active
+daily.sort.cost_per_mtok.label,dashboard,DashboardPage,DailyTable,sort_label,"$/MTok",,active
+daily.sort.cost_per_mtok.title,dashboard,DashboardPage,DailyTable,sort_title,"Sort by Cost per million tokens",,active
+daily.sort.top_model.label,dashboard,DashboardPage,DailyTable,sort_label,"Top model",,active
+daily.sort.top_model.title,dashboard,DashboardPage,DailyTable,sort_title,"Sort by Top model",,active
 details.pagination.prev,dashboard,DashboardPage,DailyTable,pagination_prev,"Prev",,active
 details.pagination.next,dashboard,DashboardPage,DailyTable,pagination_next,"Next",,active
 
@@ -528,6 +534,15 @@ usage.overview.provider_card_aria,ui,DashboardPage,UsageOverview,provider_card_a
 usage.overview.expand,ui,DashboardPage,UsageOverview,expand,"expand",,active
 usage.overview.collapse,ui,DashboardPage,UsageOverview,collapse,"collapse",,active
 usage.overview.model_count,ui,DashboardPage,UsageOverview,model_count,"{{count}} models",,active
+usage.overview.model_chip,ui,DashboardPage,UsageOverview,model_chip,"{{model}} {{percent}}%",,active
+usage.overview.model_percent,ui,DashboardPage,UsageOverview,model_percent,"{{percent}}%",,active
+usage.overview.model_more,ui,DashboardPage,UsageOverview,model_more,"+{{count}} more",,active
+usage.overview.cost_per_mtok,ui,DashboardPage,UsageOverview,cost_per_mtok,"{{value}}",,active
+usage.overview.top_cost_model,ui,DashboardPage,UsageOverview,top_cost_model,"Top cost {{model}}",,active
+usage.overview.top_usage_model,ui,DashboardPage,UsageOverview,top_usage_model,"Top usage {{model}}",,active
+usage.overview.missing_pricing_count,ui,DashboardPage,UsageOverview,missing_pricing_count,"{{count}} pricing missing",,active
+usage.overview.provider_top_cost,ui,DashboardPage,UsageOverview,provider_top_cost,"Top cost: {{model}}",,active
+usage.overview.provider_missing_pricing,ui,DashboardPage,UsageOverview,provider_missing_pricing,"{{count}} pricing missing",,active
 usage.overview.model_details_aria,ui,DashboardPage,UsageOverview,model_details_aria,"{{provider}} model details",,active
 usage.overview.antigravity_notice_title,ui,DashboardPage,UsageOverview,antigravity_notice_title,"Estimated tokens",,active
 usage.overview.antigravity_notice_body,ui,DashboardPage,UsageOverview,antigravity_notice_body,"Antigravity transcripts don't record real usage numbers. These counts are estimated from text length (~4 chars/token) and don't reflect Gemini's prompt-cache discount, so treat them as an upper bound, not a billing figure.",,active

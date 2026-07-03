@@ -28,6 +28,16 @@ function formatCost(value, currency, rate) {
   return formatUsdCurrency(n, { decimals: 2, currency, rate });
 }
 
+function formatCostPerMillion(value, currency, rate) {
+  const label = formatCost(value, currency, rate);
+  return label ? `${label}/MTok` : null;
+}
+
+function formatModelName(value) {
+  if (!value) return "";
+  return String(value).replace(/^claude-/, "").replace(/^gpt-/, "gpt-");
+}
+
 function normalizePeriods(periods) {
   if (!Array.isArray(periods)) return [];
   return periods.map((p) => {
@@ -69,6 +79,32 @@ function resolveContextBreakdownSource(provider) {
   if (source === "claude" || label === "claude") return "claude";
   if (source === "codex" || label === "codex") return "codex";
   return null;
+}
+
+function hasProviderModels(provider) {
+  return Boolean(provider?.models?.length);
+}
+
+function getModelShareWidth(share) {
+  const value = Number(share);
+  if (!Number.isFinite(value) || value <= 0) return "0%";
+  return `${Math.min(100, Math.max(2, value))}%`;
+}
+
+function isSameModel(left, right) {
+  const leftKey = String(left?.id || left?.name || "").trim().toLowerCase();
+  const rightKey = String(right?.id || right?.name || "").trim().toLowerCase();
+  return Boolean(leftKey && rightKey && leftKey === rightKey);
+}
+
+function getVisibleModels(provider, limit = 3) {
+  return [...(provider?.models || [])]
+    .sort((a, b) => (Number(b.share) || 0) - (Number(a.share) || 0))
+    .slice(0, limit);
+}
+
+function getHiddenModelCount(provider, visibleModels) {
+  return Math.max(0, (provider?.models?.length || 0) - visibleModels.length);
 }
 
 const PERIOD_COPY_KEYS = {
@@ -125,6 +161,7 @@ export function UsageOverview({
   summaryLabel,
   summaryUpdatedAtLabel,
   summaryCostValue,
+  usageInsights,
   onCostInfo,
   fleetData = [],
   onRefresh,
@@ -139,6 +176,7 @@ export function UsageOverview({
   from,
   to,
 }) {
+  const shouldReduceMotion = useReducedMotion();
   const tabs = normalizePeriods(periods);
   const showAutoRefreshSelect =
     Array.isArray(autoRefreshOptions) &&
@@ -162,7 +200,8 @@ export function UsageOverview({
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
-  const showAnimatedSummary = summaryCounterValue != null && !isCompactSummary;
+  const showAnimatedSummary =
+    summaryCounterValue != null && !isCompactSummary && !loading && !shouldReduceMotion;
   // Keep the selected period chip in view when the tab strip scrolls
   // horizontally on narrow screens.
   const tablistRef = useRef(null);
@@ -180,7 +219,25 @@ export function UsageOverview({
   const gradientTo = isDark ? "rgba(10,10,10,0)" : "rgba(255,255,255,0)";
 
   // FleetData is already grouped by provider
-  const providers = fleetData.filter((f) => f.models?.length > 0);
+  const providers = fleetData.filter(hasProviderModels);
+  const costPerMillionLabel = formatCostPerMillion(
+    usageInsights?.costPerMillionTokens,
+    currency,
+    rate,
+  );
+  const topCostModelName = usageInsights?.topCostModel?.name
+    ? formatModelName(usageInsights.topCostModel.name)
+    : "";
+  const topUsageModelName = usageInsights?.topUsageModel?.name
+    ? formatModelName(usageInsights.topUsageModel.name)
+    : "";
+  const missingPricingCount = Array.isArray(usageInsights?.missingPricingModels)
+    ? usageInsights.missingPricingModels.length
+    : 0;
+  const hasMissingPricing = Boolean(missingPricingCount);
+  const hasInsightChips = Boolean(
+    costPerMillionLabel || topCostModelName || topUsageModelName || hasMissingPricing,
+  );
 
   return (
     <Card className={className}>
@@ -329,6 +386,30 @@ export function UsageOverview({
               )}
             </div>
           )}
+          {hasInsightChips && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 text-[11px] font-medium">
+              {costPerMillionLabel ? (
+                <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
+                  {copy("usage.overview.cost_per_mtok", { value: costPerMillionLabel })}
+                </span>
+              ) : null}
+              {topCostModelName ? (
+                <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300">
+                  {copy("usage.overview.top_cost_model", { model: topCostModelName })}
+                </span>
+              ) : null}
+              {topUsageModelName && topUsageModelName !== topCostModelName ? (
+                <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300">
+                  {copy("usage.overview.top_usage_model", { model: topUsageModelName })}
+                </span>
+              ) : null}
+              {hasMissingPricing ? (
+                <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                  {copy("usage.overview.missing_pricing_count", { count: missingPricingCount })}
+                </span>
+              ) : null}
+            </div>
+          )}
         </div>
 
         {/* Provider Distribution */}
@@ -371,6 +452,10 @@ export function UsageOverview({
               {providers.map((provider, idx) => {
                 const color = getProviderColor(provider.label, idx);
                 const isExpanded = expandedProvider === provider.label;
+                const providerMissingPricingCount = provider.missingPricingModels?.length || 0;
+                const hasProviderMissingPricing = Boolean(providerMissingPricingCount);
+                const visibleModels = getVisibleModels(provider);
+                const hiddenModelCount = getHiddenModelCount(provider, visibleModels);
 
                 return (
                   <button
@@ -401,6 +486,72 @@ export function UsageOverview({
                     <div className="mt-0.5 text-[11px] text-oai-gray-400 dark:text-oai-gray-400 tabular-nums">
                       {copy("usage.overview.model_count", { count: provider.models.length })}
                     </div>
+                    <div className="mt-2 space-y-1.5">
+                      {visibleModels.map((model) => {
+                        const isTopCost = isSameModel(model, provider.topCostModel);
+                        return (
+                          <div key={model.id || model.name} className="min-w-0">
+                            <div className="flex min-w-0 items-center justify-between gap-2 text-[10px] font-medium">
+                              <span
+                                className={`truncate ${
+                                  isTopCost
+                                    ? "text-oai-black dark:text-oai-white"
+                                    : "text-oai-gray-600 dark:text-oai-gray-300"
+                                }`}
+                                title={model.name}
+                              >
+                                {formatModelName(model.name)}
+                              </span>
+                              <span className="shrink-0 text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">
+                                {copy("usage.overview.model_percent", { percent: model.share })}
+                              </span>
+                            </div>
+                            <div
+                              role="progressbar"
+                              aria-label={copy("usage.overview.model_chip", {
+                                model: formatModelName(model.name),
+                                percent: model.share,
+                              })}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={Number(model.share) || 0}
+                              className="mt-1 h-1.5 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800"
+                            >
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: getModelShareWidth(model.share) }}
+                                transition={{
+                                  duration: shouldReduceMotion ? 0 : 0.45,
+                                  delay: shouldReduceMotion ? 0 : 0.05,
+                                  ease: [0.16, 1, 0.3, 1],
+                                }}
+                                className="h-full rounded-full"
+                                style={{ backgroundColor: isTopCost ? color : `${color}99` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {Boolean(hiddenModelCount) && (
+                        <div className="text-[10px] font-medium text-oai-gray-400 dark:text-oai-gray-500">
+                          {copy("usage.overview.model_more", { count: hiddenModelCount })}
+                        </div>
+                      )}
+                    </div>
+                    {provider.topCostModel?.name ? (
+                      <div className="mt-1.5 truncate text-[10px] font-medium text-oai-gray-500 dark:text-oai-gray-400">
+                        {copy("usage.overview.provider_top_cost", {
+                          model: formatModelName(provider.topCostModel.name),
+                        })}
+                      </div>
+                    ) : null}
+                    {hasProviderMissingPricing ? (
+                      <div className="mt-1.5 truncate text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                        {copy("usage.overview.provider_missing_pricing", {
+                          count: providerMissingPricingCount,
+                        })}
+                      </div>
+                    ) : null}
                   </button>
                 );
               })}

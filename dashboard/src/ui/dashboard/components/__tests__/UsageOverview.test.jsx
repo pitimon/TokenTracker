@@ -87,4 +87,53 @@ describe("UsageOverview", () => {
       referenceTotalTokens: 123,
     });
   });
+
+  it("renders collapsed provider model chips and cost insights", () => {
+    render(
+      <UsageOverview
+        period="day"
+        periods={[]}
+        summaryLabel="Total"
+        summaryValue="31.3M"
+        summaryCostValue="$28.38"
+        usageInsights={{
+          costPerMillionTokens: 0.91,
+          topCostModel: { name: "claude-fable-5" },
+          topUsageModel: { name: "claude-sonnet-5" },
+          missingPricingModels: [{ name: "claude-sonnet-new" }],
+        }}
+        fleetData={[
+          {
+            source: "claude",
+            label: "CLAUDE",
+            totalPercent: "74.3",
+            usage: 31_000_000,
+            usd: 28.38,
+            topCostModel: { name: "claude-fable-5" },
+            missingPricingModels: [{ name: "claude-sonnet-new" }],
+            models: [
+              { id: "claude-sonnet-5", name: "claude-sonnet-5", share: 49.5, usage: 9_200_000, cost: 5.5 },
+              { id: "claude-fable-5", name: "claude-fable-5", share: 46.6, usage: 8_600_000, cost: 16.24 },
+              { id: "claude-opus-4-8", name: "claude-opus-4-8", share: 3.9, usage: 709_000, cost: 1.06 },
+              { id: "claude-sonnet-new", name: "claude-sonnet-new", share: 0.1, usage: 1_000, cost: 0 },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("$0.91/MTok")).toBeInTheDocument();
+    expect(screen.getAllByText(/Top cost fable-5|Top cost: fable-5/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Top usage sonnet-5")).toBeInTheDocument();
+    expect(screen.getByText("sonnet-5")).toBeInTheDocument();
+    expect(screen.getByText("49.5%")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "sonnet-5 49.5%" })).toHaveAttribute(
+      "aria-valuenow",
+      "49.5",
+    );
+    expect(screen.getByText("fable-5")).toBeInTheDocument();
+    expect(screen.getByText("46.6%")).toBeInTheDocument();
+    expect(screen.getByText("+1 more")).toBeInTheDocument();
+    expect(screen.getAllByText("1 pricing missing").length).toBeGreaterThan(0);
+  });
 });

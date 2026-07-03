@@ -71,4 +71,43 @@ describe("DataDetails", () => {
     expect(dailyRows[0]).toHaveClass("odd:bg-transparent");
     expect(dailyRows[0]).toHaveClass("even:bg-oai-gray-50/55");
   });
+
+  it("renders configured daily cost and top-model columns without compacting detail values", () => {
+    renderDetails({
+      dailyBreakdownRows: [
+        {
+          day: "2026-07-03",
+          total_tokens: 31301685,
+          input_tokens: 2708422,
+          total_cost_usd: "$28.38",
+          cost_per_million_tokens: "$0.91",
+          cost_per_million_status: "high",
+          top_model: "claude-fable-5",
+        },
+      ],
+      dailyBreakdownColumns: [
+        { key: "day", label: "Date" },
+        { key: "total_tokens", label: "Total" },
+        { key: "input_tokens", label: "Input" },
+        { key: "total_cost_usd", label: "Cost" },
+        { key: "cost_per_million_tokens", label: "$/MTok" },
+        { key: "top_model", label: "Top model" },
+      ],
+      dailyBreakdownAriaSortFor: (key) => (key === "day" ? "descending" : null),
+      dailyBreakdownSortIconFor: () => "",
+      renderDailyBreakdownDate: (row) => row.day,
+      renderDetailCell: (row, key) => row[key] ?? "",
+      toggleSort: () => {},
+    });
+
+    expect(screen.getByRole("columnheader", { name: "Cost" })).not.toHaveAttribute("aria-sort");
+    expect(screen.getByRole("columnheader", { name: "Input" })).not.toHaveClass("hidden");
+    expect(screen.getByText("31301685")).toBeInTheDocument();
+    expect(screen.queryByText("31.3M")).not.toBeInTheDocument();
+    expect(screen.getByText("2708422")).toBeInTheDocument();
+    expect(screen.getByText("$28.38")).toBeInTheDocument();
+    expect(screen.getByText("$0.91").closest("td")).toHaveClass("text-amber-700");
+    expect(screen.getByText("claude-fable-5")).toBeInTheDocument();
+    expect(screen.queryByText("fable-5")).not.toBeInTheDocument();
+  });
 });

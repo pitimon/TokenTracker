@@ -9,9 +9,14 @@ Run these checks before publishing:
 npm view @ipv9/tokentracker-cli version versions --json
 npm ci
 npm --prefix dashboard ci
-npm --prefix dashboard run build
+node --test test/pricing.test.js test/model-breakdown.test.js test/local-api-source-scope.test.js
+npm --prefix dashboard test -- UsageOverview DataDetails --run
 npm test
 npm --prefix dashboard test
+npm run validate:copy
+npm run validate:ui-hardcode
+npm run validate:guardrails
+npm --prefix dashboard run build
 npm pack --dry-run --json
 npm publish --access public --dry-run
 npm publish --access public
@@ -20,6 +25,20 @@ npm view @ipv9/tokentracker-cli version versions --json
 
 The dry-run pack output must include `dashboard/dist/index.html` and the macOS
 service scripts under `scripts/`.
+
+Dashboard pricing/UI release gate:
+
+- `claude-sonnet-5`, `claude-fable-5`, and `claude-opus-4-8` must resolve to
+  non-zero pricing before publish. Use `node --test test/pricing.test.js`.
+- Collapsed provider cards must show model chips, top-cost signal, and a
+  pricing-missing badge when a non-free model has tokens but zero cost. Use the
+  focused `UsageOverview` and `model-breakdown` tests before relying on a
+  browser smoke.
+- Daily Breakdown must show cost, cost per MTok, and top model columns. Use the
+  focused `DataDetails` test and a built-dashboard browser smoke.
+- After installing or rebuilding the local LaunchAgent, smoke the active port
+  from `launchctl print gui/$(id -u)/com.pitimon.tokentracker.dashboard`; on
+  this workstation that may be `127.0.0.1:17680` instead of the default `7680`.
 
 Manual MFA publish flow:
 
