@@ -593,3 +593,84 @@ test("(source, model) collapse: IDE + CLI both resolving to claude-sonnet-4 merg
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("buildFleetData treats GLM flash models with zero cost as known-zero-cost, not missing pricing", async () => {
+  const mod = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
+  const buildFleetData = mod.buildFleetData;
+
+  const modelBreakdown = {
+    sources: [
+      {
+        source: "claude",
+        totals: { billable_total_tokens: 3000, total_cost_usd: "0" },
+        models: [
+          {
+            model: "glm-4.7-flash",
+            model_id: "glm-4.7-flash",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+          },
+          {
+            model: "glm-4.5-flash",
+            model_id: "glm-4.5-flash",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+          },
+          {
+            model: "glm-4.7-flashx",
+            model_id: "glm-4.7-flashx",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+          },
+          {
+            model: "mystery-model",
+            model_id: "mystery-model",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+          },
+        ],
+      },
+    ],
+  };
+
+  const fleetData = buildFleetData(modelBreakdown);
+  const models = fleetData[0].models;
+  const glm47 = models.find((m) => m.name === "glm-4.7-flash");
+  const glm45 = models.find((m) => m.name === "glm-4.5-flash");
+  const mystery = models.find((m) => m.name === "mystery-model");
+  const flashx = models.find((m) => m.name === "glm-4.7-flashx");
+
+  assert.equal(
+    glm47.pricingMissing,
+    false,
+    "glm-4.7-flash must not be flagged as missing pricing",
+  );
+  assert.equal(
+    glm45.pricingMissing,
+    false,
+    "glm-4.5-flash must not be flagged as missing pricing",
+  );
+  assert.equal(
+    mystery.pricingMissing,
+    true,
+    "unknown zero-cost models must still be flagged as missing pricing",
+  );
+
+  const missingNames = fleetData[0].missingPricingModels.map((m) => m.name);
+  assert.ok(
+    !missingNames.includes("glm-4.7-flash"),
+    "glm-4.7-flash must not appear in missingPricingModels",
+  );
+  assert.ok(
+    !missingNames.includes("glm-4.5-flash"),
+    "glm-4.5-flash must not appear in missingPricingModels",
+  );
+  assert.ok(
+    missingNames.includes("mystery-model"),
+    "mystery-model must still appear in missingPricingModels",
+  );
+  assert.ok(
+    flashx.pricingMissing,
+    "glm-4.7-flashx is a PAID model — zero cost must be flagged as missing pricing",
+  );
+  assert.ok(
+    missingNames.includes("glm-4.7-flashx"),
+    "glm-4.7-flashx must appear in missingPricingModels",
+  );
+});

@@ -141,6 +141,7 @@ const MODEL_PRICING: Record<string, { input: number; output: number; cache_read:
   "kimi-for-coding": { input: 0.6, output: 2, cache_read: 0.15 },
   "kimi-k2.5": { input: 0.6, output: 2, cache_read: 0.15 },
   "kimi-k2.5-free": { input: 0, output: 0, cache_read: 0 },
+  "kimi-k2.6": { input: 0.95, output: 4, cache_read: 0.16 },
   "glm-5.1": { input: 1.4, output: 4.4, cache_read: 0.26 },
   "glm-5": { input: 1.0, output: 3.2, cache_read: 0.2 },
   "glm-5-turbo": { input: 1.2, output: 4.0, cache_read: 0.24 },
@@ -176,6 +177,14 @@ const MODEL_PRICING: Record<string, { input: number; output: number; cache_read:
   "mimo-v2-pro-free": { input: 0, output: 0, cache_read: 0 },
   "minimax-m2.1-free": { input: 0, output: 0, cache_read: 0 },
   "MiniMax-M2.1": { input: 0.5, output: 3, cache_read: 0.05 },
+  // ── Xiaomi MiMo (mirrored from src/lib/pricing/seed-snapshot.json LiteLLM
+  //    entries openrouter/xiaomi/mimo-*; queue rows report the bare names.
+  //    Kept in lockstep with the matcher's litellm:prefix-strip resolution —
+  //    cache_read for mimo-v2-flash uses novita's 0.02 (the lexicographically
+  //    smallest provider key the matcher deterministically picks). ──
+  "mimo-v2.5-pro": { input: 1, output: 3, cache_read: 0.2 },
+  "mimo-v2.5": { input: 0.4, output: 2, cache_read: 0.08 },
+  "mimo-v2-flash": { input: 0.1, output: 0.3, cache_read: 0.02 },
 };
 const ZERO_PRICING = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
 
@@ -208,7 +217,14 @@ function getModelPricing(model: string) {
   if (lower.includes("grok-4-fast")) return MODEL_PRICING["grok-4-fast"];
   if (lower.includes("grok-4-1-fast")) return MODEL_PRICING["grok-4-1-fast-non-reasoning"];
   if (lower.includes("grok-4")) return MODEL_PRICING["grok-4"];
+  if (lower.includes("kimi-k2.6")) return MODEL_PRICING["kimi-k2.6"];
   if (lower.includes("kimi")) return MODEL_PRICING["kimi-k2.5"];
+  // MiMo ordering: more specific suffixes first (mimo-v2.5-pro before
+  // mimo-v2.5 which is a substring; the free tier is a distinct name).
+  if (lower.includes("mimo-v2-pro-free")) return MODEL_PRICING["mimo-v2-pro-free"];
+  if (lower.includes("mimo-v2.5-pro")) return MODEL_PRICING["mimo-v2.5-pro"];
+  if (lower.includes("mimo-v2.5")) return MODEL_PRICING["mimo-v2.5"];
+  if (lower.includes("mimo-v2-flash")) return MODEL_PRICING["mimo-v2-flash"];
   if (lower.includes("glm-4.5-airx")) return MODEL_PRICING["glm-4.5-airx"];
   if (lower.includes("glm-4.5-air")) return MODEL_PRICING["glm-4.5-air"];
   if (lower.includes("glm-4.5-x")) return MODEL_PRICING["glm-4.5-x"];

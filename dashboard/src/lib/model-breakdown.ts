@@ -22,7 +22,7 @@ function resolveModelName(model: any, fallback: any) {
 
 function isKnownZeroCostModel(name: any) {
   const lower = String(name || "").toLowerCase();
-  return lower.includes("free") || lower.includes("hy3-preview");
+  return lower.includes("free") || lower.includes("hy3-preview") || /^glm-[\d.]+-flash(?![a-z])/.test(lower);
 }
 
 export function resolveDisplayTokens(totals: any, fallback = 0) {
