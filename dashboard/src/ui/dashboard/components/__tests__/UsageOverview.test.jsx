@@ -136,4 +136,39 @@ describe("UsageOverview", () => {
     expect(screen.getByText("+1 more")).toBeInTheDocument();
     expect(screen.getAllByText("1 pricing missing").length).toBeGreaterThan(0);
   });
+
+  it("leaves gpt-* model names unchanged in the collapsed provider chip", () => {
+    render(
+      <UsageOverview
+        period="day"
+        periods={[]}
+        summaryLabel="Total"
+        summaryValue="10M"
+        summaryCostValue="$5.00"
+        fleetData={[
+          {
+            source: "codex",
+            label: "CODEX",
+            totalPercent: "100.0",
+            usage: 10_000_000,
+            usd: 5,
+            topCostModel: { name: "gpt-4o" },
+            missingPricingModels: [],
+            models: [
+              {
+                id: "gpt-4o",
+                name: "gpt-4o",
+                share: 100,
+                usage: 10_000_000,
+                cost: 5,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("gpt-4o")).toBeInTheDocument();
+    expect(screen.queryByText("4o")).not.toBeInTheDocument();
+  });
 });

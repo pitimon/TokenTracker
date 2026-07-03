@@ -35,7 +35,7 @@ function formatCostPerMillion(value, currency, rate) {
 
 function formatModelName(value) {
   if (!value) return "";
-  return String(value).replace(/^claude-/, "").replace(/^gpt-/, "gpt-");
+  return String(value).replace(/^claude-/, "");
 }
 
 function normalizePeriods(periods) {
