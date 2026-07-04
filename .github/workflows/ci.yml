@@ -25,15 +25,13 @@ concurrency:
 jobs:
   ci-local:
     name: ci:local
-    # macOS matches the maintainer's dev environment, where `ci:local` is
-    # green. The suite has pre-existing Linux-only failures (e.g. inode reuse
-    # after unlink+recreate breaks file-rotation detection in
-    # rollout-parser tests) that are chronic — npm-publish.yml's ubuntu `test`
-    # job has failed on every push to main for the same reason. Fixing those
-    # for a Linux runner is a separate cross-platform hardening effort; running
-    # the PR gate on macOS still catches the platform-independent regressions
-    # this gate exists for (a stale layout test fails identically on any OS).
-    runs-on: macos-latest
+    # Runs on Linux. The suite had cross-platform failures that only surfaced
+    # on a clean Linux checkout — the dashboard-dist build order (#23) and
+    # file-rotation detection defeated by Linux inode reuse (#26). Both are
+    # fixed, so the gate runs on the cheaper ubuntu runner and this also keeps
+    # npm-publish.yml's ubuntu `test` job green. (Keep the job name `ci:local`
+    # — it is the required status check in main's branch protection.)
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
