@@ -38,6 +38,15 @@ const FIXTURE_LITELLM = {
     cache_read_input_token_cost: 3e-7,
     cache_creation_input_token_cost: 3.75e-6,
   },
+  // Mirrors the bundled seed's intro pricing for Sonnet 5 (2/10, through
+  // 2026-08-31). CURATED no longer pins claude-sonnet-5, so this LiteLLM
+  // exact match is what resolves it — verifies step 2 of the resolve order.
+  "claude-sonnet-5": {
+    input_cost_per_token: 2e-6,
+    output_cost_per_token: 1e-5,
+    cache_read_input_token_cost: 2e-7,
+    cache_creation_input_token_cost: 2.5e-6,
+  },
   "claude-haiku-4-5-20251001": {
     input_cost_per_token: 1e-6,
     output_cost_per_token: 5e-6,
@@ -408,20 +417,34 @@ test("index: ensurePricingLoaded + getModelPricing returns CURATED for kiro entr
   assert.equal(kiro.cache_write, 3.75);
 });
 
-test("index: getModelPricing finds Claude Sonnet pricing from bundled tables", async () => {
+test("index: getModelPricing finds Claude Sonnet 4.6 pricing from bundled tables", async () => {
   pricing.resetPricingForTests();
   const cachePath = tmpCachePath();
   await pricing.ensurePricingLoaded({
     cachePath,
     fetchImpl: makeFetchImpl(FIXTURE_LITELLM),
   });
-  for (const model of ["claude-sonnet-4-6", "claude-sonnet-5"]) {
-    const sonnet = pricing.getModelPricing(model);
-    assert.equal(sonnet.input, 3);
-    assert.equal(sonnet.output, 15);
-    assert.equal(sonnet.cache_read, 0.3);
-    assert.equal(sonnet.cache_write, 3.75);
-  }
+  const sonnet = pricing.getModelPricing("claude-sonnet-4-6");
+  assert.equal(sonnet.input, 3);
+  assert.equal(sonnet.output, 15);
+  assert.equal(sonnet.cache_read, 0.3);
+  assert.equal(sonnet.cache_write, 3.75);
+});
+
+test("index: getModelPricing resolves Claude Sonnet 5 at Anthropic's intro price (2/10), not the 3/15 sticker", async () => {
+  // Regression for issue #16: CURATED no longer pins claude-sonnet-5, so this
+  // must resolve via LiteLLM/seed exact match (step 2) at the intro rate.
+  pricing.resetPricingForTests();
+  const cachePath = tmpCachePath();
+  await pricing.ensurePricingLoaded({
+    cachePath,
+    fetchImpl: makeFetchImpl(FIXTURE_LITELLM),
+  });
+  const sonnet = pricing.getModelPricing("claude-sonnet-5");
+  assert.equal(sonnet.input, 2);
+  assert.equal(sonnet.output, 10);
+  assert.equal(sonnet.cache_read, 0.2);
+  assert.equal(sonnet.cache_write, 2.5);
 
   assert.equal(
     pricing.computeRowCost({
@@ -433,7 +456,7 @@ test("index: getModelPricing finds Claude Sonnet pricing from bundled tables", a
       output_tokens: 100_000,
       reasoning_output_tokens: 0,
     }),
-    5.5875,
+    3.725,
   );
 });
 
