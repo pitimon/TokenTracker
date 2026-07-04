@@ -92,3 +92,16 @@ test("edge-patch MODEL_PRICING tables are deep-equal across all five files", () 
     );
   }
 });
+
+test("edge-patch MODEL_PRICING claude-sonnet-5 entries carry Anthropic's intro price (2/10), not the 3/15 sticker", () => {
+  // Regression for issue #16: verifies the actual value, not just that the
+  // five tables agree with each other (they'd agree at 3/15 too).
+  const tables = loadPricingTables();
+  for (const { file, table } of tables) {
+    assert.deepEqual(
+      table["claude-sonnet-5"],
+      { input: 2, output: 10, cache_read: 0.2, cache_write: 2.5 },
+      `${file}: claude-sonnet-5 pricing does not match Anthropic's intro rate`,
+    );
+  }
+});
