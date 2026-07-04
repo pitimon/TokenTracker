@@ -49,6 +49,29 @@ async function listClaudeProjectFiles(projectsDir) {
   return out;
 }
 
+// Fingerprint the first bytes of a file so rotation is detected even when the
+// OS reuses the inode after unlink+recreate (Linux logrotate). Returns "" on
+// any error so callers treat "no fingerprint" as "not changed". Also returns
+// "" when the file is shorter than the fingerprint window: for a sub-256B
+// file that is still being appended to, the window would extend into the
+// not-yet-written append zone, so plain growth (not rotation) would shift
+// the hash and produce a false "rotated" signal.
+function readFileHeadSignature(filePath) {
+  try {
+    const fd = fssync.openSync(filePath, "r");
+    try {
+      const buf = Buffer.alloc(256);
+      const bytes = fssync.readSync(fd, buf, 0, 256, 0);
+      if (bytes < 256) return "";
+      return crypto.createHash("sha1").update(buf.subarray(0, bytes)).digest("hex");
+    } finally {
+      fssync.closeSync(fd);
+    }
+  } catch {
+    return "";
+  }
+}
+
 async function listGeminiSessionFiles(tmpDir) {
   const out = [];
   const roots = await safeReadDir(tmpDir);
@@ -116,9 +139,18 @@ async function parseRolloutIncremental({
     const key = filePath;
     const prev = cursors.files[key] || null;
     const inode = st.ino || 0;
-    const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
-    const lastTotal = prev && prev.inode === inode ? prev.lastTotal || null : null;
-    const lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
+    // Reuse the saved offset only when the inode matches AND the head
+    // fingerprint is unchanged AND the file hasn't shrunk below the saved
+    // offset — any of those signals flipping means the file was rotated
+    // (e.g. Linux logrotate reuses the inode after unlink+recreate).
+    const headSig = readFileHeadSignature(filePath);
+    const headChanged =
+      !!prev && typeof prev.head === "string" && prev.head !== "" && prev.head !== headSig;
+    const shrunk = !!prev && typeof prev.offset === "number" && st.size < prev.offset;
+    const sameFile = !!prev && prev.inode === inode && !headChanged && !shrunk;
+    const startOffset = sameFile ? prev.offset || 0 : 0;
+    const lastTotal = sameFile ? prev.lastTotal || null : null;
+    const lastModel = sameFile ? prev.lastModel || null : null;
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -154,6 +186,7 @@ async function parseRolloutIncremental({
       offset: result.endOffset,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
+      head: headSig,
       updatedAt: new Date().toISOString(),
     };
 
@@ -233,7 +266,16 @@ async function parseClaudeIncremental({
     const key = filePath;
     const prev = cursors.files[key] || null;
     const inode = st.ino || 0;
-    const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
+    // Reuse the saved offset only when the inode matches AND the head
+    // fingerprint is unchanged AND the file hasn't shrunk below the saved
+    // offset — a rotator that reuses the inode (Linux logrotate) would
+    // otherwise leave the old offset stuck and skip the new prefix.
+    const headSig = readFileHeadSignature(filePath);
+    const headChanged =
+      !!prev && typeof prev.head === "string" && prev.head !== "" && prev.head !== headSig;
+    const shrunk = !!prev && typeof prev.offset === "number" && st.size < prev.offset;
+    const sameFile = !!prev && prev.inode === inode && !headChanged && !shrunk;
+    const startOffset = sameFile ? prev.offset || 0 : 0;
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -263,6 +305,7 @@ async function parseClaudeIncremental({
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
+      head: headSig,
       updatedAt: new Date().toISOString(),
     };
 
@@ -342,9 +385,18 @@ async function parseGeminiIncremental({
     const key = filePath;
     const prev = cursors.files[key] || null;
     const inode = st.ino || 0;
-    let startIndex = prev && prev.inode === inode ? Number(prev.lastIndex || -1) : -1;
-    let lastTotals = prev && prev.inode === inode ? prev.lastTotals || null : null;
-    let lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
+    // Reuse the saved message index only when the inode matches AND the head
+    // fingerprint is unchanged AND the file hasn't shrunk below its last
+    // recorded size — a rotator that reuses the inode (Linux logrotate)
+    // would otherwise leave the old index stuck and skip replayed messages.
+    const headSig = readFileHeadSignature(filePath);
+    const headChanged =
+      !!prev && typeof prev.head === "string" && prev.head !== "" && prev.head !== headSig;
+    const shrunk = !!prev && typeof prev.size === "number" && st.size < prev.size;
+    const sameFile = !!prev && prev.inode === inode && !headChanged && !shrunk;
+    let startIndex = sameFile ? Number(prev.lastIndex || -1) : -1;
+    let lastTotals = sameFile ? prev.lastTotals || null : null;
+    let lastModel = sameFile ? prev.lastModel || null : null;
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -374,9 +426,11 @@ async function parseGeminiIncremental({
 
     cursors.files[key] = {
       inode,
+      size: st.size,
       lastIndex: result.lastIndex,
       lastTotals: result.lastTotals,
       lastModel: result.lastModel,
+      head: headSig,
       updatedAt: new Date().toISOString(),
     };
 
@@ -456,8 +510,18 @@ async function parseOpencodeIncremental({
     const inode = st.ino || 0;
     const size = Number.isFinite(st.size) ? st.size : 0;
     const mtimeMs = Number.isFinite(st.mtimeMs) ? st.mtimeMs : 0;
+    // Head fingerprint guards against a rotator that reuses the inode (Linux
+    // logrotate): if the head changed we must never treat the file as
+    // "unchanged", even when inode/size/mtimeMs happen to match.
+    const headSig = readFileHeadSignature(filePath);
+    const headChanged =
+      !!prev && typeof prev.head === "string" && prev.head !== "" && prev.head !== headSig;
     const unchanged =
-      prev && prev.inode === inode && prev.size === size && prev.mtimeMs === mtimeMs;
+      prev &&
+      prev.inode === inode &&
+      prev.size === size &&
+      prev.mtimeMs === mtimeMs &&
+      !headChanged;
     if (unchanged) {
       filesProcessed += 1;
       if (cb) {
@@ -510,6 +574,7 @@ async function parseOpencodeIncremental({
       mtimeMs,
       lastTotals: result.lastTotals,
       messageKey: result.messageKey || null,
+      head: headSig,
       updatedAt: new Date().toISOString(),
     };
 
@@ -591,7 +656,16 @@ async function parseOpenclawIncremental({
     const key = filePath;
     const prev = cursors.files[key] || null;
     const inode = st.ino || 0;
-    const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
+    // Reuse the saved offset only when the inode matches AND the head
+    // fingerprint is unchanged AND the file hasn't shrunk below the saved
+    // offset — a rotator that reuses the inode (Linux logrotate) would
+    // otherwise leave the old offset stuck and skip the new prefix.
+    const headSig = readFileHeadSignature(filePath);
+    const headChanged =
+      !!prev && typeof prev.head === "string" && prev.head !== "" && prev.head !== headSig;
+    const shrunk = !!prev && typeof prev.offset === "number" && st.size < prev.offset;
+    const sameFile = !!prev && prev.inode === inode && !headChanged && !shrunk;
+    const startOffset = sameFile ? prev.offset || 0 : 0;
 
     const result = await parseOpenclawSessionFile({
       filePath,
@@ -606,6 +680,7 @@ async function parseOpenclawIncremental({
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
+      head: headSig,
       updatedAt: new Date().toISOString(),
     };
 
@@ -4205,8 +4280,11 @@ async function parseKimiIncremental({ wireFiles, cursors, queuePath, onProgress,
     const prevEntry = fileOffsets[filePath] || {};
     const prevSize = Number(prevEntry.size) || 0;
     const prevIno = prevEntry.ino;
+    const headSig = readFileHeadSignature(filePath);
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
-    const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
+    const headChanged =
+      typeof prevEntry.head === "string" && prevEntry.head !== "" && prevEntry.head !== headSig;
+    const startOffset = stat.size < prevSize || inodeChanged || headChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
 
     let stream;
@@ -4275,7 +4353,12 @@ async function parseKimiIncremental({ wireFiles, cursors, queuePath, onProgress,
 
     let postStat = stat;
     try { postStat = fssync.statSync(filePath); } catch {}
-    fileOffsets[filePath] = { size: postStat.size, mtimeMs: postStat.mtimeMs, ino: postStat.ino };
+    fileOffsets[filePath] = {
+      size: postStat.size,
+      mtimeMs: postStat.mtimeMs,
+      ino: postStat.ino,
+      head: readFileHeadSignature(filePath),
+    };
   }
 
   // Cap seenIds to last 10k to bound cursor state size
@@ -4384,8 +4467,11 @@ async function parseKimiCodeIncremental({ wireFiles, cursors, queuePath, onProgr
     const prevEntry = fileOffsets[filePath] || {};
     const prevSize = Number(prevEntry.size) || 0;
     const prevIno = prevEntry.ino;
+    const headSig = readFileHeadSignature(filePath);
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
-    const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
+    const headChanged =
+      typeof prevEntry.head === "string" && prevEntry.head !== "" && prevEntry.head !== headSig;
+    const startOffset = stat.size < prevSize || inodeChanged || headChanged ? 0 : prevSize;
     // Model is declared in a `config.update` near the file head; persist it on
     // the cursor so incremental resumes (which start past that line) keep it.
     let fileModel = (typeof prevEntry.model === "string" && prevEntry.model) || fallbackModel;
@@ -4480,7 +4566,13 @@ async function parseKimiCodeIncremental({ wireFiles, cursors, queuePath, onProgr
 
     let postStat = stat;
     try { postStat = fssync.statSync(filePath); } catch {}
-    fileOffsets[filePath] = { size: postStat.size, mtimeMs: postStat.mtimeMs, ino: postStat.ino, model: fileModel };
+    fileOffsets[filePath] = {
+      size: postStat.size,
+      mtimeMs: postStat.mtimeMs,
+      ino: postStat.ino,
+      model: fileModel,
+      head: readFileHeadSignature(filePath),
+    };
   }
 
   const seenArr = Array.from(seenIds);
@@ -4619,10 +4711,14 @@ async function parseCodebuddyIncremental({
     const prevEntry = fileOffsets[filePath] || {};
     const prevSize = Number(prevEntry.size) || 0;
     const prevIno = prevEntry.ino;
-    // Re-read from start if file shrunk (truncate/rewrite) or inode changed
-    // (file deleted + recreated). Otherwise pick up after the last read offset.
+    const headSig = readFileHeadSignature(filePath);
+    // Re-read from start if file shrunk (truncate/rewrite), inode changed
+    // (file deleted + recreated), or the head fingerprint changed (rotator
+    // reused the inode). Otherwise pick up after the last read offset.
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
-    const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
+    const headChanged =
+      typeof prevEntry.head === "string" && prevEntry.head !== "" && prevEntry.head !== headSig;
+    const startOffset = stat.size < prevSize || inodeChanged || headChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
 
     let stream;
@@ -4748,6 +4844,7 @@ async function parseCodebuddyIncremental({
       size: postStat.size,
       mtimeMs: postStat.mtimeMs,
       ino: postStat.ino,
+      head: readFileHeadSignature(filePath),
     };
   }
 
@@ -6508,9 +6605,13 @@ async function parseOmpIncremental({
     const prevEntry = fileOffsets[filePath] || {};
     const prevSize = Number(prevEntry.size) || 0;
     const prevIno = prevEntry.ino;
-    // Re-read from start if file shrunk (truncate/rewrite) or inode changed.
+    const headSig = readFileHeadSignature(filePath);
+    // Re-read from start if file shrunk (truncate/rewrite), inode changed, or
+    // the head fingerprint changed (rotator reused the inode).
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
-    const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
+    const headChanged =
+      typeof prevEntry.head === "string" && prevEntry.head !== "" && prevEntry.head !== headSig;
+    const startOffset = stat.size < prevSize || inodeChanged || headChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
 
     let stream;
@@ -6616,6 +6717,7 @@ async function parseOmpIncremental({
       size: postStat.size,
       mtimeMs: postStat.mtimeMs,
       ino: postStat.ino,
+      head: readFileHeadSignature(filePath),
     };
   }
 
@@ -6756,8 +6858,11 @@ async function parsePiIncremental({
     const prevEntry = fileOffsets[filePath] || {};
     const prevSize = Number(prevEntry.size) || 0;
     const prevIno = prevEntry.ino;
+    const headSig = readFileHeadSignature(filePath);
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
-    const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
+    const headChanged =
+      typeof prevEntry.head === "string" && prevEntry.head !== "" && prevEntry.head !== headSig;
+    const startOffset = stat.size < prevSize || inodeChanged || headChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
 
     let stream;
@@ -6855,6 +6960,7 @@ async function parsePiIncremental({
       size: postStat.size,
       mtimeMs: postStat.mtimeMs,
       ino: postStat.ino,
+      head: readFileHeadSignature(filePath),
     };
   }
 
@@ -7400,12 +7506,15 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
     const prevEntry = fileOffsets[filePath] || {};
     const prevSize = Number(prevEntry.size) || 0;
     const prevIno = prevEntry.ino;
-    // Re-read from start if (a) file shrunk (truncate/rewrite in place) or
-    // (b) inode changed (rotator deleted + recreated at same path). Without
-    // the inode check, a rotator producing a same-or-larger file would leave
-    // the old offset stuck and skip the new file's prefix forever.
+    const headSig = readFileHeadSignature(filePath);
+    // Re-read from start if (a) file shrunk (truncate/rewrite in place),
+    // (b) inode changed (rotator deleted + recreated at same path), or
+    // (c) the head fingerprint changed (rotator reused the inode — Linux
+    // logrotate — and produced a same-or-larger file, so (a)/(b) miss it).
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
-    const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
+    const headChanged =
+      typeof prevEntry.head === "string" && prevEntry.head !== "" && prevEntry.head !== headSig;
+    const startOffset = stat.size < prevSize || inodeChanged || headChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
 
     let stream;
@@ -7510,7 +7619,12 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
     try {
       postStat = fssync.statSync(filePath);
     } catch (_e) {}
-    fileOffsets[filePath] = { size: postStat.size, mtimeMs: postStat.mtimeMs, ino: postStat.ino };
+    fileOffsets[filePath] = {
+      size: postStat.size,
+      mtimeMs: postStat.mtimeMs,
+      ino: postStat.ino,
+      head: readFileHeadSignature(filePath),
+    };
   }
 
   // Cap dedup set to last 10k IDs to bound state size
@@ -8016,9 +8130,20 @@ async function parseAntigravityIncremental({
     const inode = st.ino || 0;
     const size = Number.isFinite(st.size) ? st.size : 0;
     const mtimeMs = Number.isFinite(st.mtimeMs) ? st.mtimeMs : 0;
+    // Head fingerprint + shrink guard against a rotator that reuses the
+    // inode (Linux logrotate): either signal flipping means the cached
+    // progress (unchanged skip, or lastLine/context resume) must not be reused.
+    const headSig = readFileHeadSignature(filePath);
+    const headChanged =
+      !!prev && typeof prev.head === "string" && prev.head !== "" && prev.head !== headSig;
+    const shrunk = !!prev && typeof prev.size === "number" && size < prev.size;
 
     const unchanged =
-      prev && prev.inode === inode && prev.size === size && prev.mtimeMs === mtimeMs;
+      prev &&
+      prev.inode === inode &&
+      prev.size === size &&
+      prev.mtimeMs === mtimeMs &&
+      !headChanged;
     if (unchanged) {
       filesProcessed += 1;
       if (cb) {
@@ -8034,7 +8159,7 @@ async function parseAntigravityIncremental({
       continue;
     }
 
-    const sameFile = prev && prev.inode === inode;
+    const sameFile = !!prev && prev.inode === inode && !headChanged && !shrunk;
     const lastLine = sameFile ? Number(prev.lastLine || 0) : 0;
     const initialContextTokens = sameFile ? Number(prev.contextTokens || 0) : 0;
     const initialPrevContext = sameFile ? Number(prev.previousContextTokens || 0) : 0;
@@ -8075,6 +8200,7 @@ async function parseAntigravityIncremental({
       contextTokens: result.contextTokens,
       previousContextTokens: result.previousContextTokens,
       currentModel: result.currentModel,
+      head: headSig,
       updatedAt: new Date().toISOString(),
     };
 
