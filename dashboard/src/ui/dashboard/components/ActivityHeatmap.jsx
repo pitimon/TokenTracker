@@ -14,18 +14,18 @@ const LABEL_WIDTH = 26;
 
 const HEATMAP_COLORS_LIGHT = [
   "#ebedf0", // level 0 - inactive, GitHub-style neutral
-  "#a7f3d0", // level 1
-  "#6ee7b7", // level 2
-  "#34d399", // level 3
-  "#10b981", // level 4
+  "#f7d08a", // level 1
+  "#f2b757", // level 2
+  "#eca02f", // level 3
+  "#d9861a", // level 4
 ];
 
 const HEATMAP_COLORS_DARK = [
   "#30363d", // level 0 - inactive, GitHub-style neutral
-  "#065f46", // level 1
-  "#059669", // level 2
-  "#10b981", // level 3
-  "#34d399", // level 4 - brightest
+  "#7a4711", // level 1
+  "#bf7015", // level 2
+  "#eca02f", // level 3
+  "#f7c877", // level 4 - brightest
 ];
 
 function formatTokenValue(value) {
@@ -135,7 +135,7 @@ export function ActivityHeatmap({
   const [isClosing, setIsClosing] = useState(false);
   const [modalAutoRotate, setModalAutoRotate] = useState(false);
   const resetViewRef = useRef(null);
-  const [activePalette, setActivePalette] = useState("emerald");
+  const [activePalette, setActivePalette] = useState("amber");
 
   // 动态感知多语言月份 labels
   const monthLabels = [

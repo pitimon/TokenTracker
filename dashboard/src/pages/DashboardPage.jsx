@@ -969,7 +969,9 @@ export function DashboardPage({
   const billionSuffix = copy("shared.unit.billion_abbrev");
   const summaryNumber = toFiniteNumber(summaryTotalTokens);
   const useCompactSummary =
-    compactSummary && summaryNumber != null && Math.abs(summaryNumber) >= 1000000000;
+    summaryNumber != null &&
+    ((compactSummary && Math.abs(summaryNumber) >= 1000000000) ||
+      Math.abs(summaryNumber) >= 1000000000000);
   const summaryValue = useMemo(() => {
     if (!useCompactSummary) return toDisplayNumber(summaryTotalTokens);
     return formatCompactNumber(summaryNumber, {
