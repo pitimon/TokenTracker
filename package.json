@@ -23,7 +23,7 @@
     "access": "public"
   },
   "scripts": {
-    "ci:local": "npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && node --test test/architecture-guardrails.test.js && npm --prefix dashboard run build",
+    "ci:local": "npm run dashboard:build && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && node --test test/architecture-guardrails.test.js",
     "copy:pull": "node scripts/copy-sync.cjs pull",
     "copy:push": "node scripts/copy-sync.cjs push",
     "dashboard:build": "npm --prefix dashboard run build",
