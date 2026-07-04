@@ -65,9 +65,12 @@ export function ProviderBreakdownCard({ fleetData = [], from, to }) {
               })}
             </div>
 
-            {/* Provider Cards — responsive grid keeps cells equal-width so the
-                last row never stretches when the count doesn't divide evenly. */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+            {/* Provider Cards — auto-fit so the cards always fill the row width
+                regardless of how many providers are in use (a fixed 5-col grid
+                left ~60% of the row empty when only 1-2 providers were active).
+                minmax keeps each card readable; equal 1fr tracks avoid a
+                stretched final row. */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
               {providers.map((provider, idx) => {
                 const color = getProviderColor(provider.label, idx);
                 const isExpanded = expandedProvider === provider.label;

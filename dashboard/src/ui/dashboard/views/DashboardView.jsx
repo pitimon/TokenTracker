@@ -253,7 +253,11 @@ export function DashboardView(props) {
                 </div>
               ) : null}
 
-              <div className="lg:col-span-6 min-w-0">
+              {/* Provider + Context share one row so a small provider set no
+                  longer claims a sparse full-width band; TrendMonitor takes the
+                  full width below, where a time series reads best. When there is
+                  no context source, Provider falls back to full width. */}
+              <div className={hasContextSource ? "lg:col-span-4 min-w-0" : "lg:col-span-6 min-w-0"}>
                 <FadeIn delay={0.23}>
                   <ProviderBreakdownCard
                     fleetData={fleetData}
@@ -263,8 +267,16 @@ export function DashboardView(props) {
                 </FadeIn>
               </div>
 
-              <div className={hasContextSource ? "lg:col-span-4 min-w-0" : "lg:col-span-6 min-w-0"}>
-                <FadeIn delay={0.29}>
+              {hasContextSource ? (
+                <div className="lg:col-span-2 min-w-0">
+                  <FadeIn delay={0.29}>
+                    <ContextCard fleetData={fleetData} from={usageFrom} to={usageTo} />
+                  </FadeIn>
+                </div>
+              ) : null}
+
+              <div className="lg:col-span-6 min-w-0">
+                <FadeIn delay={0.35}>
                   <TrendMonitor
                     rows={trendRowsForDisplay}
                     from={trendFromForDisplay}
@@ -276,14 +288,6 @@ export function DashboardView(props) {
                   />
                 </FadeIn>
               </div>
-
-              {hasContextSource ? (
-                <div className="lg:col-span-2 min-w-0">
-                  <FadeIn delay={0.35}>
-                    <ContextCard fleetData={fleetData} from={usageFrom} to={usageTo} />
-                  </FadeIn>
-                </div>
-              ) : null}
 
               {isLocalMode ? (
                 <div className="lg:col-span-6">
