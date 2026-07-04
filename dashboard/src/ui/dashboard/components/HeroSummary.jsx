@@ -222,74 +222,82 @@ export function HeroSummary({
           </div>
         </div>
 
-        {/* Main Stats */}
-        <div className="text-center mb-8">
-          <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wider mb-3">{summaryLabel}</div>
-          <div className="text-5xl sm:text-6xl md:text-7xl font-bold text-oai-black dark:text-oai-white tracking-tight tabular-nums">
-            {showAnimatedSummary ? (
-              <Counter
-                value={summaryCounterValue}
-                displayValue={summaryValue}
-                fontSize={72}
-                padding={6}
-                gap={1}
-                textColor="var(--oai-black, #111827)"
-                fontWeight={700}
-                variant="led"
-                gradientHeight={8}
-                gradientFrom="rgba(8,11,17,0.98)"
-                gradientTo="rgba(8,11,17,0)"
-                counterStyle={{ paddingLeft: 0, paddingRight: 0, gap: 0 }}
-                digitStyle={{ width: "0.88ch" }}
-              />
-            ) : (
-              summaryValue
-            )}
-          </div>
-          {summaryUpdatedAtLabel ? (
-            <div className="mt-3 text-[11px] font-medium text-oai-gray-400 dark:text-oai-gray-500 tabular-nums">
-              {summaryUpdatedAtLabel}
-            </div>
-          ) : null}
-          {summaryCostValue && (
-            <div className="flex items-center justify-center gap-2 mt-3">
-              {onCostInfo ? (
-                <button
-                  type="button"
-                  onClick={onCostInfo}
-                  className="inline-flex items-center gap-1.5 text-xl font-bold text-oai-brand hover:text-oai-brand-dark dark:hover:text-oai-brand-light transition-colors cursor-pointer"
-                  aria-label={copy("usage.overview.cost_breakdown_aria")}
-                >
-                  {summaryCostValue}
-                  <Info size={16} strokeWidth={2} className="opacity-80" />
-                </button>
+        {/* Main Stats — horizontal band: the big LED total sits on the left,
+            cost + insight chips align to the right. Reclaims vertical space
+            versus the old centered stack; collapses to a column below sm. */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wider mb-2">{summaryLabel}</div>
+            <div className="text-5xl sm:text-6xl md:text-7xl font-bold text-oai-black dark:text-oai-white tracking-tight tabular-nums leading-none">
+              {showAnimatedSummary ? (
+                <Counter
+                  value={summaryCounterValue}
+                  displayValue={summaryValue}
+                  fontSize={72}
+                  padding={6}
+                  gap={1}
+                  textColor="var(--oai-black, #111827)"
+                  fontWeight={700}
+                  variant="led"
+                  gradientHeight={8}
+                  gradientFrom="rgba(8,11,17,0.98)"
+                  gradientTo="rgba(8,11,17,0)"
+                  counterStyle={{ paddingLeft: 0, paddingRight: 0, gap: 0 }}
+                  digitStyle={{ width: "0.88ch" }}
+                />
               ) : (
-                <span className="text-xl font-bold text-oai-brand">{summaryCostValue}</span>
+                summaryValue
               )}
             </div>
-          )}
-          {hasInsightChips && (
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 text-[11px] font-medium">
-              {costPerMillionLabel ? (
-                <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
-                  {copy("usage.overview.cost_per_mtok", { value: costPerMillionLabel })}
-                </span>
-              ) : null}
-              {topCostModelName ? (
-                <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300">
-                  {copy("usage.overview.top_cost_model", { model: topCostModelName })}
-                </span>
-              ) : null}
-              {topUsageModelName && topUsageModelName !== topCostModelName ? (
-                <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300">
-                  {copy("usage.overview.top_usage_model", { model: topUsageModelName })}
-                </span>
-              ) : null}
-              {hasMissingPricing ? (
-                <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                  {copy("usage.overview.missing_pricing_count", { count: missingPricingCount })}
-                </span>
-              ) : null}
+            {summaryUpdatedAtLabel ? (
+              <div className="mt-2 text-[11px] font-medium text-oai-gray-400 dark:text-oai-gray-500 tabular-nums">
+                {summaryUpdatedAtLabel}
+              </div>
+            ) : null}
+          </div>
+          {(summaryCostValue || hasInsightChips) && (
+            <div className="flex flex-col gap-2 sm:items-end">
+              {summaryCostValue && (
+                <div className="flex items-center gap-2">
+                  {onCostInfo ? (
+                    <button
+                      type="button"
+                      onClick={onCostInfo}
+                      className="inline-flex items-center gap-1.5 text-xl font-bold text-oai-brand hover:text-oai-brand-dark dark:hover:text-oai-brand-light transition-colors cursor-pointer"
+                      aria-label={copy("usage.overview.cost_breakdown_aria")}
+                    >
+                      {summaryCostValue}
+                      <Info size={16} strokeWidth={2} className="opacity-80" />
+                    </button>
+                  ) : (
+                    <span className="text-xl font-bold text-oai-brand">{summaryCostValue}</span>
+                  )}
+                </div>
+              )}
+              {hasInsightChips && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium sm:justify-end">
+                  {costPerMillionLabel ? (
+                    <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
+                      {copy("usage.overview.cost_per_mtok", { value: costPerMillionLabel })}
+                    </span>
+                  ) : null}
+                  {topCostModelName ? (
+                    <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300">
+                      {copy("usage.overview.top_cost_model", { model: topCostModelName })}
+                    </span>
+                  ) : null}
+                  {topUsageModelName && topUsageModelName !== topCostModelName ? (
+                    <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300">
+                      {copy("usage.overview.top_usage_model", { model: topUsageModelName })}
+                    </span>
+                  ) : null}
+                  {hasMissingPricing ? (
+                    <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                      {copy("usage.overview.missing_pricing_count", { count: missingPricingCount })}
+                    </span>
+                  ) : null}
+                </div>
+              )}
             </div>
           )}
         </div>
