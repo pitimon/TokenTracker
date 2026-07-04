@@ -1,0 +1,58 @@
+name: CI
+
+# Run the repo's local quality gate (`npm run ci:local`) on every PR into main
+# so failing tests or validator regressions block the merge button.
+#
+# Why this exists: the same gate previously ran ONLY post-merge, as the `test`
+# job of npm-publish.yml (`on: push: branches: [main]`). That let the #18
+# dashboard redesign merge with two failing layout tests plus a ui-hardcode
+# ratchet failure — nothing ran the gate in front of the PR. This workflow
+# moves the gate before the merge. (Post-merge coverage on main stays in
+# npm-publish.yml, so this triggers on pull_request only to avoid duplicate
+# runs.)
+#
+# To make this actually BLOCK a merge, add "CI / ci:local" as a required
+# status check in the repo's branch-protection rules for main.
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-local:
+    name: ci:local
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          # Node 24: dashboard tests import TS directly and some dependencies
+          # need newer Web APIs than Node 20 exposes (see npm-publish.yml).
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            dashboard/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install dashboard dependencies
+        run: npm ci --prefix dashboard
+
+      - name: Run local CI gate
+        env:
+          # Public client-side values inlined into the dashboard bundle at
+          # build time. Not secrets — they ship in every published bundle and
+          # must be present or Vite inlines empty strings and the build fails.
+          # Kept in sync with npm-publish.yml.
+          VITE_INSFORGE_BASE_URL: https://srctyff5.us-east.insforge.app
+          VITE_INSFORGE_ANON_KEY: ik_9f35735991b684f7cf57fa00bb4d0487
+        run: npm run ci:local
