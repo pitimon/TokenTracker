@@ -156,6 +156,13 @@ export function DashboardView(props) {
               {activityHeatmapBlock ? (
                 <div className="lg:col-span-4 min-w-0">{activityHeatmapBlock}</div>
               ) : null}
+              <div className="lg:col-span-6 min-w-0">
+                <ProviderBreakdownCard
+                  fleetData={fleetData}
+                  from={usageFrom}
+                  to={usageTo}
+                />
+              </div>
             </div>
 
             <div
