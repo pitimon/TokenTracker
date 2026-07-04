@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { Info, SquareArrowOutUpRight } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 import { Card, Button, Counter } from "../../components";
+import { useTheme } from "../../../hooks/useTheme.js";
 import { useCurrency } from "../../../hooks/useCurrency.js";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { DateRangePopover, formatDateShort, getDateFnsLocale } from "./DateRangePopover.jsx";
@@ -99,7 +100,13 @@ export function HeroSummary({
       el.scrollIntoView({ block: "nearest", inline: "center" });
     }
   }, [period]);
+  const { resolvedTheme } = useTheme();
   const { currency, rate } = useCurrency();
+  // Plain hero readout: fade the rolling-digit clip edges into the card
+  // background so the number reads normally (no LED panel highlight).
+  const isDark = resolvedTheme === "dark";
+  const summaryGradientFrom = isDark ? "rgba(10,10,10,0.98)" : "rgba(255,255,255,0.96)";
+  const summaryGradientTo = isDark ? "rgba(10,10,10,0)" : "rgba(255,255,255,0)";
 
   const costPerMillionLabel = formatCostPerMillion(
     usageInsights?.costPerMillionTokens,
@@ -238,10 +245,9 @@ export function HeroSummary({
                   gap={1}
                   textColor="var(--oai-black, #111827)"
                   fontWeight={700}
-                  variant="led"
-                  gradientHeight={8}
-                  gradientFrom="rgba(8,11,17,0.98)"
-                  gradientTo="rgba(8,11,17,0)"
+                  gradientHeight={isDark ? 0 : 8}
+                  gradientFrom={summaryGradientFrom}
+                  gradientTo={summaryGradientTo}
                   counterStyle={{ paddingLeft: 0, paddingRight: 0, gap: 0 }}
                   digitStyle={{ width: "0.88ch" }}
                 />
