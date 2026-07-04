@@ -1,23 +1,15 @@
 {
-  "generatedAt": "2026-06-01T05:54:25.303Z",
+  "generatedAt": "2026-07-04T13:04:25.467Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 265,
-    "rawText": 172
+    "colors": 262,
+    "rawText": 168
   },
   "files": {
-    "dashboard/src/pet.jsx": {
-      "colors": 3,
-      "rawText": 2,
-      "rawTextTokens": [
-        "/@keyframes // so the animations still run. const result = raw.replace(/",
-        "whose class/id contains \"eye\" (e.g. eyes-look, * eyes-focus, eyes-read). Those groups already run their own blink/track transform * animations, which would override any transform we set directly — so after a pose * loads we wrap each (non-shut) eye group in our own"
-      ]
-    },
     "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
       "colors": 0,
       "rawText": 3,
@@ -79,12 +71,11 @@
     },
     "dashboard/src/pages/DevicePage.jsx": {
       "colors": 0,
-      "rawText": 4,
+      "rawText": 3,
       "rawTextTokens": [
         "Approve your CLI",
         "CLI code",
-        "Sign in first, then return to this page.",
-        "Type the code your CLI showed you. We'll link it to your account so token usage from that machine flows into your leaderboard profile."
+        "Sign in first, then return to this page."
       ]
     },
     "dashboard/src/pages/IpCheckPage.jsx": {
@@ -175,6 +166,14 @@
         "tracker wrapped --json"
       ]
     },
+    "dashboard/src/pet.jsx": {
+      "colors": 3,
+      "rawText": 2,
+      "rawTextTokens": [
+        "/@keyframes // so the animations still run. const result = raw.replace(/",
+        "whose class/id contains \"eye\" (e.g. eyes-look, * eyes-focus, eyes-read). Those groups already run their own blink/track transform * animations, which would override any transform we set directly — so after a pose * loads we wrap each (non-shut) eye group in our own"
+      ]
+    },
     "dashboard/src/ui/components/ConfirmModal.jsx": {
       "colors": 2,
       "rawText": 0,
@@ -203,9 +202,8 @@
     },
     "dashboard/src/ui/components/Sidebar.jsx": {
       "colors": 0,
-      "rawText": 3,
+      "rawText": 2,
       "rawTextTokens": [
-        "Star",
         "Token Tracker",
         "getNavGroups(), [resolvedLocale]); return ("
       ]
@@ -244,6 +242,13 @@
         "isExecToolName(t.name)); const catOpen = Boolean(openCats[cat.name]); return ("
       ]
     },
+    "dashboard/src/ui/dashboard/components/ContextCard.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "(Number(best.usage) || 0) ? provider : best ); const contextSource = resolveContextBreakdownSource(primaryProvider); return ("
+      ]
+    },
     "dashboard/src/ui/dashboard/components/CostAnalysisModal.jsx": {
       "colors": 2,
       "rawText": 3,
@@ -260,13 +265,10 @@
         "1 ? ("
       ]
     },
-    "dashboard/src/ui/dashboard/components/DateRangePopover.jsx": {
-      "colors": 0,
-      "rawText": 2,
-      "rawTextTokens": [
-        "Apply",
-        "Cancel"
-      ]
+    "dashboard/src/ui/dashboard/components/HeroSummary.jsx": {
+      "colors": 2,
+      "rawText": 0,
+      "rawTextTokens": []
     },
     "dashboard/src/ui/dashboard/components/LikeButton.jsx": {
       "colors": 6,
@@ -282,12 +284,11 @@
     },
     "dashboard/src/ui/dashboard/components/StatsPanel.jsx": {
       "colors": 0,
-      "rawText": 5,
+      "rawText": 4,
       "rawTextTokens": [
         "0 && (",
         "30d",
-        "7d",
-        "avg"
+        "7d"
       ]
     },
     "dashboard/src/ui/dashboard/components/TrendMonitor.jsx": {
@@ -334,14 +335,6 @@
         ", ); expect(screen.getByText(\"Cursor\")).toBeInTheDocument(); rerender("
       ]
     },
-    "dashboard/src/ui/dashboard/components/UsageOverview.jsx": {
-      "colors": 11,
-      "rawText": 2,
-      "rawTextTokens": [
-        "0 && (",
-        "0); return ("
-      ]
-    },
     "dashboard/src/ui/dashboard/components/__tests__/ActivityHeatmap3D.test.jsx": {
       "colors": 0,
       "rawText": 3,
@@ -359,11 +352,16 @@
         "); expect(without.queryByRole(\"button\")).toBeNull(); const withCfg = render("
       ]
     },
+    "dashboard/src/ui/dashboard/components/usageFormat.js": {
+      "colors": 8,
+      "rawText": 0,
+      "rawTextTokens": []
+    },
     "dashboard/src/ui/dashboard/views/DashboardView.jsx": {
-      "colors": 2,
+      "colors": 0,
       "rawText": 1,
       "rawTextTokens": [
-        "D_LEFT_BASE + STEP * leftIdx++; const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; // 留给右列底部 return ("
+        "hasProviderModels(p) && resolveContextBreakdownSource(p) !== null ); return ("
       ]
     },
     "dashboard/src/ui/foundation/__tests__/LocaleProvider.test.jsx": {

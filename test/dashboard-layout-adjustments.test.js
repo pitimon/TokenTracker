@@ -29,29 +29,22 @@ function readFile(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-test("DashboardPage places TrendMonitor and heatmap in left column", () => {
+test("DashboardView renders heatmap and TrendMonitor inside the bento grid", () => {
+  // Redesign (#18) replaced the two-column col-span-4/8 split with a 6-col bento grid.
   const src = readFile(viewPath);
-  const leftStart = src.indexOf("lg:col-span-4");
-  const rightStart = src.indexOf("lg:col-span-8", leftStart + 1);
-  assert.ok(leftStart !== -1, "expected left column markup");
-  assert.ok(rightStart !== -1, "expected right column markup");
-
-  const leftColumn = src.slice(leftStart, rightStart);
-  const trendIndex = leftColumn.indexOf("<TrendMonitor");
-  const heatmapIndex = leftColumn.indexOf("{activityHeatmapBlock}");
-  assert.ok(trendIndex !== -1, "expected TrendMonitor in left column");
-  assert.ok(heatmapIndex !== -1, "expected heatmap block in left column");
+  assert.ok(src.includes("lg:grid-cols-6"), "expected 6-column bento grid");
+  assert.ok(!src.includes("lg:col-span-8"), "expected legacy two-column (col-span-8) layout removed");
+  assert.ok(src.includes("{activityHeatmapBlock}"), "expected heatmap block rendered in bento grid");
+  assert.ok(src.includes("<TrendMonitor"), "expected TrendMonitor rendered in bento grid");
 });
 
-test("DashboardPage right column contains UsageOverview", () => {
+test("DashboardView splits UsageOverview into HeroSummary and ProviderBreakdownCard", () => {
+  // Redesign (#18) split the monolithic UsageOverview into a HeroSummary readout
+  // plus a standalone ProviderBreakdownCard bento card.
   const src = readFile(viewPath);
-  const leftStart = src.indexOf("lg:col-span-4");
-  const rightStart = src.indexOf("lg:col-span-8", leftStart + 1);
-  assert.ok(leftStart !== -1, "expected left column markup");
-  assert.ok(rightStart !== -1, "expected right column markup");
-
-  const rightColumn = src.slice(rightStart);
-  assert.ok(rightColumn.includes("<UsageOverview"), "expected UsageOverview in right column");
+  assert.ok(!src.includes("<UsageOverview"), "expected monolithic UsageOverview removed");
+  assert.ok(src.includes("<HeroSummary"), "expected HeroSummary hero readout");
+  assert.ok(src.includes("<ProviderBreakdownCard"), "expected ProviderBreakdownCard bento card");
 });
 
 test("ProjectUsagePanel lays out cards in responsive grid", () => {
