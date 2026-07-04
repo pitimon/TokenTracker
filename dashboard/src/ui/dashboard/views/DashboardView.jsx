@@ -5,6 +5,7 @@ import { DataDetails } from "../components/DataDetails.jsx";
 import { StatsPanel } from "../components/StatsPanel.jsx";
 import { HeroSummary } from "../components/HeroSummary.jsx";
 import { ProviderBreakdownCard } from "../components/ProviderBreakdownCard.jsx";
+import { ContextCard } from "../components/ContextCard.jsx";
 import { TrendMonitor } from "../components/TrendMonitor.jsx";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { WidgetOnboardingCard } from "../components/WidgetOnboardingCard.jsx";
@@ -252,7 +253,7 @@ export function DashboardView(props) {
                 </FadeIn>
               </div>
 
-              <div className="lg:col-span-6 min-w-0">
+              <div className="lg:col-span-4 min-w-0">
                 <FadeIn delay={0.29}>
                   <TrendMonitor
                     rows={trendRowsForDisplay}
@@ -266,14 +267,20 @@ export function DashboardView(props) {
                 </FadeIn>
               </div>
 
+              <div className="lg:col-span-2 min-w-0">
+                <FadeIn delay={0.35}>
+                  <ContextCard fleetData={fleetData} from={usageFrom} to={usageTo} />
+                </FadeIn>
+              </div>
+
               {isLocalMode ? (
                 <div className="lg:col-span-6">
-                  <WidgetOnboardingCard enterDelay={0.35} />
+                  <WidgetOnboardingCard enterDelay={0.41} />
                 </div>
               ) : null}
             </div>
 
-            <FadeIn delay={0.41}>
+            <FadeIn delay={0.47}>
               <DataDetails
                 projectEntries={projectUsageEntries}
                 projectLimit={projectUsageLimit}
