@@ -5,6 +5,8 @@ import { DataDetails } from "../components/DataDetails.jsx";
 import { StatsPanel } from "../components/StatsPanel.jsx";
 import { HeroSummary } from "../components/HeroSummary.jsx";
 import { ProviderBreakdownCard } from "../components/ProviderBreakdownCard.jsx";
+import { ContextCard } from "../components/ContextCard.jsx";
+import { hasProviderModels, resolveContextBreakdownSource } from "../components/usageFormat.js";
 import { TrendMonitor } from "../components/TrendMonitor.jsx";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { WidgetOnboardingCard } from "../components/WidgetOnboardingCard.jsx";
@@ -93,6 +95,15 @@ export function DashboardView(props) {
   // Header 和 Footer 已简化
   const header = null;
   const footer = null;
+
+  // Only reserve a bento cell for the Context card when a provider actually
+  // qualifies (claude/codex) — otherwise let TrendMonitor take the full row
+  // instead of leaving an empty column beside it.
+  const hasContextSource =
+    Array.isArray(fleetData) &&
+    fleetData.some(
+      (p) => hasProviderModels(p) && resolveContextBreakdownSource(p) !== null
+    );
 
   return (
     <>
@@ -252,7 +263,7 @@ export function DashboardView(props) {
                 </FadeIn>
               </div>
 
-              <div className="lg:col-span-6 min-w-0">
+              <div className={hasContextSource ? "lg:col-span-4 min-w-0" : "lg:col-span-6 min-w-0"}>
                 <FadeIn delay={0.29}>
                   <TrendMonitor
                     rows={trendRowsForDisplay}
@@ -266,14 +277,22 @@ export function DashboardView(props) {
                 </FadeIn>
               </div>
 
+              {hasContextSource ? (
+                <div className="lg:col-span-2 min-w-0">
+                  <FadeIn delay={0.35}>
+                    <ContextCard fleetData={fleetData} from={usageFrom} to={usageTo} />
+                  </FadeIn>
+                </div>
+              ) : null}
+
               {isLocalMode ? (
                 <div className="lg:col-span-6">
-                  <WidgetOnboardingCard enterDelay={0.35} />
+                  <WidgetOnboardingCard enterDelay={0.41} />
                 </div>
               ) : null}
             </div>
 
-            <FadeIn delay={0.41}>
+            <FadeIn delay={0.47}>
               <DataDetails
                 projectEntries={projectUsageEntries}
                 projectLimit={projectUsageLimit}
