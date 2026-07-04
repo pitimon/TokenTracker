@@ -89,13 +89,13 @@ export function getCounterPlaces(displayValue) {
   });
 }
 
-function Digit({ place, value, height, digitStyle, shouldReduceMotion }) {
+function Digit({ place, value, height, digitStyle, shouldReduceMotion, isLed }) {
   if (typeof place !== "number") {
     const staticTokenStyle = getStaticTokenStyle(place, height);
     return (
       <span
         data-counter-token="static"
-        className="relative inline-flex items-center justify-center"
+        className={`relative inline-flex items-center justify-center${isLed ? " tt-lcd-sep" : ""}`}
         style={{ height, ...staticTokenStyle, ...digitStyle }}
       >
         {place}
@@ -119,7 +119,7 @@ function Digit({ place, value, height, digitStyle, shouldReduceMotion }) {
     return (
       <span
         data-counter-token="digit"
-        className="relative inline-flex items-center justify-center overflow-hidden"
+        className={`relative inline-flex items-center justify-center overflow-hidden${isLed ? " tt-lcd-cell" : ""}`}
         style={{
           height,
           position: "relative",
@@ -136,7 +136,7 @@ function Digit({ place, value, height, digitStyle, shouldReduceMotion }) {
   return (
     <span
       data-counter-token="digit"
-      className="relative inline-flex overflow-hidden"
+      className={`relative inline-flex overflow-hidden${isLed ? " tt-lcd-cell" : ""}`}
       style={{
         height,
         position: "relative",
@@ -171,7 +171,9 @@ export default function Counter({
   gradientTo = "rgba(255,255,255,0)",
   topGradientStyle,
   bottomGradientStyle,
+  variant = "default",
 }) {
+  const isLed = variant === "led";
   const resolvedDisplayValue = String(displayValue ?? value ?? "");
   const resolvedPlaces = useMemo(
     () => (Array.isArray(places) && places.length ? places : getCounterPlaces(resolvedDisplayValue)),
@@ -189,6 +191,7 @@ export default function Counter({
     return (
       <span
         data-counter-root="true"
+        className={isLed ? "tt-lcd" : undefined}
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -200,7 +203,11 @@ export default function Counter({
           ...counterStyle,
         }}
       >
-        {resolvedDisplayValue}
+        {isLed ? (
+          <span className="tt-lcd-cell tt-lcd-cell--static">{resolvedDisplayValue}</span>
+        ) : (
+          resolvedDisplayValue
+        )}
       </span>
     );
   }
@@ -215,16 +222,21 @@ export default function Counter({
       }}
     >
       <span
+        className={isLed ? "tt-lcd" : undefined}
         style={{
           fontSize,
-          display: "flex",
-          gap,
+          ...(isLed
+            ? null
+            : {
+                display: "flex",
+                gap,
+                borderRadius,
+                paddingLeft: horizontalPadding,
+                paddingRight: horizontalPadding,
+                color: textColor,
+              }),
           overflow: "hidden",
-          borderRadius,
-          paddingLeft: horizontalPadding,
-          paddingRight: horizontalPadding,
           lineHeight: 1,
-          color: textColor,
           fontWeight,
           ...counterStyle,
         }}
@@ -237,6 +249,7 @@ export default function Counter({
             height={height}
             digitStyle={digitStyle}
             shouldReduceMotion={shouldReduceMotion}
+            isLed={isLed}
           />
         ))}
       </span>

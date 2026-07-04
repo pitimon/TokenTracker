@@ -3,7 +3,6 @@ import { motion, useReducedMotion } from "motion/react";
 import { Info, Loader2, SquareArrowOutUpRight } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 import { Card, Button, Counter } from "../../components";
-import { useTheme } from "../../../hooks/useTheme.js";
 import { useCurrency } from "../../../hooks/useCurrency.js";
 import { copy, getCopyLocale } from "../../../lib/copy";
 import { CURRENCY_USD, getCurrencySymbol } from "../../../lib/currency";
@@ -212,11 +211,7 @@ export function UsageOverview({
     }
   }, [period]);
   const [expandedProvider, setExpandedProvider] = useState(null);
-  const { resolvedTheme } = useTheme();
   const { currency, rate } = useCurrency();
-  const isDark = resolvedTheme === "dark";
-  const gradientFrom = isDark ? "rgba(10,10,10,0.98)" : "rgba(255,255,255,0.96)";
-  const gradientTo = isDark ? "rgba(10,10,10,0)" : "rgba(255,255,255,0)";
 
   // FleetData is already grouped by provider
   const providers = fleetData.filter(hasProviderModels);
@@ -354,9 +349,10 @@ export function UsageOverview({
                 gap={1}
                 textColor="var(--oai-black, #111827)"
                 fontWeight={700}
-                gradientHeight={isDark ? 0 : 8}
-                gradientFrom={gradientFrom}
-                gradientTo={gradientTo}
+                variant="led"
+                gradientHeight={8}
+                gradientFrom="rgba(8,11,17,0.98)"
+                gradientTo="rgba(8,11,17,0)"
                 counterStyle={{ paddingLeft: 0, paddingRight: 0, gap: 0 }}
                 digitStyle={{ width: "0.88ch" }}
               />
