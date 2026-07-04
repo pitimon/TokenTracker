@@ -3,7 +3,8 @@ import { Shell, Button } from "../../components";
 import { CostAnalysisModal } from "../components/CostAnalysisModal.jsx";
 import { DataDetails } from "../components/DataDetails.jsx";
 import { StatsPanel } from "../components/StatsPanel.jsx";
-import { UsageOverview } from "../components/UsageOverview.jsx";
+import { HeroSummary } from "../components/HeroSummary.jsx";
+import { ProviderBreakdownCard } from "../components/ProviderBreakdownCard.jsx";
 import { TrendMonitor } from "../components/TrendMonitor.jsx";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { WidgetOnboardingCard } from "../components/WidgetOnboardingCard.jsx";
@@ -184,7 +185,7 @@ export function DashboardView(props) {
 
               <div className="lg:col-span-8 flex flex-col gap-4 min-w-0 order-1 lg:order-2">
                 <FadeIn delay={D_USAGE_OVERVIEW}>
-                  <UsageOverview
+                  <HeroSummary
                     period={period}
                     periods={periodsForDisplay}
                     onPeriodChange={setSelectedPeriod}
@@ -197,7 +198,6 @@ export function DashboardView(props) {
                     summaryCostValue={summaryCostValue}
                     usageInsights={usageInsights}
                     onCostInfo={costInfoEnabled ? openCostModal : null}
-                    fleetData={fleetData}
                     onRefresh={screenshotMode ? null : refreshAll}
                     loading={usageLoadingState}
                     onOpenShare={screenshotMode ? null : onOpenShare}
@@ -206,6 +206,12 @@ export function DashboardView(props) {
                     onCustomRangeApply={onCustomRangeApply}
                     customRangeOpen={customRangeOpen}
                     onCustomRangeOpenChange={onCustomRangeOpenChange}
+                  />
+                </FadeIn>
+
+                <FadeIn delay={D_USAGE_OVERVIEW}>
+                  <ProviderBreakdownCard
+                    fleetData={fleetData}
                     from={usageFrom}
                     to={usageTo}
                   />

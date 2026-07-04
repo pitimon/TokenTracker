@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { UsageOverview } from "../UsageOverview.jsx";
+import { ProviderBreakdownCard } from "../ProviderBreakdownCard.jsx";
 
 const breakdownProps = [];
 
@@ -16,48 +16,13 @@ vi.mock("../../../../hooks/useTheme.js", () => ({
   useTheme: () => ({ resolvedTheme: "light" }),
 }));
 
-describe("UsageOverview", () => {
-  it("renders configurable auto-refresh intervals and reports the selected value", async () => {
-    const user = userEvent.setup();
-    const onAutoRefreshIntervalChange = vi.fn();
-
-    render(
-      <UsageOverview
-        period="day"
-        periods={["day"]}
-        summaryLabel="Total"
-        summaryValue="123"
-        summaryUpdatedAtLabel="Updated Jun 5, 2026, 03:55:00 GMT+7"
-        autoRefreshOptions={[
-          { value: 0, labelKey: "usage.auto_refresh.off" },
-          { value: 30000, labelKey: "usage.auto_refresh.30s" },
-          { value: 60000, labelKey: "usage.auto_refresh.60s" },
-          { value: 120000, labelKey: "usage.auto_refresh.120s" },
-        ]}
-        autoRefreshIntervalMs={30000}
-        onAutoRefreshIntervalChange={onAutoRefreshIntervalChange}
-      />,
-    );
-
-    const select = screen.getByRole("combobox", { name: "Auto refresh interval" });
-    expect(select).toHaveValue("30000");
-    expect(screen.getByText("Updated Jun 5, 2026, 03:55:00 GMT+7")).toBeInTheDocument();
-
-    await user.selectOptions(select, "120000");
-
-    expect(onAutoRefreshIntervalChange).toHaveBeenCalledWith("120000");
-  });
-
+describe("ProviderBreakdownCard", () => {
   it("passes the overview usage range to Codex context breakdown", async () => {
     breakdownProps.length = 0;
     const user = userEvent.setup();
 
     render(
-      <UsageOverview
-        period="month"
-        periods={[]}
-        summaryLabel="Total"
-        summaryValue="123"
+      <ProviderBreakdownCard
         fleetData={[
           {
             source: "codex",
@@ -88,20 +53,9 @@ describe("UsageOverview", () => {
     });
   });
 
-  it("renders collapsed provider model chips and cost insights", () => {
+  it("renders collapsed provider model chips and missing-pricing", () => {
     render(
-      <UsageOverview
-        period="day"
-        periods={[]}
-        summaryLabel="Total"
-        summaryValue="31.3M"
-        summaryCostValue="$28.38"
-        usageInsights={{
-          costPerMillionTokens: 0.91,
-          topCostModel: { name: "claude-fable-5" },
-          topUsageModel: { name: "claude-sonnet-5" },
-          missingPricingModels: [{ name: "claude-sonnet-new" }],
-        }}
+      <ProviderBreakdownCard
         fleetData={[
           {
             source: "claude",
@@ -122,9 +76,6 @@ describe("UsageOverview", () => {
       />,
     );
 
-    expect(screen.getByText("$0.91/MTok")).toBeInTheDocument();
-    expect(screen.getAllByText(/Top cost fable-5|Top cost: fable-5/).length).toBeGreaterThan(0);
-    expect(screen.getByText("Top usage sonnet-5")).toBeInTheDocument();
     expect(screen.getByText("sonnet-5")).toBeInTheDocument();
     expect(screen.getByText("49.5%")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "sonnet-5 49.5%" })).toHaveAttribute(
@@ -134,17 +85,13 @@ describe("UsageOverview", () => {
     expect(screen.getByText("fable-5")).toBeInTheDocument();
     expect(screen.getByText("46.6%")).toBeInTheDocument();
     expect(screen.getByText("+1 more")).toBeInTheDocument();
-    expect(screen.getAllByText("1 pricing missing").length).toBeGreaterThan(0);
+    expect(screen.getByText("1 pricing missing")).toBeInTheDocument();
+    expect(screen.getByText("Top cost: fable-5")).toBeInTheDocument();
   });
 
   it("leaves gpt-* model names unchanged in the collapsed provider chip", () => {
     render(
-      <UsageOverview
-        period="day"
-        periods={[]}
-        summaryLabel="Total"
-        summaryValue="10M"
-        summaryCostValue="$5.00"
+      <ProviderBreakdownCard
         fleetData={[
           {
             source: "codex",
