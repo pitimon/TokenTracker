@@ -213,7 +213,7 @@ export function DashboardView(props) {
                 the full width below. */}
             <div className="grid grid-cols-1 lg:grid-cols-6 gap-4">
               <div className="lg:col-span-3 min-w-0">
-                <FadeIn delay={0.05}>
+                <FadeIn delay={0.05} className="h-full">
                   <HeroSummary
                     period={period}
                     periods={periodsForDisplay}
@@ -235,6 +235,7 @@ export function DashboardView(props) {
                     onCustomRangeApply={onCustomRangeApply}
                     customRangeOpen={customRangeOpen}
                     onCustomRangeOpenChange={onCustomRangeOpenChange}
+                    emphasized
                   />
                 </FadeIn>
               </div>

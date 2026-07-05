@@ -64,6 +64,7 @@ export function HeroSummary({
   customRangeOpen,
   onCustomRangeOpenChange,
   onOpenShare,
+  emphasized = false,
 }) {
   const shouldReduceMotion = useReducedMotion();
   const tabs = normalizePeriods(periods);
@@ -127,8 +128,16 @@ export function HeroSummary({
     costPerMillionLabel || topCostModelName || topUsageModelName || hasMissingPricing,
   );
 
+  // Emphasized (main dashboard): fill the top row's height to match Trend and
+  // carry a soft amber tint so the hero reads as the primary card. Off in
+  // screenshotMode, where the hero is a plain full-width card.
+  const cardClassName = emphasized
+    ? "h-full flex flex-col !bg-oai-brand-50 dark:!bg-oai-brand-950/40 !border-oai-brand-200 dark:!border-oai-brand-800"
+    : "";
+  const cardBodyClassName = emphasized ? "flex-1 flex flex-col justify-between" : "";
+
   return (
-    <Card>
+    <Card className={cardClassName} bodyClassName={cardBodyClassName}>
         {/* Header: Period Tabs + Refresh. Tabs are a single horizontal-scroll
             strip (never wrap into stacked rows); actions stay pinned right. */}
         <div className="flex items-center gap-2 mb-6">
