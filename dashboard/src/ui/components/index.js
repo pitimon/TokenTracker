@@ -10,3 +10,4 @@ export { Input } from "./Input";
 export { Select } from "./Select";
 export { DismissibleHint } from "./DismissibleHint.jsx";
 export { default as Counter } from "./Counter";
+export { SplitFlapNumber } from "./SplitFlapNumber";

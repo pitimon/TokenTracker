@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T00:52:41.124Z",
+  "generatedAt": "2026-07-05T05:53:51.390Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
@@ -7,7 +7,7 @@
   },
   "totals": {
     "colors": 263,
-    "rawText": 168
+    "rawText": 169
   },
   "files": {
     "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
@@ -206,6 +206,13 @@
       "rawTextTokens": [
         "Token Tracker",
         "getNavGroups(), [resolvedLocale]); return ("
+      ]
+    },
+    "dashboard/src/ui/components/SplitFlapNumber.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "SEPARATORS.has(char) ? ("
       ]
     },
     "dashboard/src/ui/dashboard/components/ActivityHeatmap.jsx": {
