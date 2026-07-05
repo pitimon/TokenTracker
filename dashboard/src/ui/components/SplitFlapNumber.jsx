@@ -10,15 +10,36 @@ const isTestEnv =
   (typeof process !== "undefined" &&
     (process.env?.NODE_ENV === "test" || process.env?.VITEST === "true"));
 
-// A single flip card. When `char` changes it plays a short rotateX flip and
-// swaps the glyph at the mid-point, so the digit reads as mechanically turning.
-function Flap({ char, reduceMotion }) {
-  const [shown, setShown] = useState(char);
+// A single flip card. On mount it flaps in from blank to its glyph (staggered
+// by `index` so the row settles left-to-right like a departure board); on later
+// `char` changes it plays the same short rotateX flip and swaps at the midpoint.
+function Flap({ char, reduceMotion, index }) {
+  const [shown, setShown] = useState(reduceMotion ? char : "");
   const [flipping, setFlipping] = useState(false);
   const prev = useRef(char);
+  const mounted = useRef(false);
 
   useEffect(() => {
-    if (char === prev.current) return;
+    // Mount: cascade the board into place (skip when motion is reduced).
+    if (!mounted.current) {
+      mounted.current = true;
+      prev.current = char;
+      if (reduceMotion) {
+        setShown(char);
+        return undefined;
+      }
+      const delay = Math.min(index * 45, 520);
+      const start = setTimeout(() => setFlipping(true), delay);
+      const swap = setTimeout(() => setShown(char), delay + 130);
+      const done = setTimeout(() => setFlipping(false), delay + 300);
+      return () => {
+        clearTimeout(start);
+        clearTimeout(swap);
+        clearTimeout(done);
+      };
+    }
+    // Later updates: flip only the digits that actually changed.
+    if (char === prev.current) return undefined;
     prev.current = char;
     if (reduceMotion) {
       setShown(char);
@@ -31,7 +52,7 @@ function Flap({ char, reduceMotion }) {
       clearTimeout(swap);
       clearTimeout(done);
     };
-  }, [char, reduceMotion]);
+  }, [char, reduceMotion, index]);
 
   return (
     <span className={`tt-flap${flipping ? " tt-flap--flip" : ""}`} aria-hidden="true">
@@ -64,7 +85,7 @@ export function SplitFlapNumber({ value, fontSize = 56, className = "" }) {
             {char}
           </span>
         ) : (
-          <Flap key={index} char={char} reduceMotion={reduceMotion} />
+          <Flap key={index} char={char} reduceMotion={reduceMotion} index={index} />
         ),
       )}
     </span>
