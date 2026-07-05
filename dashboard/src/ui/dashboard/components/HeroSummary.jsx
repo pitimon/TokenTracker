@@ -134,7 +134,19 @@ export function HeroSummary({
   const cardClassName = emphasized
     ? "h-full flex flex-col !bg-oai-brand-50 dark:!bg-oai-brand-950/40 !border-oai-brand-200 dark:!border-oai-brand-800"
     : "";
-  const cardBodyClassName = emphasized ? "flex-1 flex flex-col justify-between" : "";
+  const cardBodyClassName = emphasized ? "flex-1 flex flex-col" : "";
+  // Emphasized hero is a vertical readout centered in the card's height: the
+  // big total gets full width (so long totals never collide with cost) and the
+  // cost + chips stack beneath it. Plain hero keeps the compact horizontal band
+  // (number left, cost right) used inside the share card.
+  const statsWrapClass = emphasized ? "flex flex-1 flex-col justify-center" : "";
+  const statsRowClass = emphasized
+    ? "flex flex-col gap-3"
+    : "flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between";
+  const costColClass = emphasized ? "flex flex-col gap-2" : "flex flex-col gap-2 sm:items-end";
+  const chipsRowClass = emphasized
+    ? "flex flex-wrap items-center gap-1.5 text-[11px] font-medium"
+    : "flex flex-wrap items-center gap-1.5 text-[11px] font-medium sm:justify-end";
 
   return (
     <Card className={cardClassName} bodyClassName={cardBodyClassName}>
@@ -238,10 +250,11 @@ export function HeroSummary({
           </div>
         </div>
 
-        {/* Main Stats — horizontal band: the big LED total sits on the left,
-            cost + insight chips align to the right. Reclaims vertical space
-            versus the old centered stack; collapses to a column below sm. */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        {/* Main Stats — emphasized: a vertical readout centered in the card
+            (total full width, cost + chips beneath). Plain: compact horizontal
+            band (number left, cost right) used inside the share card. */}
+        <div className={statsWrapClass}>
+        <div className={statsRowClass}>
           <div className="min-w-0">
             <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wider mb-2">{summaryLabel}</div>
             <div className="text-5xl sm:text-6xl md:text-7xl font-bold text-oai-black dark:text-oai-white tracking-tight tabular-nums leading-none">
@@ -271,7 +284,7 @@ export function HeroSummary({
             ) : null}
           </div>
           {(summaryCostValue || hasInsightChips) && (
-            <div className="flex flex-col gap-2 sm:items-end">
+            <div className={costColClass}>
               {summaryCostValue && (
                 <div className="flex items-center gap-2">
                   {onCostInfo ? (
@@ -290,7 +303,7 @@ export function HeroSummary({
                 </div>
               )}
               {hasInsightChips && (
-                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium sm:justify-end">
+                <div className={chipsRowClass}>
                   {costPerMillionLabel ? (
                     <span className="rounded-md border border-oai-gray-200 dark:border-oai-gray-700 px-2 py-1 text-oai-gray-600 dark:text-oai-gray-300 tabular-nums">
                       {copy("usage.overview.cost_per_mtok", { value: costPerMillionLabel })}
@@ -315,6 +328,7 @@ export function HeroSummary({
               )}
             </div>
           )}
+        </div>
         </div>
       </Card>
   );
