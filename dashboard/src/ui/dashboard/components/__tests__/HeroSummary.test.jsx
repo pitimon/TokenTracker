@@ -1,14 +1,28 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { ThemeContext } from "../../../foundation/ThemeProvider.jsx";
 import { HeroSummary } from "../HeroSummary.jsx";
+
+// HeroSummary reads resolvedTheme to fade the hero counter into the card
+// background, so it must render inside a ThemeContext.
+const themeValue = {
+  theme: "light",
+  resolvedTheme: "light",
+  setTheme: () => {},
+  toggleTheme: () => {},
+};
+
+function renderHero(ui) {
+  return render(<ThemeContext.Provider value={themeValue}>{ui}</ThemeContext.Provider>);
+}
 
 describe("HeroSummary", () => {
   it("renders configurable auto-refresh intervals and reports the selected value", async () => {
     const user = userEvent.setup();
     const onAutoRefreshIntervalChange = vi.fn();
 
-    render(
+    renderHero(
       <HeroSummary
         period="day"
         periods={["day"]}
@@ -36,7 +50,7 @@ describe("HeroSummary", () => {
   });
 
   it("renders usage-insight chips for cost, top models, and missing pricing", () => {
-    render(
+    renderHero(
       <HeroSummary
         period="day"
         periods={[]}
