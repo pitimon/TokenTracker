@@ -351,6 +351,7 @@ export function ActivityHeatmap3D({
           row: dayIdx,
           level: cell.level || 0,
           value: cell.value || 0,
+          total_tokens: cell.total_tokens || 0,
           day: cell.day,
           models: cell.models || null,
         });
@@ -655,7 +656,7 @@ export function ActivityHeatmap3D({
               }}
             >
               {!interactive && c.day && (
-                <title>{`${c.day}: ${Number(c.value).toLocaleString()} tokens`}</title>
+                <title>{`${c.day}: ${Number(c.value).toLocaleString()} conversations`}</title>
               )}
               {c.renderedFaces.map((f, idx) => (
                 <path
@@ -727,13 +728,23 @@ export function ActivityHeatmap3D({
             
             {/* 内容 */}
             <div className="flex flex-col gap-2">
-              <div className="flex items-baseline gap-1">
-                <span className="text-lg font-bold text-oai-gray-900 dark:text-white leading-none">
-                  {Number(hoveredCell.value).toLocaleString()}
-                </span>
-                <span className="text-[10px] text-oai-gray-400 uppercase tracking-wider font-semibold">
-                  Tokens
-                </span>
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-bold text-oai-gray-900 dark:text-white leading-none tabular-nums">
+                    {Number(hoveredCell.value ?? 0).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-oai-gray-400 uppercase tracking-wider font-semibold">
+                    Conversations
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[11px] font-semibold text-oai-gray-500 dark:text-oai-gray-400 leading-none tabular-nums">
+                    {Number(hoveredCell.total_tokens ?? 0).toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-oai-gray-400 uppercase tracking-wider">
+                    tokens
+                  </span>
+                </div>
               </div>
               
               {hoveredCell.models && Object.keys(hoveredCell.models).length > 0 ? (
@@ -746,7 +757,10 @@ export function ActivityHeatmap3D({
                       .map(([name, val]) => ({ name, val: Number(val) }))
                       .sort((a, b) => b.val - a.val)
                       .map(({ name, val }) => {
-                        const total = Number(hoveredCell.value) || 1;
+                        const total =
+                          Number(hoveredCell.total_tokens) ||
+                          Object.values(hoveredCell.models).reduce((s, v) => s + Number(v || 0), 0) ||
+                          1;
                         const pct = Math.round((val / total) * 100);
                         return (
                           <div key={name} className="flex flex-col gap-1">
