@@ -350,7 +350,7 @@ export function DashboardPage({
     tzOffsetMinutes,
   });
 
-  const { pulse } = usePulse({
+  const { pulse, refresh: refreshPulse } = usePulse({
     baseUrl,
     accessToken,
     guestAllowed,
@@ -725,6 +725,7 @@ export function DashboardPage({
       refreshProjectUsage(),
       refreshDailyBreakdown(),
       refreshUsageLimits(),
+      refreshPulse(),
     ]);
     setLastUpdatedAtMs(nowMs);
   }, [
@@ -735,6 +736,7 @@ export function DashboardPage({
     refreshTrend,
     refreshUsage,
     refreshUsageLimits,
+    refreshPulse,
   ]);
 
   useEffect(() => {
