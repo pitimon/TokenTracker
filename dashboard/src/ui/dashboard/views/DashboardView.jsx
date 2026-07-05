@@ -271,10 +271,14 @@ export function DashboardView(props) {
 
               <div className="lg:col-span-4 min-w-0">
                 <FadeIn delay={0.19}>
+                  {/* Context now lives in the standalone ContextCard below, so
+                      suppress the drill-down's inline Context Breakdown to avoid
+                      rendering the same panel (and refetching it) twice. */}
                   <ProviderBreakdownCard
                     fleetData={fleetData}
                     from={usageFrom}
                     to={usageTo}
+                    showInlineContext={false}
                   />
                 </FadeIn>
               </div>
