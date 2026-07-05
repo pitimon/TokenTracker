@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T10:16:34.725Z",
+  "generatedAt": "2026-07-05T11:16:58.489Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
@@ -7,7 +7,7 @@
   },
   "totals": {
     "colors": 263,
-    "rawText": 168
+    "rawText": 171
   },
   "files": {
     "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
@@ -217,23 +217,26 @@
     },
     "dashboard/src/ui/dashboard/components/ActivityHeatmap.jsx": {
       "colors": 28,
-      "rawText": 5,
+      "rawText": 6,
       "rawTextTokens": [
         "0 ? (",
         "3D Insight",
+        "Conversations",
         "Model Breakdown",
-        "Tokens",
+        "tokens",
         "with position: fixed, so use viewport // coordinates directly. This keeps it visible inside the leaderboard // profile modal, where the Dialog.Popup has both `overflow-hidden` and // a `transform` (from the open/close transition) — that combo clips any // absolute-positioned tooltip rendered inside the modal subtree. const rect = e.currentTarget.getBoundingClientRect(); const viewportWidth = typeof window !== \"undefined\" ? window.innerWidth : 1024; const x = rect.left + rect.width / 2; const y = rect.top; const halfWidth = 140; let shiftX = 0; if (x"
       ]
     },
     "dashboard/src/ui/dashboard/components/ActivityHeatmap3D.jsx": {
       "colors": 53,
-      "rawText": 4,
+      "rawText": 6,
       "rawTextTokens": [
         "0 ? (",
+        "Conversations",
         "Model Breakdown",
-        "Tokens",
-        "maxX) maxX = x + padding; if (y - padding"
+        "maxX) maxX = x + padding; if (y - padding",
+        "s + Number(v || 0), 0) || 1; const pct = Math.round((val / total) * 100); return (",
+        "tokens"
       ]
     },
     "dashboard/src/ui/dashboard/components/ContextBreakdownPanel.jsx": {

@@ -317,8 +317,9 @@ export function ActivityHeatmap({
         if (!cell?.day) continue;
         rows.push({
           day: cell.day,
-          total_tokens: cell.total_tokens ?? cell.value ?? 0,
-          billable_total_tokens: cell.billable_total_tokens ?? cell.value ?? cell.total_tokens ?? 0,
+          conversation_count: cell.conversation_count ?? 0,
+          total_tokens: cell.total_tokens ?? 0,
+          billable_total_tokens: cell.billable_total_tokens ?? cell.total_tokens ?? 0,
           models: cell.models ?? null,
         });
       }
@@ -353,9 +354,12 @@ export function ActivityHeatmap({
     allCells.sort((a, b) => a.day.localeCompare(b.day));
 
     allCells.forEach((c) => {
-      const val = Number(c.value) || 0;
-      totalTokens += val;
-      if (val > 0) {
+      // `value` is activity (conversations) → drives active days, streak, and
+      // the peak "most active day" so they match the cell colour. Token volume
+      // is summed separately for the annual summary + AI evaluation.
+      const activity = Number(c.value) || 0;
+      totalTokens += Number(c.total_tokens) || 0;
+      if (activity > 0) {
         activeDays++;
         currentStreak++;
         if (currentStreak > maxStreak) {
@@ -364,8 +368,8 @@ export function ActivityHeatmap({
       } else {
         currentStreak = 0;
       }
-      if (val > maxSingleDay.value) {
-        maxSingleDay = { day: c.day, value: val };
+      if (activity > maxSingleDay.value) {
+        maxSingleDay = { day: c.day, value: activity };
       }
     });
 
@@ -715,7 +719,7 @@ export function ActivityHeatmap({
                     <div className="bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 text-[10px] font-semibold font-mono rounded-lg px-2.5 py-1.5 shadow-xl border border-zinc-200 dark:border-zinc-800/80 whitespace-nowrap flex flex-col">
                       <span className="text-[9px] text-zinc-400 dark:text-zinc-500">{copy("heatmap.3d.modal.stats.precision_peak_value")}</span>
                       <span className="mt-0.5 font-bold text-zinc-900 dark:text-zinc-50">
-                        {stats.maxSingleDay.value > 0 ? stats.maxSingleDay.value.toLocaleString() : copy("heatmap.3d.modal.stats.no_data")} Tokens
+                        {stats.maxSingleDay.value > 0 ? stats.maxSingleDay.value.toLocaleString() : copy("heatmap.3d.modal.stats.no_data")} conversations
                       </span>
                       <span className="text-[8px] text-zinc-400 dark:text-zinc-500 mt-0.5">{stats.maxSingleDay.day !== "无数据" ? stats.maxSingleDay.day : copy("heatmap.3d.modal.stats.no_data")}</span>
                     </div>
@@ -903,13 +907,23 @@ export function ActivityHeatmap({
             
             {/* 内容 */}
             <div className="flex flex-col gap-2">
-              <div className="flex items-baseline gap-1">
-                <span className="text-lg font-bold text-oai-gray-900 dark:text-white leading-none">
-                  {Number(hoveredCell.total_tokens ?? hoveredCell.value).toLocaleString()}
-                </span>
-                <span className="text-[10px] text-oai-gray-400 uppercase tracking-wider font-semibold">
-                  Tokens
-                </span>
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-bold text-oai-gray-900 dark:text-white leading-none tabular-nums">
+                    {Number(hoveredCell.value ?? 0).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-oai-gray-400 uppercase tracking-wider font-semibold">
+                    Conversations
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[11px] font-semibold text-oai-gray-500 dark:text-oai-gray-400 leading-none tabular-nums">
+                    {Number(hoveredCell.total_tokens ?? 0).toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-oai-gray-400 uppercase tracking-wider">
+                    tokens
+                  </span>
+                </div>
               </div>
               
               {hoveredCell.models && Object.keys(hoveredCell.models).length > 0 ? (

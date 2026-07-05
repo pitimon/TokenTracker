@@ -113,6 +113,7 @@ export function useActivityHeatmap({
               if (!cell?.day) continue;
               rows.push({
                 day: cell.day,
+                conversation_count: cell.conversation_count ?? 0,
                 total_tokens: cell.total_tokens ?? cell.value ?? 0,
                 billable_total_tokens:
                   cell.billable_total_tokens ?? cell.value ?? cell.total_tokens ?? 0,

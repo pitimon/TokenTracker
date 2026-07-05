@@ -100,13 +100,18 @@ export function buildActivityHeatmap({
     return addUtcDays(start, -delta);
   })();
 
+  // `value` drives the cell level/colour and is ACTIVITY (conversations/day);
+  // `tokens` rides along for the tooltip's secondary line + the annual token
+  // summary, but never affects the colour.
   const valuesByDay = new Map();
   for (const row of Array.isArray(dailyRows) ? dailyRows : []) {
     const day = typeof row?.day === "string" ? row.day : null;
     if (!day) continue;
-    const value = toFiniteNumber(row?.billable_total_tokens ?? row?.total_tokens) ?? 0;
+    const activity = toFiniteNumber(row?.conversation_count) ?? 0;
+    const tokens = toFiniteNumber(row?.billable_total_tokens ?? row?.total_tokens) ?? 0;
     valuesByDay.set(day, {
-      value: Math.max(0, value),
+      value: Math.max(0, activity),
+      tokens: Math.max(0, tokens),
       models: row?.models || null,
     });
   }
@@ -149,10 +154,12 @@ export function buildActivityHeatmap({
       const day = formatDateUTC(dt);
       const dayData = valuesByDay.get(day);
       const value = dayData ? dayData.value : 0;
+      const tokens = dayData ? dayData.tokens : 0;
       const models = dayData ? dayData.models : null;
       week.push({
         day,
         value,
+        total_tokens: tokens,
         level: clampLevel(levelFor(value)),
         models,
       });
@@ -174,11 +181,15 @@ export function computeActiveStreakDays({ dailyRows, to }: ActiveStreakOptions =
   const end =
     parseDateString(to) ||
     new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
+  // A day counts as "active" if it had conversations (matches the heatmap's
+  // activity encoding). Falls back to tokens for older cached rows that predate
+  // conversation_count being carried on the cell.
   const valuesByDay = new Map();
   for (const row of Array.isArray(dailyRows) ? dailyRows : []) {
     const day = typeof row?.day === "string" ? row.day : null;
     if (!day) continue;
-    const value = toFiniteNumber(row?.billable_total_tokens ?? row?.total_tokens) ?? 0;
+    const value =
+      toFiniteNumber(row?.conversation_count ?? row?.billable_total_tokens ?? row?.total_tokens) ?? 0;
     valuesByDay.set(day, Math.max(0, value));
   }
 

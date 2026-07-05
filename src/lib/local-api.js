@@ -1405,7 +1405,11 @@ function createLocalApiHandler({ queuePath }) {
       const to = end.toISOString().slice(0, 10);
       const byDay = new Map(daily.map((d) => [d.day, d]));
 
-      const allValues = daily.map((d) => d.billable_total_tokens).filter((v) => v > 0);
+      // Level (cell colour) encodes ACTIVITY (conversations/day), not token
+      // volume — the Usage Trend already shows volume, so the calendar answers
+      // "how consistently" instead of duplicating "how much". Token totals stay
+      // on each cell for the tooltip's secondary line + the annual summary.
+      const allValues = daily.map((d) => d.conversation_count).filter((v) => v > 0);
       const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0;
       const calcLevel = (v) => {
         if (v <= 0) return 0;
@@ -1424,7 +1428,8 @@ function createLocalApiHandler({ queuePath }) {
         const day = cursor.toISOString().slice(0, 10);
         const data = byDay.get(day);
         const billable = data?.billable_total_tokens || 0;
-        cells.push({ day, total_tokens: data?.total_tokens || 0, billable_total_tokens: billable, level: calcLevel(billable), models: data?.models || null });
+        const convs = data?.conversation_count || 0;
+        cells.push({ day, total_tokens: data?.total_tokens || 0, billable_total_tokens: billable, conversation_count: convs, level: calcLevel(convs), models: data?.models || null });
         cursor.setUTCDate(cursor.getUTCDate() + 1);
       }
       const weeksArr = [];
