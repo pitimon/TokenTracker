@@ -3,6 +3,7 @@ import { Shell, Button } from "../../components";
 import { CostAnalysisModal } from "../components/CostAnalysisModal.jsx";
 import { DataDetails } from "../components/DataDetails.jsx";
 import { StatsPanel } from "../components/StatsPanel.jsx";
+import { PulseCard } from "../components/PulseCard.jsx";
 import { HeroSummary } from "../components/HeroSummary.jsx";
 import { ProviderBreakdownCard } from "../components/ProviderBreakdownCard.jsx";
 import { ContextCard } from "../components/ContextCard.jsx";
@@ -27,7 +28,8 @@ export function DashboardView(props) {
     projectUsageEntries,
     projectUsageLimit,
     setProjectUsageLimit,
-    topModels,
+    pulse,
+    pulseComparedAtLabel,
     isLocalMode,
     trendRowsForDisplay,
     trendFromForDisplay,
@@ -57,8 +59,6 @@ export function DashboardView(props) {
     summaryUpdatedAtLabel,
     summaryCostValue,
     usageInsights,
-    summaryConversationsValue,
-    rollingUsage,
     costInfoEnabled,
     openCostModal,
     costModalOpen,
@@ -153,15 +153,9 @@ export function DashboardView(props) {
             <div className="grid grid-cols-1 lg:grid-cols-6 gap-4">
               <div className="lg:col-span-2 min-w-0">
                 <StatsPanel
-                  title={copy("dashboard.identity.title")}
-                  subtitle={copy("dashboard.identity.subtitle")}
-                  period={period}
                   rankLabel={identityStartDate ?? copy("identity_card.rank_placeholder")}
                   streakDays={activeDays}
                   subscriptions={identitySubscriptions}
-                  periodConversations={summaryConversationsValue}
-                  rolling={rollingUsage}
-                  topModels={topModels}
                 />
               </div>
               {activityHeatmapBlock ? (
@@ -256,17 +250,18 @@ export function DashboardView(props) {
 
               <div className="lg:col-span-2 min-w-0">
                 <FadeIn delay={0.13}>
-                  <StatsPanel
-                    title={copy("dashboard.identity.title")}
-                    subtitle={copy("dashboard.identity.subtitle")}
-                    period={period}
-                    rankLabel={identityStartDate ?? copy("identity_card.rank_placeholder")}
-                    streakDays={activeDays}
-                    subscriptions={identitySubscriptions}
-                    periodConversations={summaryConversationsValue}
-                    rolling={rollingUsage}
-                    topModels={topModels}
-                  />
+                  <div className="flex flex-col gap-4">
+                    <PulseCard
+                      pulse={pulse}
+                      period={period}
+                      comparedAtLabel={pulseComparedAtLabel}
+                    />
+                    <StatsPanel
+                      rankLabel={identityStartDate ?? copy("identity_card.rank_placeholder")}
+                      streakDays={activeDays}
+                      subscriptions={identitySubscriptions}
+                    />
+                  </div>
                 </FadeIn>
               </div>
 

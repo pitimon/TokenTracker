@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T06:43:18.724Z",
+  "generatedAt": "2026-07-05T10:16:34.725Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
@@ -7,7 +7,7 @@
   },
   "totals": {
     "colors": 263,
-    "rawText": 170
+    "rawText": 168
   },
   "files": {
     "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
@@ -291,13 +291,18 @@
       "rawText": 0,
       "rawTextTokens": []
     },
+    "dashboard/src/ui/dashboard/components/PulseCard.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "Today's pulse"
+      ]
+    },
     "dashboard/src/ui/dashboard/components/StatsPanel.jsx": {
       "colors": 0,
-      "rawText": 4,
+      "rawText": 1,
       "rawTextTokens": [
-        "0 && (",
-        "30d",
-        "7d"
+        "0 && ("
       ]
     },
     "dashboard/src/ui/dashboard/components/TrendMonitor.jsx": {
