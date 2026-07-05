@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-07-04T13:04:25.467Z",
+  "generatedAt": "2026-07-05T00:45:03.753Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 262,
+    "colors": 263,
     "rawText": 168
   },
   "files": {
@@ -266,7 +266,7 @@
       ]
     },
     "dashboard/src/ui/dashboard/components/HeroSummary.jsx": {
-      "colors": 2,
+      "colors": 3,
       "rawText": 0,
       "rawTextTokens": []
     },
