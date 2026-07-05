@@ -103,6 +103,21 @@ describe("reduceDaySlices (same-elapsed truncation)", () => {
     expect(trailingAvg.tokens).toBeCloseTo(50 / 7, 6);
     expect(trailingAvg.cost).toBeCloseTo(0.5 / 7, 6);
   });
+
+  it("trailingFull sums each trailing day to end-of-day (captures post-cutoff hours)", () => {
+    const plan = buildPlan("day", TODAY);
+    // yesterday has hour-0 (before cutoff) AND hour-20 (after cutoff 1).
+    const hourlyByDay = new Map([
+      [TODAY, [hourly(TODAY, 0, 100, 1)]],
+      ["2026-07-04", [hourly("2026-07-04", 0, 30, 0.3), hourly("2026-07-04", 20, 300, 3)]],
+    ]);
+    const { trailingAvg, trailingFull } = reduceDaySlices(plan, hourlyByDay, 1);
+    // same-elapsed (cutoff 1) drops the hour-20 activity → 30 tok over 7 days.
+    expect(trailingAvg.tokens).toBeCloseTo(30 / 7, 6);
+    // full-day keeps it → (30 + 300) over 7 days; this is the "normal day" baseline.
+    expect(trailingFull.tokens).toBeCloseTo(330 / 7, 6);
+    expect(trailingFull.cost).toBeCloseTo(3.3 / 7, 6);
+  });
 });
 
 describe("reduceWindowSlices (no double-count of today / boundary day)", () => {
