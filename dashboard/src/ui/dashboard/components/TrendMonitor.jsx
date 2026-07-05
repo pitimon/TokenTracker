@@ -4,7 +4,7 @@ import { Maximize2 } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
 import { useCurrency } from "../../../hooks/useCurrency.js";
-import { formatUsdCurrency } from "../../../lib/format";
+import { formatUsdCurrency, formatCompactNumber } from "../../../lib/format";
 import { formatBucketRange, formatTickLabel, granularityFromPeriod } from "../../../lib/trend-stats";
 import { TrendMonitorZoomModal } from "./TrendMonitorZoomModal";
 
@@ -229,7 +229,7 @@ function TrendBar({
       <div className="absolute inset-x-0 top-0 bottom-0 bg-oai-gray-100/70 dark:bg-white/[0.08] opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none" />
 
       <div
-        className="absolute inset-x-0 bottom-0 flex flex-col-reverse justify-start overflow-hidden cursor-pointer transition-all duration-200"
+        className="absolute inset-x-0 bottom-0 flex flex-col-reverse justify-start overflow-hidden rounded-t-[3px] cursor-pointer transition-all duration-200"
         style={{
           height: barHeight,
           minHeight,
@@ -503,46 +503,56 @@ export function TrendMonitor({
         </div>
       )}
       <div className={cn("space-y-3", isZoom && "flex flex-1 flex-col min-h-0 !space-y-0 gap-3")}>
-        <div className={cn("relative", isZoom && "flex-1 min-h-0")}>
-          <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-            {[0, 25, 50, 75, 100].map((pct) => (
-              <div
-                key={pct}
-                className="w-full border-t border-oai-gray-100 dark:border-oai-gray-800"
-                style={{ top: `${100 - pct}%` }}
-              />
+        <div className={cn("flex gap-2", isZoom && "flex-1 min-h-0")}>
+          {/* Y axis — magnitude labels aligned to the gridlines */}
+          <div className="flex shrink-0 flex-col justify-between text-right text-[10px] leading-none text-oai-gray-400 dark:text-oai-gray-500 tabular-nums">
+            {[1, 0.75, 0.5, 0.25, 0].map((f) => (
+              <span key={f}>
+                {f === 0 ? "0" : formatCompactNumber(scale.effectiveMax * f, { decimals: 0 })}
+              </span>
             ))}
           </div>
-          <div className={cn("flex items-end gap-0.5 relative z-0", chartHeightClass)}>
-            {seriesValues.length > 0 ? (
-              seriesValues.map((value, index) => {
-                const row = series[index];
-                const isGap = row?.missing || row?.future;
-                // Real observations (incl. 0) use the y-clipped value so they
-                // stay proportional to neighbours. Only true gaps fall back to
-                // the predicted curve, clipped to the visible max.
-                const displayValue = isGap
-                  ? Math.min(interpolatedValues[index] ?? 0, scale.effectiveMax)
-                  : scale.clippedValues[index] ?? 0;
-                return (
-                  <TrendBar
-                    key={index}
-                    value={value}
-                    displayValue={displayValue}
-                    scale={scale}
-                    index={index}
-                    row={row}
-                    totalBars={seriesValues.length}
-                    onMouseEnter={handleBarMouseEnter}
-                    onMouseLeave={handleBarMouseLeave}
-                  />
-                );
-              })
-            ) : (
-              <div className="flex-1 h-full flex items-center justify-center">
-                <p className="text-sm text-oai-gray-400 dark:text-oai-gray-400">No data yet</p>
-              </div>
-            )}
+          <div className={cn("relative min-w-0 flex-1", isZoom && "min-h-0")}>
+            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+              {[0, 25, 50, 75, 100].map((pct) => (
+                <div
+                  key={pct}
+                  className="w-full border-t border-oai-gray-100 dark:border-oai-gray-800"
+                  style={{ top: `${100 - pct}%` }}
+                />
+              ))}
+            </div>
+            <div className={cn("flex items-end gap-0.5 relative z-0", chartHeightClass)}>
+              {seriesValues.length > 0 ? (
+                seriesValues.map((value, index) => {
+                  const row = series[index];
+                  const isGap = row?.missing || row?.future;
+                  // Real observations (incl. 0) use the y-clipped value so they
+                  // stay proportional to neighbours. Only true gaps fall back to
+                  // the predicted curve, clipped to the visible max.
+                  const displayValue = isGap
+                    ? Math.min(interpolatedValues[index] ?? 0, scale.effectiveMax)
+                    : scale.clippedValues[index] ?? 0;
+                  return (
+                    <TrendBar
+                      key={index}
+                      value={value}
+                      displayValue={displayValue}
+                      scale={scale}
+                      index={index}
+                      row={row}
+                      totalBars={seriesValues.length}
+                      onMouseEnter={handleBarMouseEnter}
+                      onMouseLeave={handleBarMouseLeave}
+                    />
+                  );
+                })
+              ) : (
+                <div className="flex-1 h-full flex items-center justify-center">
+                  <p className="text-sm text-oai-gray-400 dark:text-oai-gray-400">No data yet</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
