@@ -197,31 +197,6 @@ export function DashboardView(props) {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            <FadeIn delay={0.05}>
-              <HeroSummary
-                period={period}
-                periods={periodsForDisplay}
-                onPeriodChange={setSelectedPeriod}
-                autoRefreshOptions={autoRefreshOptions}
-                autoRefreshIntervalMs={autoRefreshIntervalMs}
-                onAutoRefreshIntervalChange={onAutoRefreshIntervalChange}
-                summaryLabel={summaryLabel}
-                summaryValue={summaryValue}
-                summaryUpdatedAtLabel={summaryUpdatedAtLabel}
-                summaryCostValue={summaryCostValue}
-                usageInsights={usageInsights}
-                onCostInfo={costInfoEnabled ? openCostModal : null}
-                onRefresh={screenshotMode ? null : refreshAll}
-                loading={usageLoadingState}
-                onOpenShare={screenshotMode ? null : onOpenShare}
-                customFrom={customFrom}
-                customTo={customTo}
-                onCustomRangeApply={onCustomRangeApply}
-                customRangeOpen={customRangeOpen}
-                onCustomRangeOpenChange={onCustomRangeOpenChange}
-              />
-            </FadeIn>
-
             {dataHealthMessage ? (
               <FadeIn delay={0.08}>
                 <div className="rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-4 py-3 text-sm text-oai-gray-700 dark:border-oai-gray-800 dark:bg-oai-gray-900/70 dark:text-oai-gray-300">
@@ -230,9 +205,56 @@ export function DashboardView(props) {
               </FadeIn>
             ) : null}
 
+            {/* Layout v2: Hero + Trend share the top row (3:3) so the summary
+                and its time series read together. Identity is a left rail; when
+                a context source exists it spans two rows so Provider stacks
+                directly above Context (cols 3-6), reading "which providers →
+                their context" top-down. Heatmap, onboarding, then details span
+                the full width below. */}
             <div className="grid grid-cols-1 lg:grid-cols-6 gap-4">
-              <div className="lg:col-span-2 min-w-0">
-                <FadeIn delay={0.11}>
+              <div className="lg:col-span-3 min-w-0">
+                <FadeIn delay={0.05}>
+                  <HeroSummary
+                    period={period}
+                    periods={periodsForDisplay}
+                    onPeriodChange={setSelectedPeriod}
+                    autoRefreshOptions={autoRefreshOptions}
+                    autoRefreshIntervalMs={autoRefreshIntervalMs}
+                    onAutoRefreshIntervalChange={onAutoRefreshIntervalChange}
+                    summaryLabel={summaryLabel}
+                    summaryValue={summaryValue}
+                    summaryUpdatedAtLabel={summaryUpdatedAtLabel}
+                    summaryCostValue={summaryCostValue}
+                    usageInsights={usageInsights}
+                    onCostInfo={costInfoEnabled ? openCostModal : null}
+                    onRefresh={screenshotMode ? null : refreshAll}
+                    loading={usageLoadingState}
+                    onOpenShare={screenshotMode ? null : onOpenShare}
+                    customFrom={customFrom}
+                    customTo={customTo}
+                    onCustomRangeApply={onCustomRangeApply}
+                    customRangeOpen={customRangeOpen}
+                    onCustomRangeOpenChange={onCustomRangeOpenChange}
+                  />
+                </FadeIn>
+              </div>
+
+              <div className="lg:col-span-3 min-w-0">
+                <FadeIn delay={0.09}>
+                  <TrendMonitor
+                    rows={trendRowsForDisplay}
+                    from={trendFromForDisplay}
+                    to={trendToForDisplay}
+                    period={period}
+                    timeZoneLabel={trendTimeZoneLabel}
+                    showTimeZoneLabel={false}
+                    zoomConfig={trendZoomConfig}
+                  />
+                </FadeIn>
+              </div>
+
+              <div className={hasContextSource ? "lg:col-span-2 lg:row-span-2 min-w-0" : "lg:col-span-2 min-w-0"}>
+                <FadeIn delay={0.13}>
                   <StatsPanel
                     title={copy("dashboard.identity.title")}
                     subtitle={copy("dashboard.identity.subtitle")}
@@ -247,56 +269,42 @@ export function DashboardView(props) {
                 </FadeIn>
               </div>
 
-              {activityHeatmapBlock ? (
-                <div className="lg:col-span-4 min-w-0">
-                  <FadeIn delay={0.17}>{activityHeatmapBlock}</FadeIn>
-                </div>
-              ) : null}
-
-              {/* Provider + Context share one row so a small provider set no
-                  longer claims a sparse full-width band; TrendMonitor takes the
-                  full width below, where a time series reads best. When there is
-                  no context source, Provider falls back to full width. */}
-              <div className={hasContextSource ? "lg:col-span-4 min-w-0" : "lg:col-span-6 min-w-0"}>
-                <FadeIn delay={0.23}>
+              <div className="lg:col-span-4 min-w-0">
+                <FadeIn delay={0.19}>
+                  {/* Context now lives in the standalone ContextCard below, so
+                      suppress the drill-down's inline Context Breakdown to avoid
+                      rendering the same panel (and refetching it) twice. */}
                   <ProviderBreakdownCard
                     fleetData={fleetData}
                     from={usageFrom}
                     to={usageTo}
+                    showInlineContext={false}
                   />
                 </FadeIn>
               </div>
 
               {hasContextSource ? (
-                <div className="lg:col-span-2 min-w-0">
-                  <FadeIn delay={0.29}>
+                <div className="lg:col-span-4 min-w-0">
+                  <FadeIn delay={0.25}>
                     <ContextCard fleetData={fleetData} from={usageFrom} to={usageTo} />
                   </FadeIn>
                 </div>
               ) : null}
 
-              <div className="lg:col-span-6 min-w-0">
-                <FadeIn delay={0.35}>
-                  <TrendMonitor
-                    rows={trendRowsForDisplay}
-                    from={trendFromForDisplay}
-                    to={trendToForDisplay}
-                    period={period}
-                    timeZoneLabel={trendTimeZoneLabel}
-                    showTimeZoneLabel={false}
-                    zoomConfig={trendZoomConfig}
-                  />
-                </FadeIn>
-              </div>
+              {activityHeatmapBlock ? (
+                <div className="lg:col-span-6 min-w-0">
+                  <FadeIn delay={0.31}>{activityHeatmapBlock}</FadeIn>
+                </div>
+              ) : null}
 
               {isLocalMode ? (
                 <div className="lg:col-span-6">
-                  <WidgetOnboardingCard enterDelay={0.41} />
+                  <WidgetOnboardingCard enterDelay={0.37} />
                 </div>
               ) : null}
             </div>
 
-            <FadeIn delay={0.47}>
+            <FadeIn delay={0.43}>
               <DataDetails
                 projectEntries={projectUsageEntries}
                 projectLimit={projectUsageLimit}

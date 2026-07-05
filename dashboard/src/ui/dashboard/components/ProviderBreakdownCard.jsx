@@ -20,7 +20,7 @@ import {
   getHiddenModelCount,
 } from "./usageFormat.js";
 
-export function ProviderBreakdownCard({ fleetData = [], from, to }) {
+export function ProviderBreakdownCard({ fleetData = [], from, to, showInlineContext = true }) {
   const shouldReduceMotion = useReducedMotion();
   const [expandedProvider, setExpandedProvider] = useState(null);
   const { currency, rate } = useCurrency();
@@ -198,7 +198,12 @@ export function ProviderBreakdownCard({ fleetData = [], from, to }) {
                       (a, b) => (b.share || 0) - (a.share || 0)
                     );
 
-                    const providerHeading = contextSource
+                    // Only badge the section as a Context Breakdown when the
+                    // inline panel is actually shown here; otherwise the context
+                    // lives in the standalone ContextCard and this is just the
+                    // provider's model drill-down.
+                    const showContextHere = Boolean(contextSource) && showInlineContext;
+                    const providerHeading = showContextHere
                       ? `${contextSource === "claude" ? "Claude" : "Codex"} Context Breakdown`
                       : provider.label;
                     return (
@@ -207,7 +212,7 @@ export function ProviderBreakdownCard({ fleetData = [], from, to }) {
                         provider={provider}
                         color={color}
                         providerHeading={providerHeading}
-                        contextSource={contextSource}
+                        contextSource={showContextHere ? contextSource : null}
                         from={from}
                         to={to}
                         sortedModels={sortedModels}

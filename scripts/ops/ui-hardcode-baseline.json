@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T00:45:03.753Z",
+  "generatedAt": "2026-07-05T00:52:41.124Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
@@ -246,7 +246,7 @@
       "colors": 0,
       "rawText": 1,
       "rawTextTokens": [
-        "(Number(best.usage) || 0) ? provider : best ); const contextSource = resolveContextBreakdownSource(primaryProvider); return ("
+        "1; return ("
       ]
     },
     "dashboard/src/ui/dashboard/components/CostAnalysisModal.jsx": {

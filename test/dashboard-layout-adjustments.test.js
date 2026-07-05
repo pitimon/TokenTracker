@@ -38,6 +38,20 @@ test("DashboardView renders heatmap and TrendMonitor inside the bento grid", () 
   assert.ok(src.includes("<TrendMonitor"), "expected TrendMonitor rendered in bento grid");
 });
 
+test("DashboardView layout v2: Hero+Trend top row, Provider→Context stack, deduped context", () => {
+  // Layout v2 pairs Hero and Trend on the top row (3:3), makes Identity a
+  // two-row rail so Provider stacks directly above Context, and suppresses the
+  // provider drill-down's inline context (now shown standalone in ContextCard).
+  const src = readFile(viewPath);
+  assert.ok(src.includes("lg:col-span-3"), "expected Hero+Trend to share the top row at col-span-3");
+  assert.ok(src.includes("lg:row-span-2"), "expected Identity rail to span two rows beside Provider/Context");
+  assert.ok(
+    src.includes("showInlineContext={false}"),
+    "expected the provider drill-down's inline context suppressed in favor of the standalone ContextCard",
+  );
+  assert.ok(src.includes("<ContextCard"), "expected standalone ContextCard rendered");
+});
+
 test("DashboardView splits UsageOverview into HeroSummary and ProviderBreakdownCard", () => {
   // Redesign (#18) split the monolithic UsageOverview into a HeroSummary readout
   // plus a standalone ProviderBreakdownCard bento card.
