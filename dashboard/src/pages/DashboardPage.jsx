@@ -5,6 +5,7 @@ import { useTrendData } from "../hooks/use-trend-data.js";
 import { useUsageData } from "../hooks/use-usage-data.js";
 import { useUsageLimits } from "../hooks/use-usage-limits.js";
 import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
+import { usePulse } from "../hooks/use-pulse";
 import {
   isAccessTokenReady,
   normalizeAccessToken,
@@ -348,6 +349,28 @@ export function DashboardPage({
     timeZone,
     tzOffsetMinutes,
   });
+
+  const { pulse } = usePulse({
+    baseUrl,
+    accessToken,
+    guestAllowed,
+    period,
+    timeZone,
+    tzOffsetMinutes,
+    now: dashboardNow,
+    cacheKey,
+  });
+  const pulseComparedAtLabel = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: timeZone || undefined,
+      }).format(dashboardNow);
+    } catch (_e) {
+      return null;
+    }
+  }, [dashboardNow, timeZone]);
 
   const [projectUsageLimit, setProjectUsageLimit] = useState(10);
   const {
@@ -1198,10 +1221,6 @@ export function DashboardPage({
     () => formatUsdCurrency(summary?.total_cost_usd, { currency, rate }),
     [summary?.total_cost_usd, currency, rate],
   );
-  const summaryConversationsValue = useMemo(
-    () => summary?.conversation_count ?? null,
-    [summary?.conversation_count],
-  );
   const dataHealthMessage = useMemo(() => {
     const currentTokens = Number(summaryTotalTokens || 0);
     if (currentTokens > 0 || usageLoading || usageError) return null;
@@ -1311,7 +1330,8 @@ export function DashboardPage({
       projectUsageEntries={projectUsageEntries}
       projectUsageLimit={projectUsageLimit}
       setProjectUsageLimit={setProjectUsageLimit}
-      topModels={topModels}
+      pulse={pulse}
+      pulseComparedAtLabel={pulseComparedAtLabel}
       isLocalMode={isLocalMode}
       trendRowsForDisplay={trendRowsForDisplay}
       trendFromForDisplay={trendFromForDisplay}
@@ -1343,8 +1363,6 @@ export function DashboardPage({
       summaryUpdatedAtLabel={summaryUpdatedAtLabel}
       summaryCostValue={summaryCostValue}
       usageInsights={usageInsights}
-      summaryConversationsValue={summaryConversationsValue}
-      rollingUsage={rolling}
       costInfoEnabled={costInfoEnabled}
       openCostModal={openCostModal}
       allowBreakdownToggle={allowBreakdownToggle}

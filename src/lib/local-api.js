@@ -407,6 +407,7 @@ function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
         hour: hourKey,
         total_tokens: 0,
         billable_total_tokens: 0,
+        total_cost_usd: 0,
         input_tokens: 0,
         output_tokens: 0,
         cached_input_tokens: 0,
@@ -418,6 +419,7 @@ function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
     const bucket = byHour.get(hourKey);
     bucket.total_tokens += row.total_tokens || 0;
     bucket.billable_total_tokens += row.total_tokens || 0;
+    bucket.total_cost_usd += computeRowCost(row);
     bucket.input_tokens += row.input_tokens || 0;
     bucket.output_tokens += row.output_tokens || 0;
     bucket.cached_input_tokens += row.cached_input_tokens || 0;
