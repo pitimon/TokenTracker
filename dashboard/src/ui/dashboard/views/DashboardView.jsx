@@ -253,7 +253,7 @@ export function DashboardView(props) {
                 </FadeIn>
               </div>
 
-              <div className={hasContextSource ? "lg:col-span-2 lg:row-span-2 min-w-0" : "lg:col-span-2 min-w-0"}>
+              <div className="lg:col-span-2 min-w-0">
                 <FadeIn delay={0.13}>
                   <StatsPanel
                     title={copy("dashboard.identity.title")}
@@ -283,17 +283,21 @@ export function DashboardView(props) {
                 </FadeIn>
               </div>
 
-              {hasContextSource ? (
-                <div className="lg:col-span-4 min-w-0">
-                  <FadeIn delay={0.25}>
-                    <ContextCard fleetData={fleetData} from={usageFrom} to={usageTo} />
-                  </FadeIn>
+              {/* Activity Heatmap and Context Breakdown share the third row:
+                  Heatmap at cols 1-2, Context at cols 3-6. Each falls back to
+                  full width when the other is absent so the row never leaves a
+                  gap. */}
+              {activityHeatmapBlock ? (
+                <div className={hasContextSource ? "lg:col-span-2 min-w-0" : "lg:col-span-6 min-w-0"}>
+                  <FadeIn delay={0.25}>{activityHeatmapBlock}</FadeIn>
                 </div>
               ) : null}
 
-              {activityHeatmapBlock ? (
-                <div className="lg:col-span-6 min-w-0">
-                  <FadeIn delay={0.31}>{activityHeatmapBlock}</FadeIn>
+              {hasContextSource ? (
+                <div className={activityHeatmapBlock ? "lg:col-span-4 min-w-0" : "lg:col-span-6 min-w-0"}>
+                  <FadeIn delay={0.31}>
+                    <ContextCard fleetData={fleetData} from={usageFrom} to={usageTo} />
+                  </FadeIn>
                 </div>
               ) : null}
 
