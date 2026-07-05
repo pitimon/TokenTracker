@@ -92,6 +92,12 @@ export function HeroSummary({
   }, []);
   const showAnimatedSummary =
     summaryCounterValue != null && !isCompactSummary && !loading && !shouldReduceMotion;
+  // The emphasized hero shows the split-flap board whenever a value is present,
+  // decoupled from `loading`. useUsageData holds the previous summary during a
+  // background refresh, so the board stays put and only flips when the value
+  // actually changes — instead of flickering back to the plain number on every
+  // auto-refresh / period switch. SplitFlapNumber self-handles reduced motion.
+  const showFlap = emphasized && summaryValue != null && String(summaryValue) !== "";
   // Keep the selected period chip in view when the tab strip scrolls
   // horizontally on narrow screens.
   const tablistRef = useRef(null);
@@ -258,27 +264,27 @@ export function HeroSummary({
           <div className="min-w-0">
             <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wider mb-2">{summaryLabel}</div>
             <div className="text-5xl sm:text-6xl md:text-7xl font-bold text-oai-black dark:text-oai-white tracking-tight tabular-nums leading-none [container-type:inline-size]">
-              {showAnimatedSummary ? (
-                emphasized ? (
-                  // The main-dashboard hero uses a split-flap "departure board"
-                  // readout; the share card keeps the plain rolling Counter.
-                  <SplitFlapNumber value={summaryValue} fontSize={58} />
-                ) : (
-                  <Counter
-                    value={summaryCounterValue}
-                    displayValue={summaryValue}
-                    fontSize={72}
-                    padding={6}
-                    gap={1}
-                    textColor="var(--oai-black, #111827)"
-                    fontWeight={700}
-                    gradientHeight={isDark ? 0 : 8}
-                    gradientFrom={summaryGradientFrom}
-                    gradientTo={summaryGradientTo}
-                    counterStyle={{ paddingLeft: 0, paddingRight: 0, gap: 0 }}
-                    digitStyle={{ width: "0.88ch" }}
-                  />
-                )
+              {showFlap ? (
+                // Main-dashboard hero: split-flap "departure board" readout,
+                // always mounted so a refresh flips digits instead of swapping
+                // back to the plain number.
+                <SplitFlapNumber value={summaryValue} fontSize={58} />
+              ) : showAnimatedSummary ? (
+                // Share card keeps the plain rolling Counter.
+                <Counter
+                  value={summaryCounterValue}
+                  displayValue={summaryValue}
+                  fontSize={72}
+                  padding={6}
+                  gap={1}
+                  textColor="var(--oai-black, #111827)"
+                  fontWeight={700}
+                  gradientHeight={isDark ? 0 : 8}
+                  gradientFrom={summaryGradientFrom}
+                  gradientTo={summaryGradientTo}
+                  counterStyle={{ paddingLeft: 0, paddingRight: 0, gap: 0 }}
+                  digitStyle={{ width: "0.88ch" }}
+                />
               ) : (
                 summaryValue
               )}
