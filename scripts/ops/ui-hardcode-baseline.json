@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T05:53:51.390Z",
+  "generatedAt": "2026-07-05T06:43:18.724Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
@@ -7,7 +7,7 @@
   },
   "totals": {
     "colors": 263,
-    "rawText": 169
+    "rawText": 170
   },
   "files": {
     "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
@@ -274,8 +274,10 @@
     },
     "dashboard/src/ui/dashboard/components/HeroSummary.jsx": {
       "colors": 3,
-      "rawText": 0,
-      "rawTextTokens": []
+      "rawText": 1,
+      "rawTextTokens": [
+        ") : showAnimatedSummary ? ( // Share card keeps the plain rolling Counter."
+      ]
     },
     "dashboard/src/ui/dashboard/components/LikeButton.jsx": {
       "colors": 6,
