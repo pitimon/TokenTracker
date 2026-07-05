@@ -171,13 +171,19 @@ export function dailyByDayMap(dailyRes: any): Map<string, Slice> {
 }
 
 // Day view: current = today so far, prev = yesterday so far, trailingAvg = mean
-// of the 7 prior days each truncated to the same clock hour.
+// of the 7 prior days each truncated to the same clock hour. trailingFull is the
+// mean of those same 7 days summed to END OF DAY (hour 23) — the "normal full
+// day" the day-progress multiple is measured against. Both reuse the already
+// fetched 7-day hourly data, so no extra request.
 export function reduceDaySlices(plan: any, hourlyByDay: Map<string, any[]>, cutoffHour: number) {
   return {
     current: sumBucketsUpToHour(hourlyByDay.get(plan.todayKey), cutoffHour),
     prev: plan.prevKey ? sumBucketsUpToHour(hourlyByDay.get(plan.prevKey), cutoffHour) : null,
     trailingAvg: meanSlice(
       plan.trailingKeys.map((k: string) => sumBucketsUpToHour(hourlyByDay.get(k), cutoffHour)),
+    ),
+    trailingFull: meanSlice(
+      plan.trailingKeys.map((k: string) => sumBucketsUpToHour(hourlyByDay.get(k), 23)),
     ),
   };
 }

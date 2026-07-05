@@ -26,6 +26,10 @@ export interface PulseMetric {
   value: number | null;
   deltaVsPrev: number | null;
   deltaVsAvg: number | null;
+  // "Day progress" — today so far as a multiple of a normal full day (1.77 = 1.8x).
+  // Only meaningful for cumulative metrics (tokens/cost) on the day view; null
+  // for $/MTok (a rate), non-day periods, or a zero baseline.
+  progress: number | null;
 }
 
 export interface Pulse {
@@ -118,23 +122,36 @@ export function computePulse({
   current,
   prev = null,
   trailingAvg = null,
+  trailingFull = null,
   period,
 }: {
   current: Slice | null;
   prev?: Slice | null;
   trailingAvg?: Slice | null;
+  // Full-day 7-day average (each baseline day summed to end-of-day, not
+  // truncated to the cutoff). Powers the "day progress" multiple. Day view only.
+  trailingFull?: Slice | null;
   period: PulsePeriod;
 }): Pulse | null {
   if (period === "total" || !current) return null;
+
+  // today-so-far as a multiple of a normal full day; null when there's no
+  // full-day baseline or it's zero (avoids Inf).
+  const progressOf = (value: number, fullValue: number | null): number | null => {
+    if (fullValue == null || !(fullValue > 0)) return null;
+    return value / fullValue;
+  };
 
   const buildMetric = (
     value: number | null,
     prevValue: number | null,
     avgValue: number | null,
+    progress: number | null,
   ): PulseMetric => ({
     value,
     deltaVsPrev: relDelta(value, prevValue),
     deltaVsAvg: trailingAvg ? relDelta(value, avgValue) : null,
+    progress,
   });
 
   return {
@@ -143,12 +160,14 @@ export function computePulse({
       toNum(current.tokens),
       prev ? toNum(prev.tokens) : null,
       trailingAvg ? toNum(trailingAvg.tokens) : null,
+      trailingFull ? progressOf(toNum(current.tokens), toNum(trailingFull.tokens)) : null,
     ),
     cost: buildMetric(
       toNum(current.cost),
       prev ? toNum(prev.cost) : null,
       trailingAvg ? toNum(trailingAvg.cost) : null,
+      trailingFull ? progressOf(toNum(current.cost), toNum(trailingFull.cost)) : null,
     ),
-    perMTok: buildMetric(perMTok(current), perMTok(prev), perMTok(trailingAvg)),
+    perMTok: buildMetric(perMTok(current), perMTok(prev), perMTok(trailingAvg), null),
   };
 }

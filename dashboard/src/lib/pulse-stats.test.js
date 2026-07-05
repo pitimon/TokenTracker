@@ -151,3 +151,38 @@ describe("computePulse", () => {
     expect(pulse.perMTok.deltaVsPrev).toBeNull();
   });
 });
+
+describe("computePulse — day progress (multiple of a normal full day)", () => {
+  it("computes tokens/cost progress vs the full-day baseline; perMTok stays null", () => {
+    const pulse = computePulse({
+      current: { tokens: 5_770_000, cost: 4.52 },
+      prev: { tokens: 1, cost: 1 },
+      trailingAvg: { tokens: 1, cost: 1 },
+      trailingFull: { tokens: 3_260_000, cost: 2.13 }, // a "normal full day"
+      period: "day",
+    });
+    expect(pulse.tokens.progress).toBeCloseTo(5_770_000 / 3_260_000, 6); // ~1.77x
+    expect(pulse.cost.progress).toBeCloseTo(4.52 / 2.13, 6); // ~2.12x
+    expect(pulse.perMTok.progress).toBeNull(); // a rate has no day-total
+  });
+
+  it("is null when no full-day baseline is supplied (all metrics)", () => {
+    const pulse = computePulse({
+      current: { tokens: 2_000_000, cost: 2 },
+      trailingAvg: { tokens: 1_000_000, cost: 1 },
+      period: "day",
+    });
+    expect(pulse.tokens.progress).toBeNull();
+    expect(pulse.cost.progress).toBeNull();
+  });
+
+  it("guards a zero full-day baseline (no Inf)", () => {
+    const pulse = computePulse({
+      current: { tokens: 2_000_000, cost: 2 },
+      trailingFull: { tokens: 0, cost: 0 },
+      period: "day",
+    });
+    expect(pulse.tokens.progress).toBeNull();
+    expect(pulse.cost.progress).toBeNull();
+  });
+});
