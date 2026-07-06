@@ -1,12 +1,9 @@
 import React from "react";
-import { Card } from "../../components";
 import { formatCompactNumber, formatUsdCurrency } from "../../../lib/format";
+import { deviationMark, toneVar } from "../../../lib/pulse-mark";
 
 // Compact-number suffixes (K/M/B). Passed as JS args, not JSX text.
 const COMPACT_CONFIG = { thousandSuffix: "K", millionSuffix: "M", billionSuffix: "B" };
-
-// Below this magnitude a delta reads as "flat" — no attention colour, no arrow.
-const FLAT_THRESHOLD = 0.005;
 
 const fmtTokens = (value) =>
   value == null ? "—" : formatCompactNumber(value, COMPACT_CONFIG);
@@ -20,37 +17,48 @@ const METRICS = [
   { key: "perMTok", label: "$/MTok", kind: "price", format: fmtPerMTok },
 ];
 
-// Map a delta (fraction) to arrow + colour. Semantics, not raw direction:
-// usage up = attention (amber), usage down = quieter (muted); price up = worse
-// (red), price down = cheaper (green). Missing / flat = muted "—" or "0%".
-function deltaMeta(delta, kind) {
-  const mutedCls = "text-oai-gray-400 dark:text-oai-gray-400";
-  if (delta == null || !Number.isFinite(delta)) {
-    return { text: "—", cls: mutedCls };
-  }
-  if (Math.abs(delta) < FLAT_THRESHOLD) {
-    return { text: "0%", cls: mutedCls };
-  }
-  const up = delta > 0;
-  const pct = Math.round(Math.abs(delta) * 100);
-  const arrow = up ? "▲" : "▼";
-  let cls;
-  if (kind === "price") {
-    cls = up ? "text-oai-error" : "text-oai-success";
-  } else {
-    cls = up ? "text-oai-brand-500 dark:text-oai-brand-light" : mutedCls;
-  }
-  return { text: `${arrow}${pct}%`, cls };
+// One delta as a bar diverging from a centre "normal" line: side = direction,
+// length = magnitude (so +142% visibly outweighs +19%). Colour follows the
+// metric's JOB — usage is value-neutral (cool-blue slate, darker for a big
+// swing), $/MTok carries a verdict (red = pricier/worse, green = cheaper) and
+// ships with an arrow so direction never rides on colour alone.
+function DeviationBar({ label, delta, kind }) {
+  const mark = deviationMark(delta, kind);
+  const color = toneVar(mark.tone);
+  const barStyle =
+    mark.side === "up"
+      ? { left: "50%", width: `${mark.widthPct}%`, background: color }
+      : { right: "50%", width: `${mark.widthPct}%`, background: color };
+
+  return (
+    <div className="grid grid-cols-[2.3rem_1fr_3rem] items-center gap-2">
+      <span className="text-[8.5px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-400 text-right">
+        {label}
+      </span>
+      <span className="pulse-devtrack">
+        <span className="pulse-devtick" />
+        {mark.hasBar ? <span className="pulse-devbar" style={barStyle} /> : null}
+      </span>
+      <span className="flex items-center justify-end gap-1 text-[10.5px] font-bold tabular-nums text-right text-oai-gray-600 dark:text-oai-gray-300">
+        {mark.arrow ? (
+          <span className="text-[8px]" style={{ color }}>
+            {mark.arrow}
+          </span>
+        ) : null}
+        <span>{mark.labelText}</span>
+      </span>
+    </div>
+  );
 }
 
-// "Day progress" gauge — today so far as a multiple of a normal full day.
-// The track spans 0–2x so the midpoint marks a "normal day" (1x); a fill past
-// it means today has already burned more than a whole typical day. Read as a
-// fuel gauge (it climbs through the day), not a vs-normal alarm.
+// "Day progress" gauge — today so far as a multiple of a normal full day. The
+// track spans 0–2x so the midpoint marks a "normal day" (1x); a fill past it
+// means today already burned more than a whole typical day. Amber = the day
+// axis (a fuel gauge), deliberately distinct from the cool-blue deviation bars.
 function ProgressBar({ ratio }) {
   const fillPct = (Math.min(Math.max(ratio, 0), 2) / 2) * 100;
   return (
-    <div className="mt-2">
+    <div className="mt-2.5">
       <div className="flex items-baseline justify-between mb-1">
         <span className="text-[8.5px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-400">
           of a normal day
@@ -59,15 +67,17 @@ function ProgressBar({ ratio }) {
           {ratio.toFixed(1)}×
         </span>
       </div>
-      <div className="relative h-[7px] rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
+      <div
+        className="relative h-[7px] rounded-full"
+        style={{ background: "var(--pulse-track)" }}
+      >
         <div
           className="absolute left-0 top-0 bottom-0 rounded-full bg-gradient-to-r from-oai-brand-500 to-oai-brand-light"
           style={{ width: `${fillPct}%` }}
         />
-        {/* "normal day" (1x) tick — the 0–2x track puts it at the midpoint */}
         <div
-          className="absolute -top-[3px] -bottom-[3px] w-[2px] rounded-full bg-oai-gray-500/60 dark:bg-oai-gray-300/50"
-          style={{ left: "50%" }}
+          className="absolute -top-[3px] -bottom-[3px] w-[2px] rounded-full"
+          style={{ left: "50%", background: "var(--pulse-tick)" }}
           aria-hidden="true"
         />
       </div>
@@ -95,10 +105,7 @@ export function PulseCard({ pulse, period, comparedAtLabel, className = "" }) {
     : `same elapsed vs ${prevWindowLabel}`;
 
   return (
-    <Card
-      className={`h-full !border-oai-brand-200 dark:!border-oai-brand-900/60 !bg-oai-brand-50 dark:!bg-oai-brand-950/40 ${className}`}
-      bodyClassName="flex flex-col gap-2"
-    >
+    <div className={`pulse-card h-full flex flex-col gap-1.5 ${className}`}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-oai-brand-600 dark:text-oai-brand-light">
           Today's pulse
@@ -114,43 +121,36 @@ export function PulseCard({ pulse, period, comparedAtLabel, className = "" }) {
         return (
           <div
             key={metric.key}
-            className="py-1.5 border-b border-dashed border-oai-brand-200/70 dark:border-oai-brand-900/50 last:border-b-0"
+            className="py-2 border-b border-dashed border-oai-gray-200/40 dark:border-oai-gray-700/50 last:border-b-0"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex flex-col min-w-0">
-                <span className="text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
-                  {metric.label}
-                </span>
-                <span className="text-xl font-bold text-oai-black dark:text-oai-white tabular-nums mt-0.5 truncate">
-                  {metric.format(cell.value)}
-                </span>
-              </div>
-              <div className="flex gap-3 flex-shrink-0">
-                {deltaCols.map((col) => {
-                  const meta = deltaMeta(cell[col.field], metric.kind);
-                  return (
-                    <div key={col.field} className="flex flex-col items-end min-w-[3.25rem]">
-                      <span className="text-[8.5px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-400">
-                        {col.label}
-                      </span>
-                      <span className={`text-xs font-bold tabular-nums mt-0.5 ${meta.cls}`}>
-                        {meta.text}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+                {metric.label}
+              </span>
+              <span className="text-xl font-bold text-oai-black dark:text-oai-white tabular-nums truncate">
+                {metric.format(cell.value)}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-col gap-1.5">
+              {deltaCols.map((col) => (
+                <DeviationBar
+                  key={col.field}
+                  label={col.label}
+                  delta={cell[col.field]}
+                  kind={metric.kind}
+                />
+              ))}
             </div>
             {showProgress ? <ProgressBar ratio={cell.progress} /> : null}
           </div>
         );
       })}
 
-      <div className="flex items-center gap-1.5 text-[10.5px] text-oai-gray-400 dark:text-oai-gray-400 pt-0.5">
+      <div className="flex items-center gap-1.5 text-[10px] text-oai-gray-400 dark:text-oai-gray-400 pt-0.5">
         <span aria-hidden="true">⌚</span>
         <span>{footerText}</span>
       </div>
-    </Card>
+    </div>
   );
 }
 
