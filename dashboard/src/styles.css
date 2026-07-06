@@ -65,6 +65,20 @@
   --oai-error: #ef4444;
   --oai-info: #d9861a;
 
+  /* Today's Pulse signal system (light). Cool blue = value-neutral usage
+     (magnitude via bar length); success/error carry the $/MTok verdict. Kept
+     SEPARATE from the amber accent so a spike never blends into the card.
+     Palette validated (validate_palette.js): CVD-safe, contrast >= 3:1. */
+  --pulse-neutral: #4f6bb0;
+  --pulse-neutral-strong: #35528f;
+  --pulse-good: #059669;
+  --pulse-bad: #dc2626;
+  --pulse-track: #e2e7f0;
+  --pulse-tick: #9aa6bb;
+  --pulse-surface: #eef1f7;
+  --pulse-surface-border: #d3dae6;
+  --pulse-surface-shadow: inset 0 1px 3px rgba(40, 55, 90, 0.1);
+
   /* Typography - Font Families */
   --oai-font-sans: -apple-system, blinkmacsystemfont, "Segoe UI", roboto, oxygen, ubuntu, sans-serif;
   --oai-font-mono: "SF Mono", sfmono-regular, ui-monospace, menlo, monaco, consolas, monospace;
@@ -146,6 +160,18 @@
   --oai-warning: #f7c877;
   --oai-error: #f87171;
   --oai-info: #f2a93b;
+
+  /* Today's Pulse signal system (dark) — cool blue pops off the dark ground;
+     the surface is a recessed "readout well" darker than sibling panels. */
+  --pulse-neutral: #7d93c9;
+  --pulse-neutral-strong: #a9bce8;
+  --pulse-good: #34d399;
+  --pulse-bad: #f87171;
+  --pulse-track: #2a3444;
+  --pulse-tick: #5a6a82;
+  --pulse-surface: #0b1017;
+  --pulse-surface-border: #1c2534;
+  --pulse-surface-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.35), inset 0 8px 16px -12px rgba(0, 0, 0, 0.7);
 }
 
 html,
@@ -859,4 +885,36 @@ html.native-windows-app .tt-native-glass-shell aside[aria-label] {
 }
 @media (prefers-reduced-motion: reduce) {
   .tt-flap--flip .tt-flap__glyph { animation: none; }
+}
+
+/* ---- Today's Pulse: recessed readout surface + deviation-bar marks ---- */
+/* The card is a "gauge well" set into the dash — distinguished by surface
+   (recessed) + a 2px amber top-rail, not a full colour wash, so the cool-blue
+   usage bars and red/green $/MTok marks stay the loudest thing. */
+.pulse-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.875rem;
+  padding: 1rem 1rem 0.875rem;
+  background: var(--pulse-surface);
+  border: 1px solid var(--pulse-surface-border);
+  box-shadow: var(--pulse-surface-shadow);
+}
+.pulse-card::before {
+  content: "";
+  position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: linear-gradient(90deg, var(--oai-info), var(--oai-blue-light));
+}
+/* deviation bar: a mark diverging from a centre "normal" tick */
+.pulse-devtrack { position: relative; height: 9px; }
+.pulse-devtrack::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+  background: var(--pulse-track); transform: translateY(-50%);
+}
+.pulse-devtick {
+  position: absolute; left: 50%; top: -1px; bottom: -1px; width: 1.5px;
+  background: var(--pulse-tick); transform: translateX(-50%); border-radius: 2px;
+}
+.pulse-devbar {
+  position: absolute; top: 50%; height: 6px; transform: translateY(-50%); border-radius: 3px;
 }
