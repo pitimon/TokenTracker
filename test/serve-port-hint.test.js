@@ -80,7 +80,7 @@ test("serve respects explicit port from --port and PORT env", () => {
   assert.deepEqual(parseArgs([], { PORT: "7700" }), {
     port: 7700,
     portExplicit: true,
-    open: true,
+    open: false,
     sync: false,
   });
   assert.deepEqual(parseArgs(["--port", "7701", "--no-open", "--sync"], { PORT: "7700" }), {
@@ -92,10 +92,16 @@ test("serve respects explicit port from --port and PORT env", () => {
   assert.deepEqual(parseArgs(["--no-sync"], {}), {
     port: 7680,
     portExplicit: false,
-    open: true,
+    open: false,
     sync: false,
   });
   assert.deepEqual(parseArgs([], {}), {
+    port: 7680,
+    portExplicit: false,
+    open: false,
+    sync: false,
+  });
+  assert.deepEqual(parseArgs(["--open"], {}), {
     port: 7680,
     portExplicit: false,
     open: true,

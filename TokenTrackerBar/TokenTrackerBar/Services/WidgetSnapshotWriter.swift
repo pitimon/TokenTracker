@@ -285,6 +285,25 @@ enum WidgetSnapshotWriter {
             }
         }
 
+        // Z.AI
+        if let zai = limits.zai, zai.configured {
+            if let w = zai.primaryWindow {
+                out.append(LimitProvider(source: "zai", label: "Z.AI · 5h",
+                                         fraction: w.usedPercent / 100.0,
+                                         resetsAt: parseISO(w.resetAt)))
+            }
+            if let w = zai.secondaryWindow {
+                out.append(LimitProvider(source: "zai", label: "Z.AI · weekly",
+                                         fraction: w.usedPercent / 100.0,
+                                         resetsAt: parseISO(w.resetAt)))
+            }
+            if let w = zai.tertiaryWindow {
+                out.append(LimitProvider(source: "zai", label: "Z.AI · MCP",
+                                         fraction: w.usedPercent / 100.0,
+                                         resetsAt: parseISO(w.resetAt)))
+            }
+        }
+
         // Kiro
         if limits.kiro.configured {
             if let w = limits.kiro.primaryWindow {

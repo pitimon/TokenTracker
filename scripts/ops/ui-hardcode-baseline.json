@@ -332,7 +332,7 @@
     },
     "dashboard/src/ui/dashboard/components/UsageLimitsPanel.jsx": {
       "colors": 0,
-      "rawText": 10,
+      "rawText": 11,
       "rawTextTokens": [
         "); case \"antigravity\": return (",
         "); case \"codex\": return (",
@@ -341,6 +341,7 @@
         "); case \"gemini\": return (",
         "); case \"kimi\": return (",
         "); case \"kiro\": return (",
+        "); case \"zai\": return (",
         "0 && rounded === 0 ? \"",
         "0 ? groups :",
         "renderProviderGroup(id, dataById[id], effectiveMode)) .filter(Boolean); return ("

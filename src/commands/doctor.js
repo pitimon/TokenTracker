@@ -28,6 +28,11 @@ async function cmdDoctor(argv = []) {
     runtime,
     diagnostics,
     fetch: globalThis.fetch,
+    system: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      env: process.env,
+    },
     paths: {
       trackerDir,
       configPath,

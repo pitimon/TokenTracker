@@ -60,6 +60,29 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByText("Not connected")).toBeInTheDocument();
   });
 
+  it("renders Z.AI quota windows", () => {
+    render(
+      <UsageLimitsPanel
+        zai={{
+          configured: true,
+          error: null,
+          primary_window: { used_percent: 3, reset_at: "2026-07-08T01:29:49.940Z" },
+          secondary_window: { used_percent: 23, reset_at: "2026-07-13T14:35:06.984Z" },
+          tertiary_window: { used_percent: 1, reset_at: "2026-07-29T14:35:06.989Z" },
+        }}
+        order={["zai"]}
+      />,
+    );
+
+    expect(screen.getByText("Z.AI")).toBeInTheDocument();
+    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getByText("Weekly")).toBeInTheDocument();
+    expect(screen.getByText("MCP")).toBeInTheDocument();
+    expect(screen.getByText("3%")).toBeInTheDocument();
+    expect(screen.getByText("23%")).toBeInTheDocument();
+    expect(screen.getByText("1%")).toBeInTheDocument();
+  });
+
   it("appends plan_label to the provider title when present", () => {
     render(
       <UsageLimitsPanel

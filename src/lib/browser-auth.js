@@ -158,7 +158,40 @@ function buildBrowserList() {
   return [def, ...all.filter((b) => b !== def)];
 }
 
-function openInBrowser(url) {
+function buildBrowserOpenErrorMessage({ url, command, error, platform = process.platform } = {}) {
+  const commandName =
+    command || (platform === "win32" ? "cmd" : platform === "darwin" ? "open" : "xdg-open");
+  const reason =
+    error?.code === "ENOENT" ? `${commandName} not found` : error?.message || String(error || "unknown error");
+  const lines = [
+    `Could not open browser automatically: ${reason}.`,
+    `Open manually: ${url}`,
+  ];
+  if (platform === "linux" && commandName === "xdg-open") {
+    lines.push("Linux fix: sudo apt install -y xdg-utils");
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function spawnBrowserCommand(
+  command,
+  args,
+  { url, platform = process.platform, stderr = process.stderr, spawn = cp.spawn } = {},
+) {
+  try {
+    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    child.on("error", (error) => {
+      stderr.write(buildBrowserOpenErrorMessage({ url, command, error, platform }));
+    });
+    child.unref();
+    return child;
+  } catch (error) {
+    stderr.write(buildBrowserOpenErrorMessage({ url, command, error, platform }));
+    return null;
+  }
+}
+
+function openInBrowser(url, { stderr = process.stderr } = {}) {
   const platform = process.platform;
 
   if (platform === "darwin") {
@@ -230,15 +263,10 @@ else
   open location "${url}"
 end if
 `;
-    try {
-      const child = cp.spawn("osascript", ["-e", script], { stdio: "ignore", detached: true });
-      child.unref();
-    } catch (_e) {
+    const child = spawnBrowserCommand("osascript", ["-e", script], { url, platform, stderr });
+    if (!child) {
       // Fallback to plain open
-      try {
-        const child = cp.spawn("open", [url], { stdio: "ignore", detached: true });
-        child.unref();
-      } catch (_e2) {}
+      spawnBrowserCommand("open", [url], { url, platform, stderr });
     }
     return;
   }
@@ -254,10 +282,7 @@ end if
     args = [url];
   }
 
-  try {
-    const child = cp.spawn(cmd, args, { stdio: "ignore", detached: true });
-    child.unref();
-  } catch (_e) {}
+  spawnBrowserCommand(cmd, args, { url, platform, stderr });
 }
 
 function resolvePostAuthRedirect({ dashboardUrl, authUrl }) {
@@ -278,4 +303,6 @@ function resolvePostAuthRedirect({ dashboardUrl, authUrl }) {
 module.exports = {
   beginBrowserAuth,
   openInBrowser,
+  buildBrowserOpenErrorMessage,
+  spawnBrowserCommand,
 };

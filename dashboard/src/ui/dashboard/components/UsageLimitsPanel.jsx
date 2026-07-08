@@ -77,7 +77,7 @@ function ToolGroup({ name, icon, children }) {
   );
 }
 
-const DEFAULT_ORDER = ["claude", "codex", "cursor", "gemini", "kimi", "kiro", "copilot", "antigravity"];
+const DEFAULT_ORDER = ["claude", "codex", "cursor", "gemini", "kimi", "zai", "kiro", "copilot", "antigravity"];
 
 const PROVIDER_META = {
   claude: { name: "Claude", icon: "/brand-logos/claude-code.svg" },
@@ -85,6 +85,7 @@ const PROVIDER_META = {
   cursor: { name: "Cursor", icon: "/brand-logos/cursor.svg" },
   gemini: { name: "Gemini", icon: "/brand-logos/gemini.svg" },
   kimi: { name: "Kimi", icon: "/brand-logos/kimi.svg" },
+  zai: { name: "Z.AI", icon: null },
   kiro: { name: "Kiro", icon: "/brand-logos/kiro.svg" },
   copilot: { name: "GitHub Copilot", icon: "/brand-logos/copilot.svg" },
   antigravity: { name: "Antigravity", icon: "/brand-logos/antigravity.svg" },
@@ -164,6 +165,15 @@ function renderProviderGroup(id, data, mode) {
           {!data.primary_window && !data.secondary_window && !data.tertiary_window ? <StatusLine>{copy("limits.status.no_data")}</StatusLine> : null}
         </ToolGroup>
       );
+    case "zai":
+      return (
+        <ToolGroup key="zai" name={title} icon={meta.icon}>
+          {data.primary_window ? <LimitBar label={copy("limits.label.zai_5h")} pct={data.primary_window.used_percent} reset={formatReset(data.primary_window.reset_at)} mode={mode} /> : null}
+          {data.secondary_window ? <LimitBar label={copy("limits.label.zai_weekly")} pct={data.secondary_window.used_percent} reset={formatReset(data.secondary_window.reset_at)} mode={mode} /> : null}
+          {data.tertiary_window ? <LimitBar label={copy("limits.label.zai_mcp")} pct={data.tertiary_window.used_percent} reset={formatReset(data.tertiary_window.reset_at)} mode={mode} /> : null}
+          {!data.primary_window && !data.secondary_window && !data.tertiary_window ? <StatusLine>{copy("limits.status.no_data")}</StatusLine> : null}
+        </ToolGroup>
+      );
     case "kiro":
       return (
         <ToolGroup key="kiro" name={title} icon={meta.icon}>
@@ -230,8 +240,8 @@ function CopilotOtelHint({ defaultDir }) {
   );
 }
 
-export function UsageLimitsPanel({ claude, codex, cursor, gemini, kimi, kiro, antigravity, copilot, order, visibility, displayMode }) {
-  const dataById = { claude, codex, cursor, gemini, kimi, kiro, antigravity, copilot };
+export function UsageLimitsPanel({ claude, codex, cursor, gemini, kimi, zai, kiro, antigravity, copilot, order, visibility, displayMode }) {
+  const dataById = { claude, codex, cursor, gemini, kimi, zai, kiro, antigravity, copilot };
   const effectiveOrder = Array.isArray(order) && order.length > 0 ? order : DEFAULT_ORDER;
   const effectiveMode = displayMode === LIMIT_DISPLAY_MODES.REMAINING
     ? LIMIT_DISPLAY_MODES.REMAINING

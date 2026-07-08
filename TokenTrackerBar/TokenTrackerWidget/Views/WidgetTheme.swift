@@ -34,6 +34,7 @@ enum WidgetTheme {
         case "openclaw":    return .pink
         case "cursor":      return .yellow
         case "kimi":        return .purple
+        case "zai":         return .orange
         case "everycode":   return .cyan
         case "kiro":        return .mint
         case "antigravity": return .indigo
