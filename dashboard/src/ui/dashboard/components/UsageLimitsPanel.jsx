@@ -126,6 +126,7 @@ function renderProviderGroup(id, data, mode) {
           {data.five_hour ? <LimitBar label="5h" pct={data.five_hour.utilization} reset={formatReset(data.five_hour.resets_at)} mode={mode} /> : null}
           {data.seven_day ? <LimitBar label="7d" pct={data.seven_day.utilization} reset={formatReset(data.seven_day.resets_at)} mode={mode} /> : null}
           {data.seven_day_opus ? <LimitBar label="Opus" pct={data.seven_day_opus.utilization} reset={formatReset(data.seven_day_opus.resets_at)} mode={mode} /> : null}
+          {data.cached ? <StatusLine>{copy("limits.status.cached")}</StatusLine> : null}
           {!data.five_hour && !data.seven_day && !data.seven_day_opus ? <StatusLine>{copy("limits.status.no_data")}</StatusLine> : null}
         </ToolGroup>
       );
