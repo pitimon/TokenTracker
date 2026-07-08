@@ -29,6 +29,8 @@ const DEFAULT_PROVIDER_TIMEOUT_MS = 15_000;
 const ANTIGRAVITY_LIMITS_CACHE_FILE = "usage-limits-cache.json";
 const ANTIGRAVITY_LIMITS_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const ANTIGRAVITY_LIMITS_CACHE_UNKNOWN_RESET_TTL_MS = 12 * 60 * 60 * 1000;
+const CLAUDE_LIMITS_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const CLAUDE_USAGE_RATE_LIMITED = "CLAUDE_USAGE_RATE_LIMITED";
 
 function clampPercent(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -119,9 +121,12 @@ async function fetchClaudeUsageLimits(accessToken, { fetchImpl = fetch, maxAttem
     }
     if (!res.ok) {
       if (res.status === 429) {
-        throw new Error(
+        const error = new Error(
           "Claude API rate limited (429) — wait ~1 minute and refresh.",
         );
+        error.code = CLAUDE_USAGE_RATE_LIMITED;
+        error.transient = true;
+        throw error;
       }
       throw new Error(`Claude API returned ${res.status}`);
     }
@@ -133,6 +138,13 @@ async function fetchClaudeUsageLimits(accessToken, { fetchImpl = fetch, maxAttem
       extra_usage: body.extra_usage ?? null,
     };
   }
+}
+
+function isClaudeTransientUsageError(error) {
+  if (!error) return false;
+  if (error.code === CLAUDE_USAGE_RATE_LIMITED || error.transient === true) return true;
+  const message = String(error.message || "");
+  return /rate limited|timed out/i.test(message);
 }
 
 // Classify a wham window by `limit_window_seconds` rather than its slot name.
@@ -1324,11 +1336,34 @@ function detectAntigravityProcess({ commandRunner } = {}) {
   return { configured: false };
 }
 
-function resolveAntigravityLimitsCachePath({ home } = {}) {
+function resolveUsageLimitsCachePath({ home } = {}) {
   return path.join(home || os.homedir(), ".tokentracker", "tracker", ANTIGRAVITY_LIMITS_CACHE_FILE);
 }
 
+function readUsageLimitsCacheFile({ home } = {}) {
+  try {
+    return JSON.parse(fs.readFileSync(resolveUsageLimitsCachePath({ home }), "utf8"));
+  } catch (_error) {
+    return {};
+  }
+}
+
+function writeUsageLimitsCacheFile(update, { home } = {}) {
+  const cachePath = resolveUsageLimitsCachePath({ home });
+  try {
+    const current = readUsageLimitsCacheFile({ home });
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    const tmpPath = `${cachePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify({ ...current, ...update }, null, 2), { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(tmpPath, cachePath);
+  } catch (_error) {}
+}
+
 function parseTimeMs(value) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
   if (typeof value !== "string" || !value) return null;
   const ts = Date.parse(value);
   return Number.isFinite(ts) && ts > 0 ? ts : null;
@@ -1367,18 +1402,12 @@ function normalizeAntigravityCachedLimits(raw, { nowMs = Date.now() } = {}) {
 }
 
 function readAntigravityLimitsCache({ home, nowMs = Date.now() } = {}) {
-  const cachePath = resolveAntigravityLimitsCachePath({ home });
-  try {
-    const parsed = JSON.parse(fs.readFileSync(cachePath, "utf8"));
-    return normalizeAntigravityCachedLimits(parsed?.antigravity, { nowMs });
-  } catch (_error) {
-    return null;
-  }
+  const parsed = readUsageLimitsCacheFile({ home });
+  return normalizeAntigravityCachedLimits(parsed?.antigravity, { nowMs });
 }
 
 function writeAntigravityLimitsCache(limits, { home, nowMs = Date.now() } = {}) {
   if (!limits?.configured || limits.error || !hasAntigravityWindow(limits)) return;
-  const cachePath = resolveAntigravityLimitsCachePath({ home });
   const payload = {
     antigravity: {
       account_email: limits.account_email || null,
@@ -1389,12 +1418,62 @@ function writeAntigravityLimitsCache(limits, { home, nowMs = Date.now() } = {}) 
       cached_at: new Date(nowMs).toISOString(),
     },
   };
-  try {
-    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-    const tmpPath = `${cachePath}.${process.pid}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), { encoding: "utf8", mode: 0o600 });
-    fs.renameSync(tmpPath, cachePath);
-  } catch (_error) {}
+  writeUsageLimitsCacheFile(payload, { home });
+}
+
+function hasClaudeWindow(limits) {
+  return Boolean(limits?.five_hour || limits?.seven_day || limits?.seven_day_opus);
+}
+
+function isClaudeCacheWindowUsable(window, { cachedAtMs, nowMs } = {}) {
+  if (!window || typeof window !== "object") return false;
+  const resetAtMs = parseTimeMs(window.resets_at);
+  if (resetAtMs !== null) return resetAtMs > nowMs;
+  return Number.isFinite(cachedAtMs)
+    && nowMs - cachedAtMs <= CLAUDE_LIMITS_CACHE_MAX_AGE_MS;
+}
+
+function normalizeClaudeCachedLimits(raw, { nowMs = Date.now() } = {}) {
+  const cachedAtMs = parseTimeMs(raw?.cached_at);
+  if (!Number.isFinite(cachedAtMs)) return null;
+  if (cachedAtMs > nowMs + 60_000) return null;
+  if (nowMs - cachedAtMs > CLAUDE_LIMITS_CACHE_MAX_AGE_MS) return null;
+
+  const cached = {
+    configured: true,
+    error: null,
+    five_hour: isClaudeCacheWindowUsable(raw?.five_hour, { cachedAtMs, nowMs }) ? raw.five_hour : null,
+    seven_day: isClaudeCacheWindowUsable(raw?.seven_day, { cachedAtMs, nowMs }) ? raw.seven_day : null,
+    seven_day_opus: isClaudeCacheWindowUsable(raw?.seven_day_opus, { cachedAtMs, nowMs }) ? raw.seven_day_opus : null,
+    extra_usage: raw?.extra_usage || null,
+    cached: true,
+    cached_at: raw.cached_at,
+    stale_reason: typeof raw?.stale_reason === "string" ? raw.stale_reason : null,
+  };
+  return hasClaudeWindow(cached) ? cached : null;
+}
+
+function readClaudeLimitsCache({ home, nowMs = Date.now(), staleReason = null } = {}) {
+  const parsed = readUsageLimitsCacheFile({ home });
+  const cached = normalizeClaudeCachedLimits(parsed?.claude, { nowMs });
+  if (!cached) return null;
+  return {
+    ...cached,
+    stale_reason: typeof staleReason === "string" && staleReason ? staleReason : cached.stale_reason,
+  };
+}
+
+function writeClaudeLimitsCache(limits, { home, nowMs = Date.now() } = {}) {
+  if (!limits?.configured || limits.error || !hasClaudeWindow(limits)) return;
+  writeUsageLimitsCacheFile({
+    claude: {
+      five_hour: limits.five_hour || null,
+      seven_day: limits.seven_day || null,
+      seven_day_opus: limits.seven_day_opus || null,
+      extra_usage: limits.extra_usage || null,
+      cached_at: new Date(nowMs).toISOString(),
+    },
+  }, { home });
 }
 
 function resolveLsofBinary({ commandRunner } = {}) {
@@ -1860,7 +1939,11 @@ async function getUsageLimits({
   if (!claudeToken) {
     claude = { configured: false };
   } else if (!claudeResult || claudeResult.status === "rejected") {
-    claude = { configured: true, error: claudeResult?.reason?.message || "Unknown error" };
+    const reason = claudeResult?.reason;
+    const cached = isClaudeTransientUsageError(reason)
+      ? readClaudeLimitsCache({ home, nowMs, staleReason: reason?.message })
+      : null;
+    claude = cached || { configured: true, error: reason?.message || "Unknown error" };
   } else {
     claude = {
       configured: true,
@@ -1870,6 +1953,7 @@ async function getUsageLimits({
       seven_day_opus: claudeResult.value.seven_day_opus,
       extra_usage: claudeResult.value.extra_usage,
     };
+    writeClaudeLimitsCache(claude, { home, nowMs });
   }
 
   let codex;

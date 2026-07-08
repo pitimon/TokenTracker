@@ -83,6 +83,30 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByText("1%")).toBeInTheDocument();
   });
 
+  it("renders cached Claude quota instead of a provider error", () => {
+    render(
+      <UsageLimitsPanel
+        claude={{
+          configured: true,
+          error: null,
+          cached: true,
+          stale_reason: "Claude API rate limited (429) — wait ~1 minute and refresh.",
+          five_hour: { utilization: 17, resets_at: "2026-07-08T10:00:00.000Z" },
+          seven_day: { utilization: 29, resets_at: "2026-07-10T10:00:00.000Z" },
+        }}
+        order={["claude"]}
+      />,
+    );
+
+    expect(screen.getByText("Claude")).toBeInTheDocument();
+    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getByText("7d")).toBeInTheDocument();
+    expect(screen.getByText("17%")).toBeInTheDocument();
+    expect(screen.getByText("29%")).toBeInTheDocument();
+    expect(screen.getByText("Showing latest cached quota while live refresh is temporarily limited.")).toBeInTheDocument();
+    expect(screen.queryByText(/Error:/)).not.toBeInTheDocument();
+  });
+
   it("appends plan_label to the provider title when present", () => {
     render(
       <UsageLimitsPanel

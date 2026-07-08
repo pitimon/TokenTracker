@@ -720,6 +720,104 @@ describe("getUsageLimits", () => {
     }
   });
 
+  it("shows cached Claude quota when the live Claude usage endpoint is rate limited", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-claude-cache-"));
+    try {
+      const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+      fs.mkdirSync(trackerDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(trackerDir, "usage-limits-cache.json"),
+        JSON.stringify({
+          antigravity: {
+            primary_window: {
+              used_percent: 42,
+              reset_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+            },
+            cached_at: new Date().toISOString(),
+          },
+        }),
+        "utf8",
+      );
+
+      const common = {
+        home: tmp,
+        platform: "darwin",
+        providerTimeoutMs: 1000,
+        securityRunner() {
+          return {
+            status: 0,
+            stdout: JSON.stringify({
+              claudeAiOauth: {
+                accessToken: "claude-token",
+                subscriptionType: "max",
+              },
+            }),
+          };
+        },
+        commandRunner() {
+          return { status: 1, stdout: "" };
+        },
+      };
+
+      const live = await getUsageLimits({
+        ...common,
+        fetchImpl(url) {
+          if (typeof url === "string" && url === "https://api.anthropic.com/api/oauth/usage") {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({
+                five_hour: {
+                  utilization: 17,
+                  resets_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+                },
+                seven_day: {
+                  utilization: 29,
+                  resets_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+                },
+                seven_day_opus: null,
+              }),
+            });
+          }
+          return new Promise(() => {});
+        },
+      });
+
+      assert.equal(live.claude.error, null);
+      assert.equal(live.claude.cached, undefined);
+
+      const cachedFile = JSON.parse(fs.readFileSync(path.join(trackerDir, "usage-limits-cache.json"), "utf8"));
+      assert.equal(cachedFile.claude.five_hour.utilization, 17);
+      assert.equal(cachedFile.antigravity.primary_window.used_percent, 42);
+
+      resetUsageLimitsCache();
+      const cached = await getUsageLimits({
+        ...common,
+        fetchImpl(url) {
+          if (typeof url === "string" && url === "https://api.anthropic.com/api/oauth/usage") {
+            return Promise.resolve({
+              status: 429,
+              ok: false,
+              headers: { get: () => "30" },
+            });
+          }
+          return new Promise(() => {});
+        },
+      });
+
+      assert.equal(cached.claude.configured, true);
+      assert.equal(cached.claude.error, null);
+      assert.equal(cached.claude.cached, true);
+      assert.match(cached.claude.stale_reason, /rate limited/);
+      assert.equal(cached.claude.five_hour.utilization, 17);
+      assert.equal(cached.claude.seven_day.utilization, 29);
+    } finally {
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("does not block the whole response when Kimi usage hangs", async () => {
     resetUsageLimitsCache();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-timeout-"));
