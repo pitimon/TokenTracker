@@ -1,5 +1,6 @@
 const fs = require("node:fs/promises");
 const { constants } = require("node:fs");
+const path = require("node:path");
 
 const { readJsonStrict } = require("./fs");
 
@@ -9,10 +10,14 @@ async function buildDoctorReport({
   fetch = globalThis.fetch,
   now = () => new Date(),
   paths = {},
+  system = null,
 } = {}) {
   const checks = [];
 
   checks.push(...buildRuntimeChecks(runtime));
+  if (system) {
+    checks.push(...(await buildSystemChecks(system)));
+  }
 
   if (paths.trackerDir) {
     checks.push(await checkTrackerDir(paths.trackerDir));
@@ -40,6 +45,99 @@ async function buildDoctorReport({
     checks,
     diagnostics,
   };
+}
+
+async function buildSystemChecks({
+  nodeVersion = process.version,
+  platform = process.platform,
+  env = process.env,
+  commandExists = commandExistsOnPath,
+} = {}) {
+  return [
+    buildNodeVersionCheck(nodeVersion),
+    await buildBrowserOpenerCheck({ platform, env, commandExists }),
+  ];
+}
+
+function buildNodeVersionCheck(nodeVersion) {
+  const major = parseNodeMajor(nodeVersion);
+  const ok = Number.isFinite(major) && major >= 20;
+  return {
+    id: "runtime.node_version",
+    status: ok ? "ok" : "fail",
+    detail: ok ? `Node.js ${nodeVersion} satisfies >=20` : `Node.js ${nodeVersion || "unknown"} is below required >=20`,
+    critical: !ok,
+    meta: {
+      node_version: nodeVersion || null,
+      required_major: 20,
+    },
+  };
+}
+
+async function buildBrowserOpenerCheck({ platform = process.platform, env = process.env, commandExists }) {
+  const headless = isHeadlessEnvironment({ platform, env });
+  if (headless) {
+    return {
+      id: "browser.opener",
+      status: "warn",
+      detail: "headless/session environment detected; use --no-open or open the printed URL manually",
+      critical: false,
+      meta: { platform, command: null, headless: true },
+    };
+  }
+
+  if (platform === "win32") {
+    return {
+      id: "browser.opener",
+      status: "ok",
+      detail: "Windows browser opener uses cmd /c start",
+      critical: false,
+      meta: { platform, command: "cmd", headless: false },
+    };
+  }
+
+  const command = platform === "darwin" ? "open" : "xdg-open";
+  const exists = await commandExists(command, env);
+  return {
+    id: "browser.opener",
+    status: exists ? "ok" : "warn",
+    detail: exists
+      ? `${command} available`
+      : command === "xdg-open"
+        ? "xdg-open missing; install xdg-utils or use --no-open"
+        : `${command} missing; use --no-open`,
+    critical: false,
+    meta: {
+      platform,
+      command,
+      headless: false,
+      linux_fix: command === "xdg-open" && !exists ? "sudo apt install -y xdg-utils" : null,
+    },
+  };
+}
+
+function parseNodeMajor(nodeVersion) {
+  const match = String(nodeVersion || "").match(/^v?(\d+)/);
+  return match ? Number(match[1]) : NaN;
+}
+
+function isHeadlessEnvironment({ platform, env = {} } = {}) {
+  if (env.CI === "true" || env.HEADLESS === "true" || env.TOKENTRACKER_HEADLESS === "1") return true;
+  if (platform === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY && !env.WSL_DISTRO_NAME) return true;
+  return false;
+}
+
+async function commandExistsOnPath(command, env = process.env) {
+  const pathValue = env.PATH || "";
+  const dirs = pathValue.split(path.delimiter).filter(Boolean);
+  for (const dir of dirs) {
+    const candidate = path.join(dir, command);
+    try {
+      await fs.access(candidate, constants.X_OK);
+      return true;
+    } catch (_e) {}
+  }
+  return false;
 }
 
 function buildRuntimeChecks(runtime = {}) {
@@ -335,4 +433,9 @@ function summarizeChecks(checks = []) {
   return summary;
 }
 
-module.exports = { buildDoctorReport };
+module.exports = {
+  buildDoctorReport,
+  buildBrowserOpenerCheck,
+  buildNodeVersionCheck,
+  isHeadlessEnvironment,
+};

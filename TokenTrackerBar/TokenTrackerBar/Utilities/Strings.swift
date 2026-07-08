@@ -64,6 +64,9 @@ enum Strings {
     static var kimiWeeklyLabel: String { t("Weekly", "周", "周", "週間", "주간") }
     static var kimiFiveHourLabel: String { t("5h", "5h", "5h", "5h", "5h") }
     static var kimiTotalLabel: String { t("Total", "总量", "總量", "合計", "총량") }
+    static var zaiFiveHourLabel: String { t("5h", "5h", "5h", "5h", "5h") }
+    static var zaiWeeklyLabel: String { t("Weekly", "周", "周", "週間", "주간") }
+    static var zaiMcpLabel: String { t("MCP", "MCP", "MCP", "MCP", "MCP") }
     static var kiroMonthLabel: String { t("Month", "本月", "本月", "今月", "이번 달") }
     static var kiroBonusLabel: String { t("Bonus", "奖励", "獎勵", "ボーナス", "보너스") }
     static var limitResetNow: String { t("now", "现在", "現在", "今", "지금") }

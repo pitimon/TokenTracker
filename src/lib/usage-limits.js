@@ -494,6 +494,133 @@ async function fetchKimiLimits({ home, env, fetchImpl = fetch } = {}) {
   }
 }
 
+function resolveZaiAuth({ env = process.env } = {}) {
+  const anthropicBaseUrl = typeof env?.ANTHROPIC_BASE_URL === "string" ? env.ANTHROPIC_BASE_URL.trim() : "";
+  const anthropicToken = typeof env?.ANTHROPIC_AUTH_TOKEN === "string" ? env.ANTHROPIC_AUTH_TOKEN.trim() : "";
+  if (anthropicBaseUrl && anthropicToken) {
+    try {
+      const host = new URL(anthropicBaseUrl).hostname.toLowerCase();
+      if (host === "api.z.ai" || host === "open.bigmodel.cn") {
+        return {
+          endpoint: `${new URL(anthropicBaseUrl).origin}/api/monitor/usage/quota/limit`,
+          authorization: anthropicToken,
+        };
+      }
+    } catch (_error) {}
+  }
+
+  const apiKey = [
+    env?.TOKENTRACKER_ZAI_API_KEY,
+    env?.ZAI_API_KEY,
+    env?.ZHIPU_API_KEY,
+  ].find((value) => typeof value === "string" && value.trim());
+  if (!apiKey) return null;
+  const trimmed = apiKey.trim();
+  return {
+    endpoint: "https://api.z.ai/api/monitor/usage/quota/limit",
+    authorization: /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`,
+  };
+}
+
+function zaiResetTime(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) {
+    const ms = n > 10_000_000_000 ? n : n * 1000;
+    const date = new Date(ms);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+  }
+  const ts = Date.parse(String(value));
+  return Number.isFinite(ts) ? new Date(ts).toISOString() : null;
+}
+
+function zaiWindowFromLimit(limit) {
+  if (!limit || typeof limit !== "object") return null;
+  let usedPercent = clampPercent(limit.percentage);
+  if (usedPercent === null) {
+    const current = Number(limit.currentValue ?? limit.usage);
+    const remaining = Number(limit.remaining);
+    if (Number.isFinite(current) && current >= 0 && Number.isFinite(remaining) && remaining >= 0) {
+      usedPercent = clampPercent((current / (current + remaining)) * 100);
+    }
+  }
+  return buildWindow({
+    usedPercent,
+    resetAt: zaiResetTime(limit.nextResetTime),
+  });
+}
+
+function normalizeZaiUsageResponse(body) {
+  const data = body?.data && typeof body.data === "object" ? body.data : {};
+  const limits = Array.isArray(data.limits) ? data.limits : [];
+  let fiveHour = null;
+  let weekly = null;
+  let monthly = null;
+
+  for (const limit of limits) {
+    const type = typeof limit?.type === "string" ? limit.type : "";
+    const unit = Number(limit?.unit);
+    const number = Number(limit?.number);
+    if (type === "TOKENS_LIMIT" && unit === 3 && number === 5 && !fiveHour) {
+      fiveHour = zaiWindowFromLimit(limit);
+    } else if (type === "TOKENS_LIMIT" && unit === 6 && !weekly) {
+      weekly = zaiWindowFromLimit(limit);
+    } else if (type === "TIME_LIMIT" && !monthly) {
+      monthly = zaiWindowFromLimit(limit);
+    }
+  }
+
+  return {
+    account_plan: typeof data.planName === "string"
+      ? data.planName
+      : typeof data.plan === "string"
+        ? data.plan
+        : typeof data.level === "string"
+          ? data.level
+          : data.level != null
+            ? String(data.level)
+            : null,
+    primary_window: fiveHour,
+    secondary_window: weekly,
+    tertiary_window: monthly,
+  };
+}
+
+async function fetchZaiLimits({ env = process.env, fetchImpl = fetch } = {}) {
+  const auth = resolveZaiAuth({ env });
+  if (!auth) return { configured: false };
+
+  try {
+    const res = await fetchImpl(auth.endpoint, {
+      method: "GET",
+      headers: {
+        Authorization: auth.authorization,
+        Accept: "application/json",
+      },
+    });
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Z.AI token rejected. Check ZAI_API_KEY or ZHIPU_API_KEY.");
+    }
+    if (!res.ok) {
+      throw new Error(`Z.AI API returned ${res.status}`);
+    }
+    const json = await res.json();
+    if (json?.success === false) {
+      throw new Error(json?.msg || "Z.AI API returned an unsuccessful response.");
+    }
+    return {
+      configured: true,
+      error: null,
+      ...normalizeZaiUsageResponse(json),
+    };
+  } catch (error) {
+    return {
+      configured: true,
+      error: error?.message || "Unknown error",
+    };
+  }
+}
+
 function resolveGeminiHome({ home, env } = {}) {
   const explicit = typeof env?.GEMINI_HOME === "string" ? env.GEMINI_HOME.trim() : "";
   return explicit ? path.resolve(explicit) : path.join(home, ".gemini");
@@ -1698,7 +1825,7 @@ async function getUsageLimits({
   const codexPlanType = codexAuthRefreshed?.planType || null;
 
   const providerFetch = withFetchTimeout(fetchImpl, providerTimeoutMs);
-  const [claudeResult, codexResult, cursor, kimi, gemini, kiro, antigravity, copilot] = await Promise.all([
+  const [claudeResult, codexResult, cursor, kimi, zai, gemini, kiro, antigravity, copilot] = await Promise.all([
     claudeToken
       ? withProviderTimeout(fetchClaudeUsageLimits(claudeToken, { fetchImpl: providerFetch, maxAttempts: 1 }), "Claude", providerTimeoutMs).then(
           (value) => ({ status: "fulfilled", value }),
@@ -1718,6 +1845,8 @@ async function getUsageLimits({
     withProviderTimeout(fetchCursorLimits({ home, fetchImpl: providerFetch }), "Cursor", providerTimeoutMs)
       .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
     withProviderTimeout(fetchKimiLimits({ home, env, fetchImpl: providerFetch }), "Kimi", providerTimeoutMs)
+      .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
+    withProviderTimeout(fetchZaiLimits({ env, fetchImpl: providerFetch }), "Z.AI", providerTimeoutMs)
       .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
     withProviderTimeout(fetchGeminiLimits({ home, env, fetchImpl: providerFetch, commandRunner }), "Gemini", providerTimeoutMs)
       .catch((reason) => ({ configured: true, error: reason?.message || "Unknown error" })),
@@ -1772,6 +1901,7 @@ async function getUsageLimits({
     codex: withPlanLabel(codex, codex.plan_type, "Codex"),
     cursor: withPlanLabel(cursor, cursor.membership_type, "Cursor"),
     kimi: withPlanLabel(kimi, kimi.subscription_type || kimi.membership_level, "Kimi"),
+    zai: withPlanLabel(zai, zai.account_plan, "Z.AI"),
     gemini: withPlanLabel(gemini, gemini.account_plan, "Gemini"),
     kiro: withPlanLabel(kiro, kiro.plan_name, "Kiro"),
     antigravity: withPlanLabel(antigravity, antigravity.account_plan, "Antigravity"),
@@ -1795,6 +1925,8 @@ module.exports = {
   normalizeCursorUsageSummary,
   normalizeGeminiQuotaResponse,
   normalizeKimiUsageResponse,
+  normalizeZaiUsageResponse,
+  fetchZaiLimits,
   parseKiroUsageOutput,
   normalizeAntigravityResponse,
   parseListeningPorts,

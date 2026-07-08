@@ -12,6 +12,8 @@ const {
   normalizeCursorUsageSummary,
   normalizeGeminiQuotaResponse,
   normalizeKimiUsageResponse,
+  normalizeZaiUsageResponse,
+  fetchZaiLimits,
   parseKiroUsageOutput,
   resetUsageLimitsCache,
   normalizeAntigravityResponse,
@@ -19,6 +21,112 @@ const {
   detectAntigravityProcess,
   fetchAntigravityLimits,
 } = require("../src/lib/usage-limits");
+
+describe("normalizeZaiUsageResponse", () => {
+  it("maps Z.AI token and MCP quota windows from monitor limits", () => {
+    const result = normalizeZaiUsageResponse({
+      success: true,
+      code: 200,
+      data: {
+        level: 2,
+        limits: [
+          {
+            type: "TIME_LIMIT",
+            unit: 5,
+            number: 1,
+            percentage: 1,
+            nextResetTime: 1785335706989,
+            currentValue: 4000,
+            remaining: 396000,
+          },
+          {
+            type: "TOKENS_LIMIT",
+            unit: 3,
+            number: 5,
+            percentage: 3,
+            nextResetTime: 1783474189940,
+          },
+          {
+            type: "TOKENS_LIMIT",
+            unit: 6,
+            number: 1,
+            percentage: 23,
+            nextResetTime: 1783953306984,
+          },
+        ],
+      },
+    });
+
+    assert.equal(result.account_plan, "2");
+    assert.deepEqual(result.primary_window, {
+      used_percent: 3,
+      reset_at: "2026-07-08T01:29:49.940Z",
+    });
+    assert.deepEqual(result.secondary_window, {
+      used_percent: 23,
+      reset_at: "2026-07-13T14:35:06.984Z",
+    });
+    assert.deepEqual(result.tertiary_window, {
+      used_percent: 1,
+      reset_at: "2026-07-29T14:35:06.989Z",
+    });
+  });
+});
+
+describe("fetchZaiLimits", () => {
+  it("uses Bearer auth for ZAI_API_KEY and returns normalized limits", async () => {
+    let observedAuth = null;
+    const result = await fetchZaiLimits({
+      env: { ZAI_API_KEY: "zai-test-key" },
+      fetchImpl(url, opts) {
+        assert.equal(url, "https://api.z.ai/api/monitor/usage/quota/limit");
+        observedAuth = opts?.headers?.Authorization;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              planName: "Pro",
+              limits: [
+                { type: "TOKENS_LIMIT", unit: 3, number: 5, percentage: 12 },
+              ],
+            },
+          }),
+        });
+      },
+    });
+
+    assert.equal(observedAuth, "Bearer zai-test-key");
+    assert.equal(result.configured, true);
+    assert.equal(result.error, null);
+    assert.equal(result.account_plan, "Pro");
+    assert.deepEqual(result.primary_window, { used_percent: 12, reset_at: null });
+  });
+
+  it("uses Claude-compatible auth as-is when ANTHROPIC_BASE_URL points at Z.AI", async () => {
+    let observedAuth = null;
+    const result = await fetchZaiLimits({
+      env: {
+        ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
+        ANTHROPIC_AUTH_TOKEN: "raw-claude-token",
+      },
+      fetchImpl(url, opts) {
+        assert.equal(url, "https://api.z.ai/api/monitor/usage/quota/limit");
+        observedAuth = opts?.headers?.Authorization;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, data: { limits: [] } }),
+        });
+      },
+    });
+
+    assert.equal(observedAuth, "raw-claude-token");
+    assert.equal(result.configured, true);
+    assert.equal(result.error, null);
+  });
+});
 
 describe("extractGeminiOauthClientCredentials", () => {
   it("finds OAuth constants from bundled Gemini CLI chunk files", () => {

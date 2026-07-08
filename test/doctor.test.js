@@ -58,6 +58,48 @@ test("doctor reports runtime config status", async () => {
   assert.equal(tokenCheck.status, "ok");
 });
 
+test("doctor reports Node.js version and missing Linux opener", async () => {
+  const report = await buildDoctorReport({
+    runtime: { baseUrl: "https://example", deviceToken: "token" },
+    fetch: async () => ({ status: 200 }),
+    system: {
+      nodeVersion: "v18.20.0",
+      platform: "linux",
+      env: { PATH: "/usr/bin", DISPLAY: ":0" },
+      commandExists: async () => false,
+    },
+  });
+  const nodeCheck = report.checks.find((c) => c.id === "runtime.node_version");
+  const openerCheck = report.checks.find((c) => c.id === "browser.opener");
+
+  assert.equal(nodeCheck.status, "fail");
+  assert.equal(nodeCheck.critical, true);
+  assert.equal(openerCheck.status, "warn");
+  assert.equal(openerCheck.meta.command, "xdg-open");
+  assert.equal(openerCheck.meta.linux_fix, "sudo apt install -y xdg-utils");
+  assert.equal(report.ok, false);
+});
+
+test("doctor warns for headless browser opener even when Node is supported", async () => {
+  const report = await buildDoctorReport({
+    runtime: { baseUrl: "https://example", deviceToken: "token" },
+    fetch: async () => ({ status: 200 }),
+    system: {
+      nodeVersion: "v20.11.1",
+      platform: "linux",
+      env: { PATH: "/usr/bin" },
+      commandExists: async () => true,
+    },
+  });
+  const nodeCheck = report.checks.find((c) => c.id === "runtime.node_version");
+  const openerCheck = report.checks.find((c) => c.id === "browser.opener");
+
+  assert.equal(nodeCheck.status, "ok");
+  assert.equal(openerCheck.status, "warn");
+  assert.equal(openerCheck.meta.headless, true);
+  assert.match(openerCheck.detail, /--no-open/);
+});
+
 test("doctor marks invalid config.json as critical", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-doctor-"));
   const trackerDir = path.join(tmp, ".tokentracker", "tracker");

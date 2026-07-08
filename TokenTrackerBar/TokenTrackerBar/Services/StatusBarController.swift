@@ -22,6 +22,9 @@ enum MenuBarDisplayMetric: String, CaseIterable {
     case kimiWeekly
     case kimi5h
     case kimiTotal
+    case zai5h
+    case zaiWeekly
+    case zaiMcp
     case kiroMonth
     case kiroBonus
     case copilotPremium
@@ -51,6 +54,9 @@ enum MenuBarDisplayMetric: String, CaseIterable {
         case .kimiWeekly: return "Km Wk"
         case .kimi5h: return "Km 5h"
         case .kimiTotal: return "Km Tot"
+        case .zai5h: return "Z 5h"
+        case .zaiWeekly: return "Z Wk"
+        case .zaiMcp: return "Z MCP"
         case .kiroMonth: return "Kr Mo"
         case .kiroBonus: return "Kr Bn"
         case .copilotPremium: return "Co Prem"
@@ -82,6 +88,9 @@ enum MenuBarDisplayMetric: String, CaseIterable {
         case .kimiWeekly: return "Kimi Weekly Limit"
         case .kimi5h: return "Kimi 5h Limit"
         case .kimiTotal: return "Kimi Total Limit"
+        case .zai5h: return "Z.AI 5h Limit"
+        case .zaiWeekly: return "Z.AI Weekly Limit"
+        case .zaiMcp: return "Z.AI MCP Limit"
         case .kiroMonth: return "Kiro Monthly Limit"
         case .kiroBonus: return "Kiro Bonus Limit"
         case .copilotPremium: return "Copilot Premium Limit"
@@ -102,6 +111,7 @@ enum MenuBarDisplayMetric: String, CaseIterable {
              .cursorPlan, .cursorAuto, .cursorAPI,
              .geminiPro, .geminiFlash, .geminiLite,
              .kimiWeekly, .kimi5h, .kimiTotal,
+             .zai5h, .zaiWeekly, .zaiMcp,
              .kiroMonth, .kiroBonus,
              .copilotPremium, .copilotChat,
              .antigravityClaude, .antigravityGPro, .antigravityFlash:
@@ -121,6 +131,7 @@ enum MenuBarDisplayMetric: String, CaseIterable {
         case .cursorPlan, .cursorAuto, .cursorAPI: return "cursor"
         case .geminiPro, .geminiFlash, .geminiLite: return "gemini"
         case .kimiWeekly, .kimi5h, .kimiTotal: return "kimi"
+        case .zai5h, .zaiWeekly, .zaiMcp: return "zai"
         case .kiroMonth, .kiroBonus: return "kiro"
         case .copilotPremium, .copilotChat: return "copilot"
         case .antigravityClaude, .antigravityGPro, .antigravityFlash: return "antigravity"
@@ -138,6 +149,7 @@ private extension UsageLimitsResponse {
         case "cursor": return cursor.configured && cursor.error == nil
         case "gemini": return gemini.configured && gemini.error == nil
         case "kimi": return (kimi?.configured == true) && (kimi?.error == nil)
+        case "zai": return (zai?.configured == true) && (zai?.error == nil)
         case "kiro": return kiro.configured && kiro.error == nil
         case "copilot": return (copilot?.configured == true) && (copilot?.error == nil)
         case "antigravity": return antigravity.configured && antigravity.error == nil
@@ -503,6 +515,12 @@ final class StatusBarController: NSObject {
                 return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.kimi?.configured, error: viewModel.usageLimits?.kimi?.error, window: viewModel.usageLimits?.kimi?.secondaryWindow)
             case .kimiTotal:
                 return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.kimi?.configured, error: viewModel.usageLimits?.kimi?.error, window: viewModel.usageLimits?.kimi?.tertiaryWindow)
+            case .zai5h:
+                return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.zai?.configured, error: viewModel.usageLimits?.zai?.error, window: viewModel.usageLimits?.zai?.primaryWindow)
+            case .zaiWeekly:
+                return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.zai?.configured, error: viewModel.usageLimits?.zai?.error, window: viewModel.usageLimits?.zai?.secondaryWindow)
+            case .zaiMcp:
+                return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.zai?.configured, error: viewModel.usageLimits?.zai?.error, window: viewModel.usageLimits?.zai?.tertiaryWindow)
             case .kiroMonth:
                 return genericLimitValue(id: id, metric: metric, configured: viewModel.usageLimits?.kiro.configured, error: viewModel.usageLimits?.kiro.error, window: viewModel.usageLimits?.kiro.primaryWindow)
             case .kiroBonus:

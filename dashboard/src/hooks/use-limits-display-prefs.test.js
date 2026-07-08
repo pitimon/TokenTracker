@@ -54,6 +54,7 @@ describe("useLimitsDisplayPrefs", () => {
         "gemini",
         "kimi",
         "kiro",
+        "zai",
       ].sort(),
     );
   });

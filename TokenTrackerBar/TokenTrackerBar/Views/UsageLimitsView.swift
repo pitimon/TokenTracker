@@ -15,6 +15,7 @@ struct UsageLimitsView: View {
             (limits.cursor.configured, limits.cursor.error),
             (limits.gemini.configured, limits.gemini.error),
             (limits.kimi?.configured ?? false, limits.kimi?.error),
+            (limits.zai?.configured ?? false, limits.zai?.error),
             (limits.kiro.configured, limits.kiro.error),
             (limits.antigravity.configured, limits.antigravity.error),
             (limits.copilot?.configured ?? false, limits.copilot?.error),
@@ -79,6 +80,10 @@ struct UsageLimitsView: View {
             case "kimi":
                 if let kimi = limits.kimi, kimi.configured, kimi.error == nil {
                     groups.append(AnyView(toolSection(title: planTitle("Kimi", kimi.planLabel), assetName: "KimiLogo") { kimiContent(kimi) }))
+                }
+            case "zai":
+                if let zai = limits.zai, zai.configured, zai.error == nil {
+                    groups.append(AnyView(toolSection(title: planTitle("Z.AI", zai.planLabel), assetName: nil) { zaiContent(zai) }))
                 }
             case "kiro" where limits.kiro.configured && limits.kiro.error == nil:
                 groups.append(AnyView(toolSection(title: planTitle("Kiro", limits.kiro.planLabel), assetName: "KiroLogo") { kiroContent(limits.kiro) }))
@@ -194,6 +199,22 @@ struct UsageLimitsView: View {
                 Text(Strings.kimiParallelLabel(parallelLimit))
                     .font(.system(.caption2, design: .default))
                     .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    // MARK: - Z.AI
+
+    private func zaiContent(_ zai: ZaiLimits) -> some View {
+        VStack(spacing: 4) {
+            if let w = zai.primaryWindow {
+                limitRow(label: Strings.zaiFiveHourLabel, pct: w.usedPercent, reset: relativeReset(iso: w.resetAt), toolName: "Z.AI")
+            }
+            if let w = zai.secondaryWindow {
+                limitRow(label: Strings.zaiWeeklyLabel, pct: w.usedPercent, reset: relativeReset(iso: w.resetAt), toolName: "Z.AI")
+            }
+            if let w = zai.tertiaryWindow {
+                limitRow(label: Strings.zaiMcpLabel, pct: w.usedPercent, reset: relativeReset(iso: w.resetAt), toolName: "Z.AI")
             }
         }
     }
