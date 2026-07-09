@@ -355,7 +355,7 @@ nav.group.account,shared,*,Sidebar,group_account,"Account",,active
 nav.settings,shared,*,Sidebar,nav_settings,"Settings",,active
 header.auth.open_settings,shared,*,InsforgeUserHeaderControls,open_settings,"Open settings",,active
 settings.page.title,ui,SettingsPage,SettingsPage,title,"Settings",,active
-settings.page.subtitle,ui,SettingsPage,SettingsPage,subtitle,"Manage your account, appearance, and display preferences.",,active
+settings.page.subtitle,ui,SettingsPage,SettingsPage,subtitle,"Manage appearance and display preferences.",,active
 settings.section.appearance,ui,SettingsPage,SettingsPage,sec_appearance,"Appearance",,active
 settings.section.account,ui,SettingsPage,SettingsPage,sec_account,"Account",,active
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,"Limits Display",,active
