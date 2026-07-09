@@ -1,6 +1,5 @@
 import React from "react";
 import { LimitsSettingsPanel } from "../components/LimitsSettingsPanel.jsx";
-import { AccountSection } from "../components/settings/AccountSection.jsx";
 import { AppearanceSection } from "../components/settings/AppearanceSection.jsx";
 import { SectionCard, SegmentedControl } from "../components/settings/Controls.jsx";
 import { MenuBarSection, NativeAppFooter } from "../components/settings/MenuBarSection.jsx";
@@ -39,7 +38,6 @@ export function SettingsPage() {
           <div className="space-y-4">
             <AppearanceSection />
             <MenuBarSection />
-            <AccountSection />
             <SectionCard
               title={copy("settings.section.limits")}
               action={<LimitsDisplayModeControl prefs={limitsPrefs} />}
