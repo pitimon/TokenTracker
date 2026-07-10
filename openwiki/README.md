@@ -47,6 +47,9 @@ documentation aligned with the repository.
 The runtime stores token counts and timestamps only. Prompts, messages, and
 conversation bodies are outside the queue and documentation contract.
 
+The diagram above shows the components. For how usage data moves and is
+transformed between them, see the [Data flow](architecture/dataflow.md) view.
+
 ## Start here
 
 - [Quickstart](quickstart.md): documentation workflow, source ledger, and local
