@@ -1,0 +1,337 @@
+{
+  "schema_version": 1,
+  "cli": {
+    "commands": [
+      {
+        "name": "serve",
+        "default": true,
+        "evidence": "src/cli.js:16"
+      },
+      {
+        "name": "init",
+        "evidence": "src/cli.js:29"
+      },
+      {
+        "name": "sync",
+        "evidence": "src/cli.js:32"
+      },
+      {
+        "name": "status",
+        "evidence": "src/cli.js:35"
+      },
+      {
+        "name": "diagnostics",
+        "evidence": "src/cli.js:38"
+      },
+      {
+        "name": "doctor",
+        "evidence": "src/cli.js:41"
+      },
+      {
+        "name": "uninstall",
+        "evidence": "src/cli.js:44"
+      },
+      {
+        "name": "device-login",
+        "evidence": "src/cli.js:47"
+      },
+      {
+        "name": "wrapped",
+        "evidence": "src/cli.js:50"
+      }
+    ]
+  },
+  "local_api": {
+    "endpoints": [
+      {
+        "path": "/functions/tokentracker-local-sync",
+        "methods": [
+          "POST"
+        ],
+        "evidence": "src/lib/local-api.js:1244",
+        "mutation": true
+      },
+      {
+        "path": "/functions/tokentracker-wrapped",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1287",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-usage-summary",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1298",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-usage-daily",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1383",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-usage-heatmap",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1394",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-usage-model-breakdown",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1462",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-usage-category-breakdown",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1527",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-project-usage-summary",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1573",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-user-status",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1650",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-usage-hourly",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1660",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-usage-monthly",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1670",
+        "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-skills",
+        "methods": [
+          "GET",
+          "POST"
+        ],
+        "evidence": "src/lib/local-api.js:1704",
+        "mutation": true
+      },
+      {
+        "path": "/functions/tokentracker-usage-limits",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1854",
+        "mutation": false
+      }
+    ]
+  },
+  "dashboard": {
+    "routes": [
+      {
+        "path": "/",
+        "component": "DashboardPage",
+        "evidence": "dashboard/src/App.jsx:108"
+      },
+      {
+        "path": "/dashboard",
+        "component": "DashboardPage",
+        "evidence": "dashboard/src/App.jsx:108"
+      },
+      {
+        "path": "/leaderboard",
+        "component": "LeaderboardPage",
+        "evidence": "dashboard/src/App.jsx:109"
+      },
+      {
+        "path": "/limits",
+        "component": "LimitsPage",
+        "evidence": "dashboard/src/App.jsx:196"
+      },
+      {
+        "path": "/settings",
+        "component": "SettingsPage",
+        "evidence": "dashboard/src/App.jsx:197"
+      },
+      {
+        "path": "/skills",
+        "component": "SkillsPage",
+        "evidence": "dashboard/src/App.jsx:198"
+      },
+      {
+        "path": "/widgets",
+        "component": "WidgetsPage",
+        "evidence": "dashboard/src/App.jsx:199"
+      },
+      {
+        "path": "/ip-check",
+        "component": "IpCheckPage",
+        "evidence": "dashboard/src/App.jsx:200"
+      },
+      {
+        "path": "/auth/callback",
+        "component": "NativeAuthCallbackPage",
+        "evidence": "dashboard/src/App.jsx:233"
+      },
+      {
+        "path": "/auth/native-callback",
+        "component": "NativeAuthCallbackPage",
+        "evidence": "dashboard/src/App.jsx:233"
+      },
+      {
+        "path": "/login",
+        "component": "LoginPage",
+        "evidence": "dashboard/src/App.jsx:235"
+      },
+      {
+        "path": "/device",
+        "component": "DevicePage",
+        "evidence": "dashboard/src/App.jsx:237"
+      },
+      {
+        "path": "/wrapped",
+        "component": "WrappedPage",
+        "evidence": "dashboard/src/App.jsx:242"
+      },
+      {
+        "path": "/landing",
+        "component": "LandingPage",
+        "evidence": "dashboard/src/App.jsx:191"
+      },
+      {
+        "path": "/share/:token",
+        "component": "ShareCard",
+        "evidence": "dashboard/src/App.jsx:94"
+      },
+      {
+        "path": "/u/:userId",
+        "component": "LeaderboardProfilePage",
+        "evidence": "dashboard/src/App.jsx:6"
+      }
+    ]
+  },
+  "providers": {
+    "parsers": [
+      {
+        "name": "parseRolloutIncremental",
+        "evidence": "src/lib/rollout.js:100"
+      },
+      {
+        "name": "parseClaudeIncremental",
+        "evidence": "src/lib/rollout.js:222"
+      },
+      {
+        "name": "parseGeminiIncremental",
+        "evidence": "src/lib/rollout.js:345"
+      },
+      {
+        "name": "parseOpencodeIncremental",
+        "evidence": "src/lib/rollout.js:466"
+      },
+      {
+        "name": "parseOpenclawIncremental",
+        "evidence": "src/lib/rollout.js:619"
+      },
+      {
+        "name": "parseOpencodeDbIncremental",
+        "evidence": "src/lib/rollout.js:2492"
+      },
+      {
+        "name": "parseCursorApiIncremental",
+        "evidence": "src/lib/rollout.js:2673"
+      },
+      {
+        "name": "parseKiroIncremental",
+        "evidence": "src/lib/rollout.js:2931"
+      },
+      {
+        "name": "parseHermesIncremental",
+        "evidence": "src/lib/rollout.js:3186"
+      },
+      {
+        "name": "parseKiroCliIncremental",
+        "evidence": "src/lib/rollout.js:3737"
+      },
+      {
+        "name": "parseKimiIncremental",
+        "evidence": "src/lib/rollout.js:4251"
+      },
+      {
+        "name": "parseKimiCodeIncremental",
+        "evidence": "src/lib/rollout.js:4442"
+      },
+      {
+        "name": "parseCodebuddyIncremental",
+        "evidence": "src/lib/rollout.js:4666"
+      },
+      {
+        "name": "parseRoocodeIncremental",
+        "evidence": "src/lib/rollout.js:5169"
+      },
+      {
+        "name": "parseZedIncremental",
+        "evidence": "src/lib/rollout.js:5486"
+      },
+      {
+        "name": "parseGooseIncremental",
+        "evidence": "src/lib/rollout.js:5803"
+      },
+      {
+        "name": "parseDroidIncremental",
+        "evidence": "src/lib/rollout.js:6180"
+      },
+      {
+        "name": "parseKilocodeIncremental",
+        "evidence": "src/lib/rollout.js:6427"
+      },
+      {
+        "name": "parseOmpIncremental",
+        "evidence": "src/lib/rollout.js:6563"
+      },
+      {
+        "name": "parsePiIncremental",
+        "evidence": "src/lib/rollout.js:6816"
+      },
+      {
+        "name": "parseCraftIncremental",
+        "evidence": "src/lib/rollout.js:7100"
+      },
+      {
+        "name": "parseCopilotIncremental",
+        "evidence": "src/lib/rollout.js:7450"
+      },
+      {
+        "name": "parseGrokBuildIncremental",
+        "evidence": "src/lib/rollout.js:7916"
+      },
+      {
+        "name": "parseAntigravityIncremental",
+        "evidence": "src/lib/rollout.js:8088"
+      }
+    ]
+  }
+}

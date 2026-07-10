@@ -23,13 +23,17 @@
     "access": "public"
   },
   "scripts": {
-    "ci:local": "npm run dashboard:build && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && node --test test/architecture-guardrails.test.js",
+    "ci:local": "npm run dashboard:build && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && npm run docs:openwiki:check && node --test test/architecture-guardrails.test.js",
     "copy:pull": "node scripts/copy-sync.cjs pull",
     "copy:push": "node scripts/copy-sync.cjs push",
     "dashboard:build": "npm --prefix dashboard run build",
     "dashboard:dev": "npm --prefix dashboard run dev",
     "dashboard:open": "bash scripts/open-dashboard.sh",
     "dashboard:preview": "npm --prefix dashboard run preview",
+    "docs:openwiki:check": "node scripts/openwiki-check-facts.cjs",
+    "docs:openwiki:extract": "node scripts/openwiki-extract-facts.cjs",
+    "docs:openwiki:update": "bash scripts/docs-update.sh",
+    "docs:openwiki:verify": "bash scripts/openwiki-verify.sh",
     "dev:shim": "node scripts/dev-bin-shim.cjs",
     "audit:tokens": "node scripts/audit-token-correctness.cjs",
     "graph:auto-index": "node scripts/graph/auto-index.cjs",
