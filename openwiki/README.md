@@ -52,6 +52,8 @@ conversation bodies are outside the queue and documentation contract.
 - [Quickstart](quickstart.md): documentation workflow, source ledger, and local
   update commands.
 - [Architecture](architecture/overview.md): runtime components and boundaries.
+- [Data flow](architecture/dataflow.md): how usage data moves from tool logs to
+  the dashboard, with a leveled data-flow diagram.
 - [CLI and operations](cli-and-operations.md): CLI command ownership and
   loopback-server behavior.
 - [Parsers and sync](parsers-and-sync.md): parser entry points and aggregation.

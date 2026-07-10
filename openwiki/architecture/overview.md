@@ -16,6 +16,9 @@ The React dashboard is built from `dashboard/` into `dashboard/dist/`. Its route
 selection is implemented in `dashboard/src/App.jsx`, and its local API client is
 `dashboard/src/lib/api.ts`.
 
+For how usage data moves through these components step by step, see
+[Data flow](dataflow.md).
+
 ## Boundaries
 
 - Parser changes begin in `src/lib/rollout.js`, then require sync and token-cost
