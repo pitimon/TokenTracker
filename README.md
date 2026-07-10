@@ -156,7 +156,7 @@ npm run ci:local  # full local gate (build + tests + validators)
 ## 📚 Code Documentation
 
 Source-backed engineering documentation starts at
-[`openwiki/quickstart.md`](openwiki/quickstart.md). Regenerate the local fact
+[`openwiki/README.md`](openwiki/README.md). Regenerate the local fact
 ledger with `npm run docs:openwiki:extract`, validate it with
 `npm run docs:openwiki:check`, and use `npm run docs:openwiki:verify` for the
 independent read-only review. The model-backed update command expects credentials
