@@ -85,3 +85,6 @@ docs/launch/submit-awesome-pr.sh
 
 # Scratch / reference clones (not part of the project)
 scratch/
+
+# OpenWiki independent verification report (generated locally)
+openwiki-verify-report.md
