@@ -6,6 +6,47 @@ documentation aligned with the repository.
 
 ## System diagram
 
+```mermaid
+flowchart TD
+    tools["AI coding tools<br/>session logs (read-only *.jsonl)"]
+
+    subgraph runtime["Node CLI — bin/tracker.js → src/cli.js"]
+        direction TB
+        parsers["src/lib/rollout.js<br/>incremental parsers"]
+        queue[("local queue files<br/>token counts + timestamps")]
+        serve["src/commands/serve.js<br/>loopback HTTP server"]
+        api["src/lib/local-api.js<br/>dynamic endpoints"]
+    end
+
+    subgraph front["Dashboard build"]
+        direction TB
+        dsrc["dashboard/ — React source"]
+        dist["dashboard/dist/ — static SPA"]
+    end
+
+    consumers["Browser at a local URL<br/>Native WebView — TokenTrackerBar / TokenTrackerWin"]
+
+    tools -->|read| parsers
+    parsers --> queue
+    queue --> api
+    serve --> api
+    serve -->|serves static| dist
+    dsrc -->|build| dist
+    api -->|usage + cost JSON| consumers
+    dist -->|SPA| consumers
+
+    classDef store stroke:#0d9488,stroke-width:2px;
+    classDef edge stroke:#6b7280;
+    class queue store;
+    class tools,consumers edge;
+```
+
+The runtime stores token counts and timestamps only. Prompts, messages, and
+conversation bodies are outside the queue and documentation contract.
+
+<details>
+<summary>Text version of the diagram</summary>
+
 ```text
   AI coding tools
   (logs and hooks)
@@ -44,8 +85,7 @@ documentation aligned with the repository.
                                   bundle Node CLI + dashboard output
 ```
 
-The runtime stores token counts and timestamps only. Prompts, messages, and
-conversation bodies are outside the queue and documentation contract.
+</details>
 
 The diagram above shows the components. For how usage data moves and is
 transformed between them, see the [Data flow](architecture/dataflow.md) view.
