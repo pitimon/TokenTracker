@@ -132,7 +132,16 @@ Most users never touch this — defaults are sensible.
 | `GEMINI_HOME` | Override Gemini CLI directory | `~/.gemini` |
 | `TOKENTRACKER_GROK_HOME` | Override Grok Build directory | `~/.grok` |
 
-To force a dashboard port: `PORT=7700 tokentracker serve` (otherwise it auto-picks the next free port from `7680`).
+To force a dashboard port, use your shell's environment-variable syntax (otherwise TokenTracker auto-picks the next free port from `7680`):
+
+```bash
+PORT=7700 npx --yes @ipv9/tokentracker-cli serve
+```
+
+```powershell
+$env:PORT = 7700
+npx --yes @ipv9/tokentracker-cli serve
+```
 
 Browser auto-open is opt-in: `tokentracker serve --open`. Background services and headless shells should use the default no-open behavior and open the printed URL manually.
 
@@ -185,7 +194,15 @@ If a tool you use shows as not configured, run `tokentracker activate-if-needed`
 
 <br/>
 
-The server auto-picks the next free port (`7681`, `7682`, …) and logs it on startup. To force one: `PORT=7700 tokentracker serve`. To see what's holding the port: `lsof -i :7680`.
+The server auto-picks the next free port (`7681`, `7682`, …) and logs it on startup. To force one, use the Bash or PowerShell command in [Configuration](#configuration). To see what's holding port `7680`:
+
+```bash
+lsof -i :7680
+```
+
+```powershell
+Get-NetTCPConnection -LocalPort 7680 -ErrorAction SilentlyContinue
+```
 
 </details>
 
@@ -213,17 +230,23 @@ tokentracker doctor
 </details>
 
 <details>
-<summary><b>Windows / PowerShell service starts but no browser opens</b></summary>
+<summary><b>Windows / PowerShell: start TokenTracker with npx</b></summary>
 
 <br/>
 
-This is expected for background tasks. Scheduled tasks and the Windows tray app run:
+For an interactive PowerShell session:
 
 ```powershell
-tokentracker serve --no-sync --no-open
+npx --yes @ipv9/tokentracker-cli serve --open
 ```
 
-Open the printed local URL in your browser or use the tray app WebView. For an interactive PowerShell session, use `tokentracker serve --open`; TokenTracker uses the Windows shell opener instead of `xdg-open`.
+For headless PowerShell, CI, or a background process, keep browser opening disabled:
+
+```powershell
+npx --yes @ipv9/tokentracker-cli serve --no-sync --no-open
+```
+
+TokenTracker never stops another process to free a port. When no port is specified it tries the next one up (`7681`, `7682`, …); an explicit `--port` or `$env:PORT` that is already in use fails startup and prints an alternative command to run.
 
 </details>
 

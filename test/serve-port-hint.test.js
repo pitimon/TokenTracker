@@ -14,7 +14,7 @@ test("serve port collision hint references the published npm package name", () =
   assert.equal(NPM_PACKAGE_NAME, "@ipv9/tokentracker-cli");
   assert.equal(
     buildPortInUseHint(7681),
-    "Port 7681 is still in use after cleanup. Try: npx @ipv9/tokentracker-cli serve --port 7682\n",
+    "Port 7681 is unavailable. Try: npx @ipv9/tokentracker-cli serve --port 7682\n",
   );
 });
 
@@ -50,6 +50,19 @@ test("serve default startup falls through to the next available port", async (t)
   });
 
   assert.equal(selectedPort, occupiedPort + 1);
+});
+
+test("explicit port fails without stopping the process already holding it", async (t) => {
+  const occupied = http.createServer((_req, res) => res.end("occupied"));
+  await new Promise((resolve) => occupied.listen(0, "127.0.0.1", resolve));
+  t.after(() => closeServer(occupied));
+
+  const server = http.createServer();
+  t.after(() => closeServer(server));
+  const port = occupied.address().port;
+
+  await assert.rejects(() => listenOnAvailablePort(server, port), { code: "EADDRINUSE" });
+  assert.equal(occupied.listening, true);
 });
 
 function closeServer(server) {
