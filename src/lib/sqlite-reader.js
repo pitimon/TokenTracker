@@ -51,6 +51,21 @@ function isSqliteCliUnavailable(err) {
   );
 }
 
+// Positively identifies a statement-level failure: the database opened fine,
+// the SQL did not apply to it. Anything we cannot positively identify is
+// treated as a read failure instead — an unknown error must not be reported as
+// "your query is wrong" when it might be a corrupt, locked, or unopenable file.
+function isSqlStatementError(err) {
+  const message = formatError(err).toLowerCase();
+  return (
+    message.includes("no such table") ||
+    message.includes("no such column") ||
+    message.includes("no such function") ||
+    message.includes("syntax error") ||
+    message.includes("parse error")
+  );
+}
+
 function isNodeSqliteUnavailable(err) {
   const message = formatError(err).toLowerCase();
   return (
@@ -76,22 +91,25 @@ function readSqliteRowsWithNode(dbPath, sql, { requireFn }) {
 }
 
 // Why `rows` alone is not enough for some callers: an empty array is returned
-// for five materially different situations — bad arguments, an unstattable
-// path, an absent database, a database that read cleanly and is genuinely
-// empty, and a database that exists but could not be read by either backend.
-// A caller that only ADDS what it finds may treat all five alike, because the
-// worst case is doing nothing. A caller that RECONCILES (applies the delta
-// between what it finds and what it previously recorded) must not: "unreadable"
-// would look like "everything was deleted" and subtract real data. `reason`
-// exists so such a caller can bail out instead.
+// for six materially different situations — bad arguments, a path whose
+// existence could not be determined, an absent database, a database that read
+// cleanly and is genuinely empty, a database that could not be opened or read,
+// and a database that rejected the statement. A caller that only ADDS what it
+// finds may treat all six alike, because the worst case is doing nothing.
+// A caller that RECONCILES (applies the delta between what it finds and what it
+// previously recorded) must not: a failed read would look like "everything was
+// deleted" and subtract real data. `reason` exists so such a caller can bail
+// out instead.
 //
 // `ok` is true only for READ_OK, i.e. only when `rows` faithfully represents
 // the database contents.
 // UNREADABLE and QUERY_FAILED are deliberately distinct even though every
-// consumer today treats both as "do not reconcile": the module already
-// separates them to decide whether to warn (a missing sqlite backend is
-// actionable by the user; a failed query is not), and they call for different
-// remedies — install sqlite3 vs. the upstream schema moved.
+// consumer today treats both as "do not reconcile", because they call for
+// different remedies: UNREADABLE covers no usable sqlite backend as well as a
+// database that is corrupt, locked, or otherwise unopenable; QUERY_FAILED means
+// the database was fine and the statement did not apply to it — the upstream
+// schema moved. Only the missing-backend subset is worth warning about, so
+// warning eligibility is decided separately from this classification.
 const SQLITE_READ_OK = "read";
 const SQLITE_READ_MISSING = "missing";
 const SQLITE_READ_UNREADABLE = "unreadable";
@@ -105,10 +123,18 @@ function sqliteReadResult(reason, rows = []) {
 
 function readSqliteJsonRowsWithStatus(dbPath, sql, options = {}) {
   if (!dbPath || !sql) return sqliteReadResult(SQLITE_READ_INVALID_ARGS);
+  // `existsSync` cannot be used to tell "absent" from "unstattable": it
+  // swallows every error and answers false, so a directory we lack +x on looks
+  // identical to a path that was never there. `statSync` keeps them apart.
   try {
-    if (!fssync.existsSync(dbPath)) return sqliteReadResult(SQLITE_READ_MISSING);
-  } catch (_e) {
-    return sqliteReadResult(SQLITE_READ_STAT_FAILED);
+    if (!fssync.statSync(dbPath, { throwIfNoEntry: false })) {
+      return sqliteReadResult(SQLITE_READ_MISSING);
+    }
+  } catch (err) {
+    // ENOTDIR means a path component is a file, so the target genuinely cannot
+    // exist. Anything else — EACCES, ELOOP, a bad argument type — is a failure
+    // to determine existence, which is not the same as absence.
+    return sqliteReadResult(err?.code === "ENOTDIR" ? SQLITE_READ_MISSING : SQLITE_READ_STAT_FAILED);
   }
   const execFileSync = options.execFileSync || cp.execFileSync;
   const requireFn = options.requireFn || require;
@@ -142,7 +168,13 @@ function readSqliteJsonRowsWithStatus(dbPath, sql, options = {}) {
     });
     return sqliteReadResult(SQLITE_READ_UNREADABLE);
   }
-  return sqliteReadResult(SQLITE_READ_QUERY_FAILED);
+  // Warning eligibility and reason classification are deliberately independent.
+  // The warning fires only for a missing backend, because only that is
+  // actionable by the user. The reason must additionally separate a rejected
+  // statement from a database that could not be opened, locked, or parsed —
+  // both reach this line, and only the former is the caller's own doing.
+  const rejectedStatement = isSqlStatementError(cliError) || isSqlStatementError(nodeSqliteError);
+  return sqliteReadResult(rejectedStatement ? SQLITE_READ_QUERY_FAILED : SQLITE_READ_UNREADABLE);
 }
 
 // Unchanged contract: rows only, empty array on every failure. Every existing
