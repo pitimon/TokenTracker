@@ -49,28 +49,10 @@ async function listClaudeProjectFiles(projectsDir) {
   return out;
 }
 
-// Fingerprint the first bytes of a file so rotation is detected even when the
-// OS reuses the inode after unlink+recreate (Linux logrotate). Returns "" on
-// any error so callers treat "no fingerprint" as "not changed". Also returns
-// "" when the file is shorter than the fingerprint window: for a sub-256B
-// file that is still being appended to, the window would extend into the
-// not-yet-written append zone, so plain growth (not rotation) would shift
-// the hash and produce a false "rotated" signal.
-function readFileHeadSignature(filePath) {
-  try {
-    const fd = fssync.openSync(filePath, "r");
-    try {
-      const buf = Buffer.alloc(256);
-      const bytes = fssync.readSync(fd, buf, 0, 256, 0);
-      if (bytes < 256) return "";
-      return crypto.createHash("sha1").update(buf.subarray(0, bytes)).digest("hex");
-    } finally {
-      fssync.closeSync(fd);
-    }
-  } catch {
-    return "";
-  }
-}
+// Moved to ./file-identity so the context-breakdown caches can share it
+// rather than grow a second copy. Imported under the same name, so all 19
+// call sites below are unaffected.
+const { readFileHeadSignature } = require("./file-identity");
 
 async function listGeminiSessionFiles(tmpDir) {
   const out = [];
