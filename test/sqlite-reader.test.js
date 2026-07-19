@@ -7,7 +7,13 @@ const { test } = require("node:test");
 const {
   readSqliteFirstValue,
   readSqliteJsonRows,
+  readSqliteJsonRowsWithStatus,
   resetSqliteReaderWarningsForTests,
+  SQLITE_READ_OK,
+  SQLITE_READ_MISSING,
+  SQLITE_READ_UNREADABLE,
+  SQLITE_READ_QUERY_FAILED,
+  SQLITE_READ_INVALID_ARGS,
 } = require("../src/lib/sqlite-reader");
 
 function tempDbPath() {
@@ -165,4 +171,134 @@ test("readSqliteFirstValue trims string values and closes node:sqlite DB", () =>
 
   assert.equal(value, "token");
   assert.equal(closed, true);
+});
+
+// --- read status -----------------------------------------------------------
+// These pin the distinction the rows-only API cannot express: an empty array
+// means five different things, and a reconciling caller must not treat
+// "unreadable" as "empty".
+
+test("readSqliteJsonRowsWithStatus reports ok for a database that reads cleanly", () => {
+  const dbPath = tempDbPath();
+  const result = readSqliteJsonRowsWithStatus(dbPath, "SELECT 1 AS n", {
+    execFileSync: () => JSON.stringify([{ n: 1 }]),
+    requireFn() {
+      throw new Error("node:sqlite should not be used");
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.reason, SQLITE_READ_OK);
+  assert.deepEqual(result.rows, [{ n: 1 }]);
+});
+
+test("readSqliteJsonRowsWithStatus reports ok for a database that is genuinely empty", () => {
+  const dbPath = tempDbPath();
+  const result = readSqliteJsonRowsWithStatus(dbPath, "SELECT 1 AS n", {
+    execFileSync: () => "",
+    requireFn() {
+      throw new Error("node:sqlite should not be used");
+    },
+  });
+
+  assert.equal(result.ok, true, "a clean read of zero rows is still a successful read");
+  assert.equal(result.reason, SQLITE_READ_OK);
+  assert.deepEqual(result.rows, []);
+});
+
+test("readSqliteJsonRowsWithStatus reports missing when the database file is absent", () => {
+  const dbPath = path.join(os.tmpdir(), "tokentracker-sqlite-reader-absent", "nope.db");
+  const result = readSqliteJsonRowsWithStatus(dbPath, "SELECT 1 AS n", {
+    execFileSync() {
+      throw new Error("must not attempt to read an absent database");
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, SQLITE_READ_MISSING);
+  assert.deepEqual(result.rows, []);
+});
+
+test("readSqliteJsonRowsWithStatus reports unreadable when both backends fail", (t) => {
+  resetSqliteReaderWarningsForTests();
+  t.after(() => resetSqliteReaderWarningsForTests());
+
+  const dbPath = tempDbPath();
+  const result = readSqliteJsonRowsWithStatus(dbPath, "SELECT 1 AS n", {
+    execFileSync() {
+      throw Object.assign(new Error("spawn sqlite3 ENOENT"), { code: "ENOENT" });
+    },
+    requireFn() {
+      throw new Error("No such built-in module: node:sqlite");
+    },
+    stderr: { write() {} },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, SQLITE_READ_UNREADABLE);
+  assert.deepEqual(result.rows, []);
+});
+
+test("readSqliteJsonRowsWithStatus reports invalid-args without touching the filesystem", () => {
+  assert.equal(readSqliteJsonRowsWithStatus("", "SELECT 1").reason, SQLITE_READ_INVALID_ARGS);
+  assert.equal(readSqliteJsonRowsWithStatus("/tmp/x.db", "").reason, SQLITE_READ_INVALID_ARGS);
+});
+
+test("readSqliteJsonRows keeps its rows-only contract across every failure mode", (t) => {
+  resetSqliteReaderWarningsForTests();
+  t.after(() => resetSqliteReaderWarningsForTests());
+
+  const present = tempDbPath();
+  const absent = path.join(os.tmpdir(), "tokentracker-sqlite-reader-absent", "nope.db");
+
+  const emptyRead = readSqliteJsonRows(present, "SELECT 1 AS n", {
+    execFileSync: () => "",
+    requireFn() {
+      throw new Error("node:sqlite should not be used");
+    },
+  });
+  const missing = readSqliteJsonRows(absent, "SELECT 1 AS n", {
+    execFileSync() {
+      throw new Error("must not attempt to read an absent database");
+    },
+  });
+  const unreadable = readSqliteJsonRows(present, "SELECT 1 AS n", {
+    execFileSync() {
+      throw Object.assign(new Error("spawn sqlite3 ENOENT"), { code: "ENOENT" });
+    },
+    requireFn() {
+      throw new Error("No such built-in module: node:sqlite");
+    },
+    stderr: { write() {} },
+  });
+
+  // All three are indistinguishable through this API — that is precisely why
+  // readSqliteJsonRowsWithStatus exists. Existing callers rely on this shape.
+  assert.deepEqual(emptyRead, []);
+  assert.deepEqual(missing, []);
+  assert.deepEqual(unreadable, []);
+});
+
+test("readSqliteJsonRowsWithStatus separates a failed query from a missing sqlite backend", (t) => {
+  resetSqliteReaderWarningsForTests();
+  t.after(() => resetSqliteReaderWarningsForTests());
+
+  const dbPath = tempDbPath();
+  let stderr = "";
+  const result = readSqliteJsonRowsWithStatus(dbPath, "SELECT value FROM MissingTable", {
+    execFileSync() {
+      throw new Error("Parse error: no such table: MissingTable");
+    },
+    requireFn() {
+      throw new Error("no such table: MissingTable");
+    },
+    stderr: { write(chunk) { stderr += chunk; } },
+  });
+
+  // The database was perfectly readable; the query was not satisfiable. Both
+  // block reconciliation, but only a missing backend is worth nagging about.
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, SQLITE_READ_QUERY_FAILED);
+  assert.notEqual(result.reason, SQLITE_READ_UNREADABLE);
+  assert.equal(stderr, "", "a query failure must stay quiet");
 });
