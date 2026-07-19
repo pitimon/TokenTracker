@@ -159,6 +159,7 @@ const FILE_CACHE_MAX_ENTRIES = 8_000;
 // Counts parses per file so tests can assert an unchanged file was NOT
 // reparsed. Observing the actual claim beats spying on the filesystem, which
 // would also catch the identity check's own 256-byte read.
+let trackParses = false;
 const parseCounts = new Map();
 
 function fileCacheKey({ fromKey, toKey, timeZoneContext, filePath }) {
@@ -183,6 +184,7 @@ function pruneFileCache() {
 }
 
 function __resetContextCachesForTests() {
+  trackParses = true;
   CACHE.clear();
   FILE_CACHE.clear();
   parseCounts.clear();
@@ -243,7 +245,7 @@ async function computeCodexContextBreakdown({
     if (hit && isUnchanged(hit.identity, identity)) {
       parsed = hit.parsed;
     } else {
-      parseCounts.set(filePath, (parseCounts.get(filePath) || 0) + 1);
+      if (trackParses) parseCounts.set(filePath, (parseCounts.get(filePath) || 0) + 1);
       parsed = await parseCodexRolloutFile(filePath, {
         fromIso,
         toIso,

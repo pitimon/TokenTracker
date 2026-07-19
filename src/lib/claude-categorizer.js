@@ -28,6 +28,7 @@ const {
   allocateByLargestRemainder,
 } = require("./categorizer-utils");
 const { claudeMessageDedupKey } = require("./rollout");
+const { fileIdentity, isUnchanged } = require("./file-identity");
 
 const CATEGORY_KEYS = [
   "system_prefix",
@@ -494,12 +495,40 @@ function classifyOneMessage(obj, sessionState, breakdown, toolLedger = null, ski
 }
 
 // Read one session jsonl streaming, in timestamp range, dedup by msgId+reqId.
-async function categorizeSessionFile(filePath, { fromIso, toIso, seenHashes }, breakdown, toolLedger = null, skillLedger = null, execLedger = null) {
+// Parses one file into its OWN accumulators and returns them, rather than
+// mutating shared ones. That is what makes a per-file cache possible: the
+// result depends only on (file contents, fromIso, toIso), so it can be reused
+// whenever the file has not changed.
+//
+// The dedup set is now file-local. Cross-file duplicates are handled by the
+// caller, which detects them and falls back to a full scan — see
+// mergeFileResult. Intra-file dedup, including the deferred-add behavior
+// below, is unchanged and must stay that way.
+// `sharedSeen` is used only by the collision fallback, which needs the old
+// cross-file dedup semantics. When it is passed, the returned `hashes` list is
+// empty because dedup has already been applied globally.
+async function categorizeSessionFile(filePath, { fromIso, toIso, sharedSeen = null }) {
+  const breakdown = emptyCategoryMap();
+  const toolLedger = {
+    tool_calls: { total_calls: 0, by_name: new Map() },
+    subagents: { total_calls: 0, by_name: new Map() },
+  };
+  const skillLedger = { total_calls: 0, by_name: new Map() };
+  const execLedger = {
+    total_calls: 0,
+    by_type: new Map(),
+    by_executable: new Map(),
+    by_command: new Map(),
+    by_exit: new Map(),
+  };
+  const seenHashes = sharedSeen || new Set();
+  const empty = () => ({ breakdown, toolLedger, skillLedger, execLedger, counted: 0, hashes: [] });
+
   let stream;
   try {
     stream = fssync.createReadStream(filePath, { encoding: "utf8" });
   } catch (_e) {
-    return 0;
+    return empty();
   }
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
   const sessionState = { systemPrefixSeen: false };
@@ -538,7 +567,14 @@ async function categorizeSessionFile(filePath, { fromIso, toIso, seenHashes }, b
   }
   rl.close();
   stream.close?.();
-  return counted;
+  return {
+    breakdown,
+    toolLedger,
+    skillLedger,
+    execLedger,
+    counted,
+    hashes: sharedSeen ? [] : [...seenHashes],
+  };
 }
 
 // Convert a YYYY-MM-DD day key (already in the user's tz from the API call)
@@ -624,6 +660,99 @@ function maxMtimeMs(files) {
   return max;
 }
 
+// Per-file parse cache. See the equivalent in codex-context-breakdown.js —
+// same problem (#62), same two-layer shape: the aggregate cache above stays
+// the fast path, and this only decides how expensive a MISS is.
+const FILE_CACHE = new Map();
+const FILE_CACHE_SCHEMA_VERSION = "claude-category-file-v1";
+const FILE_CACHE_MAX_ENTRIES = 8_000;
+
+// Instrumentation is opt-in: without it a long-running server would grow one
+// Map entry per session file forever, purely to serve tests.
+let trackParses = false;
+const parseCounts = new Map();
+
+function fileCacheKey(fromIso, toIso, filePath) {
+  return `${FILE_CACHE_SCHEMA_VERSION}|${fromIso || ""}|${toIso || ""}|${filePath}`;
+}
+
+function pruneFileCache() {
+  if (FILE_CACHE.size <= FILE_CACHE_MAX_ENTRIES) return;
+  let excess = FILE_CACHE.size - FILE_CACHE_MAX_ENTRIES;
+  for (const key of FILE_CACHE.keys()) {
+    FILE_CACHE.delete(key);
+    if (--excess <= 0) break;
+  }
+}
+
+// These fields are high-water marks, not running sums. Adding them would
+// silently inflate the reported worst case.
+const MAX_MERGE_FIELDS = new Set(["max_duration_ms"]);
+
+// Folds one cached row into an accumulator map. Always builds a fresh target
+// object on first insert: putting a cached row in by reference would let a
+// later merge mutate the cache in place, which is the aliasing hazard that
+// per-file caching introduces.
+function mergeRowInto(targetMap, key, row) {
+  const existing = targetMap.get(key);
+  if (!existing) {
+    targetMap.set(key, { ...row, totals: { ...row.totals } });
+    return;
+  }
+  for (const [field, value] of Object.entries(row)) {
+    if (field === "totals") {
+      addInto(existing.totals, value);
+    } else if (typeof value === "number") {
+      existing[field] = MAX_MERGE_FIELDS.has(field)
+        ? Math.max(existing[field] || 0, value)
+        : (existing[field] || 0) + value;
+    } else if (existing[field] === undefined) {
+      existing[field] = value;
+    }
+  }
+}
+
+function mergeNamedLedger(target, source) {
+  target.total_calls += source.total_calls || 0;
+  for (const [name, row] of source.by_name) mergeRowInto(target.by_name, name, row);
+}
+
+// Returns false when this file shares a dedup hash with one already merged.
+// Such a collision cannot be repaired from aggregates: the deduped message's
+// tokens are missing, and worse, systemPrefixSeen may have latched onto a
+// different message, invalidating the whole per-file result rather than one
+// row. The caller re-runs a full sequential scan instead of patching.
+function mergeFileResult(acc, result, globalHashes) {
+  for (const hash of result.hashes) {
+    if (globalHashes.has(hash)) return false;
+    globalHashes.add(hash);
+  }
+  for (const key of CATEGORY_KEYS) addInto(acc.breakdown[key], result.breakdown[key]);
+  mergeNamedLedger(acc.toolLedger.tool_calls, result.toolLedger.tool_calls);
+  mergeNamedLedger(acc.toolLedger.subagents, result.toolLedger.subagents);
+  mergeNamedLedger(acc.skillLedger, result.skillLedger);
+  acc.execLedger.total_calls += result.execLedger.total_calls || 0;
+  for (const bucket of ["by_type", "by_executable", "by_command", "by_exit"]) {
+    for (const [name, row] of result.execLedger[bucket]) {
+      mergeRowInto(acc.execLedger[bucket], name, row);
+    }
+  }
+  acc.messageCount += result.counted;
+  if (result.counted > 0) acc.sessionCount += 1;
+  return true;
+}
+
+function __resetCategoryCachesForTests() {
+  trackParses = true;
+  CACHE.clear();
+  FILE_CACHE.clear();
+  parseCounts.clear();
+}
+
+function __getCategoryParseCountsForTests() {
+  return new Map(parseCounts);
+}
+
 async function computeClaudeCategoryBreakdown({ from = null, to = null, rootDir = null, projectDir = null } = {}) {
   const root = rootDir || defaultClaudeProjectsDir();
   let files = [];
@@ -656,48 +785,89 @@ async function computeClaudeCategoryBreakdown({ from = null, to = null, rootDir 
   }
 
   const { fromIso, toIso } = dayKeyToIsoBounds(from, to);
-  const breakdown = emptyCategoryMap();
-  const seenHashes = new Set();
-  let messageCount = 0;
-  let sessionCount = 0;
-  const toolLedger = {
-    tool_calls: { total_calls: 0, by_name: new Map() },
-    subagents: { total_calls: 0, by_name: new Map() },
-  };
-  const skillLedger = { total_calls: 0, by_name: new Map() };
-  const execLedger = {
-    total_calls: 0,
-    by_type: new Map(),
-    by_executable: new Map(),
-    by_command: new Map(),
-    by_exit: new Map(),
-  };
+  function newAccumulator() {
+    return {
+      breakdown: emptyCategoryMap(),
+      toolLedger: {
+        tool_calls: { total_calls: 0, by_name: new Map() },
+        subagents: { total_calls: 0, by_name: new Map() },
+      },
+      skillLedger: { total_calls: 0, by_name: new Map() },
+      execLedger: {
+        total_calls: 0,
+        by_type: new Map(),
+        by_executable: new Map(),
+        by_command: new Map(),
+        by_exit: new Map(),
+      },
+      messageCount: 0,
+      sessionCount: 0,
+    };
+  }
 
   // Process files with bounded parallelism. CPU-bound (JSON.parse per line)
   // limits the win, but overlapping the per-file fs.open + first-block read
   // I/O behind the previous file's parsing still shaves ~15% off cold scans.
-  // `seenHashes`/`breakdown`/ledgers are mutated only inside synchronous
-  // sections of `classifyOneMessage`; `for await` in `categorizeSessionFile`
-  // only yields between lines, so workers can't tear shared state.
+  // Each parse now owns its accumulators, so there is no shared state to tear
+  // — and an unchanged file skips the parse entirely (#62).
   const SCAN_CONCURRENCY = 4;
+  const results = new Array(files.length);
   let cursor = 0;
   async function worker() {
     while (cursor < files.length) {
       const idx = cursor++;
       if (idx >= files.length) return;
-      const counted = await categorizeSessionFile(
-        files[idx],
-        { fromIso, toIso, seenHashes },
-        breakdown,
-        toolLedger,
-        skillLedger,
-        execLedger,
-      );
-      if (counted > 0) sessionCount += 1;
-      messageCount += counted;
+      const filePath = files[idx];
+      const key = fileCacheKey(fromIso, toIso, filePath);
+      const identity = fileIdentity(filePath);
+      const hit = FILE_CACHE.get(key);
+      if (hit && isUnchanged(hit.identity, identity)) {
+        results[idx] = hit.result;
+        continue;
+      }
+      if (trackParses) parseCounts.set(filePath, (parseCounts.get(filePath) || 0) + 1);
+      const result = await categorizeSessionFile(filePath, { fromIso, toIso });
+      results[idx] = result;
+      if (identity) {
+        FILE_CACHE.set(key, { identity, result });
+        pruneFileCache();
+      }
     }
   }
   await Promise.all(Array.from({ length: SCAN_CONCURRENCY }, () => worker()));
+
+  // Merge in `files` order rather than completion order, so the result no
+  // longer depends on how the four workers happened to interleave.
+  let acc = newAccumulator();
+  const globalHashes = new Set();
+  let composable = true;
+  for (const result of results) {
+    if (!result) continue;
+    if (!mergeFileResult(acc, result, globalHashes)) {
+      composable = false;
+      break;
+    }
+  }
+
+  if (!composable) {
+    // Two files claimed the same dedup hash, so per-file results overlap and
+    // cannot be summed. Redo the scan sequentially with one shared dedup set,
+    // which is exactly the pre-cache behavior. Expected never to happen: a
+    // scan of 6,529 real session files found 0 cross-file duplicates. Kept so
+    // correctness does not rest on that measurement.
+    acc = newAccumulator();
+    const sharedSeen = new Set();
+    const fallbackHashes = new Set();
+    for (const filePath of files) {
+      const result = await categorizeSessionFile(filePath, { fromIso, toIso, sharedSeen });
+      if (trackParses) parseCounts.set(filePath, (parseCounts.get(filePath) || 0) + 1);
+      mergeFileResult(acc, result, fallbackHashes);
+    }
+  }
+
+  const { breakdown, toolLedger, skillLedger, execLedger } = acc;
+  const messageCount = acc.messageCount;
+  const sessionCount = acc.sessionCount;
 
   const totals = emptyTotals();
   for (const key of CATEGORY_KEYS) addInto(totals, breakdown[key]);
@@ -1306,6 +1476,8 @@ async function computeClaudeGroundTruthBuckets({ rootDir = null } = {}) {
 }
 
 module.exports = {
+  __resetCategoryCachesForTests,
+  __getCategoryParseCountsForTests,
   CATEGORY_KEYS,
   computeClaudeCategoryBreakdown,
   computeClaudeGroundTruthBuckets,
