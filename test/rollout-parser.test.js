@@ -5293,6 +5293,177 @@ test("parseKiroCliIncremental does not double-count after a downgrade round-trip
   }
 });
 
+// A pre-#65 cursor is one with `requests` entries and no `watermarkVersion`.
+// Adoption must be decided PER REQUEST: a whole-sync latch froze everything it
+// saw, including work that had never reached a bucket.
+test("parseKiroCliIncremental counts a conversation that first appears during the adoption sync (#65)", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-wm-adoptwin-"));
+  try {
+    const dbPath = path.join(tmp, "data.sqlite3");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const env = { KIRO_CLI_DB_PATH: dbPath, KIRO_HOME: tmp, HOME: tmp };
+    const recent = Date.now() - 2 * 24 * 3600 * 1000;
+    kiroDb(dbPath);
+    kiroConv(dbPath, "fresh", { tsMs: recent, promptLen: 4000, responseLen: 8000 });
+
+    // Pre-#65 shape: prior per-request state, no watermarkVersion.
+    const cursors = {
+      version: 1,
+      kiroCli: {
+        requests: {
+          "msg-old": {
+            fingerprint: "f",
+            bucketStart: new Date(recent - 3600 * 1000).toISOString(),
+            model: "claude-sonnet-4.5",
+            input_tokens: 10,
+            output_tokens: 20,
+          },
+        },
+        updatedAt: new Date(recent).toISOString(),
+      },
+    };
+
+    await rolloutModule.parseKiroCliIncremental({ cursors, queuePath, env });
+    assert.deepEqual(
+      await kiroTotals(queuePath),
+      { input: 1000, output: 2000 },
+      "a conversation with no prior record and a recent bucket is genuinely new and must be counted",
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+// Kiro rewriting a request with real data after first recording it with none
+// is normal; the deleted pre-#65 comment documented exactly this sequence.
+test("parseKiroCliIncremental counts the conversation when a zero-token request later grows (#65)", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-wm-zerogrow-"));
+  try {
+    const dbPath = path.join(tmp, "data.sqlite3");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const env = { KIRO_CLI_DB_PATH: dbPath, KIRO_HOME: tmp, HOME: tmp };
+    const t = KIRO_STALE_MS();
+    kiroDb(dbPath);
+    kiroConv(dbPath, "c1", { tsMs: t, promptLen: 0, responseLen: 0 });
+
+    const cursors = { version: 1 };
+    await rolloutModule.parseKiroCliIncremental({ cursors, queuePath, env });
+
+    const grown = JSON.stringify({
+      model_info: { model_id: "claude-sonnet-4.5" },
+      user_turn_metadata: {
+        continuation_id: "c1",
+        requests: [
+          {
+            request_id: "req-c1",
+            message_id: "msg-c1",
+            request_start_timestamp_ms: t,
+            user_prompt_length: 400,
+            response_size: 800,
+            model_id: "claude-sonnet-4.5",
+          },
+        ],
+      },
+    }).replace(/'/g, "''");
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      `UPDATE conversations_v2 SET value = '${grown}' WHERE conversation_id = 'c1';`,
+    ]);
+    await rolloutModule.parseKiroCliIncremental({ cursors, queuePath, env });
+
+    const rows = (await fs.readFile(queuePath, "utf8"))
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => JSON.parse(l))
+      .filter((r) => r.source === "kiro");
+    const last = rows[rows.length - 1];
+    assert.equal(last.input_tokens, 100);
+    assert.equal(
+      last.conversation_count,
+      1,
+      "conversation_count must not drift below the token totals when a request grows from zero",
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+// The migration must not be marked finished by a sync that could not see the
+// database, or the next healthy sync treats the whole corpus as new.
+test("parseKiroCliIncremental does not finish migration on a degraded read (#65)", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-wm-degraded-adopt-"));
+  try {
+    const dbPath = path.join(tmp, "data.sqlite3");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const env = { KIRO_CLI_DB_PATH: dbPath, KIRO_HOME: tmp, HOME: tmp };
+    const recent = Date.now() - 2 * 24 * 3600 * 1000;
+    kiroDb(dbPath);
+    kiroConv(dbPath, "c1", { tsMs: recent, promptLen: 4000, responseLen: 8000 });
+
+    const cursors = {
+      version: 1,
+      kiroCli: {
+        requests: {
+          "msg-legacy": {
+            fingerprint: "f",
+            bucketStart: new Date(recent).toISOString(),
+            model: "claude-sonnet-4.5",
+            input_tokens: 1,
+            output_tokens: 1,
+          },
+        },
+        updatedAt: new Date(recent).toISOString(),
+      },
+    };
+
+    // A live session file keeps `flat` non-empty so the MAIN path runs. Without
+    // it the empty-flat early return handles the sync and the degraded-read
+    // hazard is never reached — the shape that made an earlier version of this
+    // test pass against the very commit it was meant to catch.
+    const sessDir = path.join(tmp, "sessions", "cli");
+    await fs.mkdir(sessDir, { recursive: true });
+    const sessId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
+    await fs.writeFile(
+      path.join(sessDir, `${sessId}.json`),
+      JSON.stringify({
+        session_id: sessId,
+        session_state: {
+          rts_model_state: { model_info: { model_id: "claude-sonnet-4.5" } },
+          conversation_metadata: {
+            user_turn_metadatas: [
+              {
+                loop_id: { rand: 5 },
+                message_ids: ["sess-live-1"],
+                request_start_timestamp_ms: recent,
+                input_token_count: 7,
+                output_token_count: 9,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await fs.writeFile(path.join(sessDir, `${sessId}.jsonl`), "");
+
+    const boom = () => {
+      throw Object.assign(new Error("locked"), { code: "SQLITE_BUSY" });
+    };
+    await rolloutModule.parseKiroCliIncremental({
+      cursors,
+      queuePath,
+      env,
+      sqliteOptions: { execFileSync: boom, requireFn: boom, stderr: { write() {} } },
+    });
+    assert.notEqual(
+      cursors.kiroCli.watermarkVersion,
+      2,
+      "a sync that could not read the database must not declare the migration finished",
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseKiroCliIncremental early-return path still runs cap + clamp (Bug-1)", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kiro-early-"));
   try {

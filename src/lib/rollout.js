@@ -3747,7 +3747,7 @@ function readKiroCliRequests(dbPath, env = process.env, sqliteOptions = {}) {
       });
     }
   }
-  return flat;
+  return { ok: readResult.ok, reason: readResult.reason, rows: flat };
 }
 
 // ── #65: per-request, never-pruned, positive-only watermark ────────────────
@@ -3843,9 +3843,10 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
   // was: source retraction pass matched session_id ↔
   // SQLite conversation_id OR continuation_id to subtract the orphan
   // session-file cursor entry before the new SQLite row is processed.
-  const flatDb = fssync.existsSync(dbPath)
+  const dbRead = fssync.existsSync(dbPath)
     ? readKiroCliRequests(dbPath, resolvedEnv, sqliteOptions)
-    : [];
+    : { ok: true, reason: null, rows: [] };
+  const flatDb = dbRead.rows;
   const sessionFilesList = resolveKiroCliSessionFiles(resolvedEnv);
   let flatSessions = [];
   for (const jsonPath of sessionFilesList) {
@@ -4024,7 +4025,15 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
     // request, overwriting is all that is needed — there is no aggregate to
     // undo.
     if (!desiredRequests[requestId]) seenRequests += 1;
+    // The pre-watermark cursor keyed `request_id || message_id`; this one keys
+    // `message_id || request_id`. Carry the other key so adoption can probe
+    // both — without it every legacy entry misses and adoption sees an empty
+    // cursor.
+    const altKey = r.request_id && r.message_id
+      ? (requestId === r.message_id ? r.request_id : r.message_id)
+      : null;
     desiredRequests[requestId] = {
+      altKey,
       fingerprint,
       bucketStart,
       model,
@@ -4070,22 +4079,56 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
   // bucket and the hourly state does not record that. Say so in the release
   // notes. Requests arriving AFTER adoption are absent from the watermark and
   // are therefore counted in full.
-  const adopting = hasPriorState && !watermarkEra;
+  // Adoption is decided PER REQUEST, never as one flag for the whole sync. A
+  // single `adopting` latch froze every request it saw — including ones that
+  // had never reached a bucket — and permanently lost all work created in the
+  // upgrade window.
+  //
+  // For a pre-watermark cursor the question "was this request already added?"
+  // has three answers, and the old cursor's own prune policy resolves the
+  // ambiguous one:
+  //   • a prior record exists (under EITHER key scheme — the old cursor keyed
+  //     `request_id || message_id`, this one keys `message_id || request_id`,
+  //     so both must be probed or every entry misses) -> already counted, and
+  //     its recorded value is the floor, so later growth still lands;
+  //   • no record, and the bucket is OLDER than the old age cap -> it was
+  //     pruned, i.e. counted but forgotten -> freeze it;
+  //   • no record, and the bucket is NEWER than the cap -> the old cursor
+  //     would still be holding it if it had ever been counted, so it is
+  //     genuinely new -> count it in full.
+  const migrating = hasPriorState && !watermarkEra;
+  const legacyPruneCutoffMs = Date.now() - KIRO_CLI_CURSOR_MAX_AGE_MS;
+  const priorFor = (want, requestId) => {
+    const direct = requestState[requestId];
+    if (direct) return direct;
+    // Probe the other key scheme so a pre-watermark cursor is not misread as
+    // empty.
+    const alt = want.altKey ? requestState[want.altKey] : null;
+    return alt || null;
+  };
+  const presumedCounted = (want) => {
+    if (!migrating) return false;
+    const ts = Date.parse(want.bucketStart);
+    return Number.isFinite(ts) && ts < legacyPruneCutoffMs;
+  };
 
   let eventsAggregated = 0;
+  let adoptionComplete = true;
   for (const [requestId, want] of Object.entries(desiredRequests)) {
-    const prior = requestState[requestId];
+    const prior = priorFor(want, requestId);
+    const frozen = !prior && presumedCounted(want);
+    if (!prior && migrating && !frozen && !dbRead.ok) {
+      // A degraded read during the migration sync cannot tell "new" from
+      // "the DB just did not report it", so adoption is not finished.
+      adoptionComplete = false;
+    }
 
-    // Three distinct cases; conflating them is how this goes wrong.
-    //   adopting        -> floor at `want`: already in the bucket, add nothing
-    //   no prior record -> floor 0: genuinely new, add in full
-    //   prior corrupt   -> floor at `want`: corruption is not zero
-    const floorInput = adopting
+    const floorInput = frozen
       ? want.input_tokens
       : prior
       ? kiroWatermarkFloor(prior, "input_tokens", want.input_tokens)
       : 0;
-    const floorOutput = adopting
+    const floorOutput = frozen
       ? want.output_tokens
       : prior
       ? kiroWatermarkFloor(prior, "output_tokens", want.output_tokens)
@@ -4093,17 +4136,20 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
 
     const dInput = Math.max(0, want.input_tokens - floorInput);
     const dOutput = Math.max(0, want.output_tokens - floorOutput);
-    // A request contributes its conversation exactly once, the first time it
-    // is counted. Nothing ever removes it.
-    const dConv = !prior && !adopting && (dInput > 0 || dOutput > 0) ? 1 : 0;
 
-    // The watermark only rises.
+    // `counted` is RECORDED, not inferred. Inferring it from `!prior` meant a
+    // request first seen with zero tokens never contributed its conversation
+    // when it later grew — Kiro rewriting a request with real data is normal.
+    const alreadyCounted = prior ? prior.counted === true : frozen;
+    const dConv = !alreadyCounted && (dInput > 0 || dOutput > 0) ? 1 : 0;
+
     requestState[requestId] = {
       fingerprint: want.fingerprint,
       bucketStart: want.bucketStart,
       model: want.model,
       input_tokens: Math.max(floorInput, want.input_tokens),
       output_tokens: Math.max(floorOutput, want.output_tokens),
+      counted: alreadyCounted || dConv === 1,
       ...(want.session_id ? { session_id: want.session_id } : {}),
     };
 
@@ -4138,7 +4184,13 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
   cursors.kiroCli = {
     ...kiroCliState,
     requests: requestState,
-    watermarkVersion: KIRO_WATERMARK_VERSION,
+    // Stamp only when this sync could actually complete the migration. The
+    // early-return path applies the same caution; applying it there and not
+    // here let one degraded read end migration prematurely and re-count the
+    // whole corpus on the next healthy sync.
+    ...(!migrating || adoptionComplete
+      ? { watermarkVersion: KIRO_WATERMARK_VERSION }
+      : {}),
     updatedAt,
   };
 
