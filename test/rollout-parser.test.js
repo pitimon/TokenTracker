@@ -5464,6 +5464,63 @@ test("parseKiroCliIncremental does not finish migration on a degraded read (#65)
   }
 });
 
+// `user_turn_metadata.requests` is an ARRAY per turn while `message_id`
+// plausibly identifies the turn, so two distinct requests can share one.
+// Keying on message_id with last-write-wins silently halved them, and an
+// undercount is unrecoverable — the watermark keeps only the survivor.
+test("parseKiroCliIncremental counts every request when two share one message_id (#65)", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-wm-sharedmsg-"));
+  try {
+    const dbPath = path.join(tmp, "data.sqlite3");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const env = { KIRO_CLI_DB_PATH: dbPath, KIRO_HOME: tmp, HOME: tmp };
+    const t = KIRO_STALE_MS();
+    kiroDb(dbPath);
+    const value = JSON.stringify({
+      model_info: { model_id: "claude-sonnet-4.5" },
+      user_turn_metadata: {
+        continuation_id: "c1",
+        requests: [
+          {
+            request_id: "req-a",
+            message_id: "shared-msg",
+            request_start_timestamp_ms: t,
+            user_prompt_length: 4000,
+            response_size: 2000,
+            model_id: "claude-sonnet-4.5",
+          },
+          {
+            request_id: "req-b",
+            message_id: "shared-msg",
+            request_start_timestamp_ms: t,
+            user_prompt_length: 8000,
+            response_size: 4000,
+            model_id: "claude-sonnet-4.5",
+          },
+        ],
+      },
+    }).replace(/'/g, "''");
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO conversations_v2 VALUES ('proj', 'c1', '${value}', 1, 2);`,
+    ]);
+
+    const cursors = { version: 1 };
+    await rolloutModule.parseKiroCliIncremental({ cursors, queuePath, env });
+    assert.deepEqual(
+      await kiroTotals(queuePath),
+      { input: 3000, output: 1500 },
+      "both requests must be counted (1000+2000 in, 500+1000 out), not just the last one",
+    );
+
+    // And it must stay stable — accumulation must not re-add on a re-sync.
+    await rolloutModule.parseKiroCliIncremental({ cursors, queuePath, env });
+    assert.deepEqual(await kiroTotals(queuePath), { input: 3000, output: 1500 });
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseKiroCliIncremental early-return path still runs cap + clamp (Bug-1)", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kiro-early-"));
   try {

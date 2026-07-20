@@ -4019,11 +4019,17 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
 
     // Fingerprint captures every field whose change should cause a re-bucket.
     const fingerprint = `${promptChars}:${responseChars}:${model}:${tsMs}`;
-    // Within-sync duplicate (the same request_id from both readers in one
-    // pass) is last-write-wins, matching the ordering the pre-#65 loop had:
-    // flatDb first, then session files. Because the record is keyed by
-    // request, overwriting is all that is needed — there is no aggregate to
-    // undo.
+    // `requests` is an ARRAY per turn while `message_id` plausibly identifies
+    // the TURN, so two distinct requests can share one identity. Last-write-
+    // wins would silently halve them, and an undercount here is unrecoverable.
+    // Accumulate instead, keeping each underlying request's own share so a
+    // repeated row replaces rather than adds. Cross-tier duplicates of the
+    // same turn are already removed by the turn-granular filter above, so
+    // whatever still shares an identity here is genuinely distinct work.
+    //
+    // This is safe whether or not kiro-cli actually emits shared message_ids:
+    // with one request per turn it reduces to the single-entry case exactly.
+    const partKey = r.request_id || r.message_id;
     if (!desiredRequests[requestId]) seenRequests += 1;
     // The pre-watermark cursor keyed `request_id || message_id`; this one keys
     // `message_id || request_id`. Carry the other key so adoption can probe
@@ -4032,13 +4038,27 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
     const altKey = r.request_id && r.message_id
       ? (requestId === r.message_id ? r.request_id : r.message_id)
       : null;
-    desiredRequests[requestId] = {
+    const entry = desiredRequests[requestId] || {
       altKey,
+      parts: new Map(),
+      input_tokens: 0,
+      output_tokens: 0,
+    };
+    entry.parts.set(partKey, { input: approxInput, output: approxOutput });
+    let sumInput = 0;
+    let sumOutput = 0;
+    for (const part of entry.parts.values()) {
+      sumInput += part.input;
+      sumOutput += part.output;
+    }
+    desiredRequests[requestId] = {
+      ...entry,
+      altKey: entry.altKey || altKey,
       fingerprint,
       bucketStart,
       model,
-      input_tokens: approxInput,
-      output_tokens: approxOutput,
+      input_tokens: sumInput,
+      output_tokens: sumOutput,
       ...(r.session_id ? { session_id: r.session_id } : {}),
     };
 
