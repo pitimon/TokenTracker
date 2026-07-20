@@ -883,7 +883,6 @@ const codexOriginalPath = ${JSON.stringify(originalPath)};
 const codeOriginalPath = ${JSON.stringify(path.join(trackerDir, "code_notify_original.json"))};
 const trackerBinPath = ${JSON.stringify(trackerBinPath)};
   const depsMarkerPath = path.join(trackerDir, 'app', 'bin', 'tracker.js');
-  const configPath = path.join(trackerDir, 'config.json');
 const fallbackPkg = ${JSON.stringify(fallbackPkg)};
 const selfPath = path.resolve(__filename);
 const home = os.homedir();
@@ -919,20 +918,17 @@ if (debugEnabled) {
 }
 
 // Throttle spawn: at most once per 20 seconds.
+// Parsing local logs and uploading to the cloud are two separate decisions.
+// This hook makes only the first one. It runs whether or not a device token
+// exists, because a local-only install still needs its queue refreshed when a
+// session ends. Upload stays gated on a device token inside sync itself, so
+// no credential here means local parse happens and nothing is transmitted.
 try {
-    const throttlePath = path.join(trackerDir, 'sync.throttle');
-    let deviceToken = process.env.TOKENTRACKER_DEVICE_TOKEN || null;
-    if (!deviceToken) {
-      try {
-        const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        if (cfg && typeof cfg.deviceToken === 'string') deviceToken = cfg.deviceToken;
-      } catch (_) {}
-    }
-    const canSync = Boolean(deviceToken && deviceToken.length > 0);
-    const now = Date.now();
-    let last = 0;
-    try { last = Number(fs.readFileSync(throttlePath, 'utf8')) || 0; } catch (_) {}
-    if (canSync && now - last > 20_000) {
+  const throttlePath = path.join(trackerDir, 'sync.throttle');
+  const now = Date.now();
+  let last = 0;
+  try { last = Number(fs.readFileSync(throttlePath, 'utf8')) || 0; } catch (_) {}
+  if (now - last > 20_000) {
     try { fs.writeFileSync(throttlePath, String(now), 'utf8'); } catch (_) {}
     const hasLocalRuntime = fs.existsSync(trackerBinPath);
     const hasLocalDeps = fs.existsSync(depsMarkerPath);
