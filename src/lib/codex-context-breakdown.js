@@ -14,6 +14,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+const { fileIdentity, isUnchanged } = require("./file-identity");
+
 const {
   emptyTotals,
   addInto,
@@ -139,6 +141,59 @@ function cacheTimeZoneKey(timeZoneContext) {
   return `${timeZoneContext.timeZone || ""}|${Number.isFinite(timeZoneContext.offsetMinutes) ? timeZoneContext.offsetMinutes : ""}`;
 }
 
+// Per-file parse cache.
+//
+// The aggregate cache above keys on the GLOBAL maximum mtime, so appending to
+// the one session that is currently active invalidates the aggregate for every
+// unchanged historical file and forces a full rescan (issue #62). This layer
+// makes that miss cost one file instead of all of them.
+//
+// `top` is deliberately absent from the key: truncation to the top N happens
+// at merge time, so a single cached per-file parse serves every `top` value.
+const FILE_CACHE = new Map();
+const FILE_CACHE_SCHEMA_VERSION = "codex-context-file-v1";
+// Roughly one entry per session file per (range, timezone) combination the
+// dashboard asks for. Entries are small — one parsed rollup, no line data.
+const FILE_CACHE_MAX_ENTRIES = 8_000;
+
+// Counts parses per file so tests can assert an unchanged file was NOT
+// reparsed. Observing the actual claim beats spying on the filesystem, which
+// would also catch the identity check's own 256-byte read.
+let trackParses = false;
+const parseCounts = new Map();
+
+function fileCacheKey({ fromKey, toKey, timeZoneContext, filePath }) {
+  return [
+    FILE_CACHE_SCHEMA_VERSION,
+    fromKey || "",
+    toKey || "",
+    cacheTimeZoneKey(timeZoneContext),
+    filePath,
+  ].join("|");
+}
+
+function pruneFileCache() {
+  if (FILE_CACHE.size <= FILE_CACHE_MAX_ENTRIES) return;
+  const excess = FILE_CACHE.size - FILE_CACHE_MAX_ENTRIES;
+  let removed = 0;
+  // Map iterates in insertion order, so this drops the least recently stored.
+  for (const key of FILE_CACHE.keys()) {
+    FILE_CACHE.delete(key);
+    if (++removed >= excess) break;
+  }
+}
+
+function __resetContextCachesForTests() {
+  trackParses = true;
+  CACHE.clear();
+  FILE_CACHE.clear();
+  parseCounts.clear();
+}
+
+function __getParseCountsForTests() {
+  return new Map(parseCounts);
+}
+
 // ---------------------------------------------------------------------------
 // Main entry
 // ---------------------------------------------------------------------------
@@ -182,13 +237,32 @@ async function computeCodexContextBreakdown({
   const sessions = [];
 
   for (const filePath of files) {
-    const parsed = await parseCodexRolloutFile(filePath, {
-      fromIso,
-      toIso,
-      from: fromKey,
-      to: toKey,
-      timeZoneContext,
-    });
+    const key = fileCacheKey({ fromKey, toKey, timeZoneContext, filePath });
+    const identity = fileIdentity(filePath);
+    const hit = FILE_CACHE.get(key);
+
+    let parsed;
+    if (hit && isUnchanged(hit.identity, identity)) {
+      parsed = hit.parsed;
+    } else {
+      if (trackParses) parseCounts.set(filePath, (parseCounts.get(filePath) || 0) + 1);
+      parsed = await parseCodexRolloutFile(filePath, {
+        fromIso,
+        toIso,
+        from: fromKey,
+        to: toKey,
+        timeZoneContext,
+      });
+      // A null identity means the path is not a readable regular file right
+      // now; caching against it could never be invalidated correctly.
+      if (identity) {
+        FILE_CACHE.set(key, { identity, parsed });
+        pruneFileCache();
+      }
+    }
+
+    // Re-applied on every pass rather than baked into the cached entry, so a
+    // zero-token file has one representation instead of two.
     if (!parsed || !parsed.totals || !parsed.totals.total_tokens) continue;
     sessions.push(parsed);
   }
@@ -397,4 +471,6 @@ async function computeCodexContextBreakdown({
 
 module.exports = {
   computeCodexContextBreakdown,
+  __resetContextCachesForTests,
+  __getParseCountsForTests,
 };
