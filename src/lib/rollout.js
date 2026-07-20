@@ -5,7 +5,11 @@ const readline = require("node:readline");
 
 const crypto = require("node:crypto");
 const { ensureDir } = require("./fs");
-const { readSqliteJsonRows } = require("./sqlite-reader");
+const {
+  readSqliteJsonRows,
+  readSqliteJsonRowsWithStatus,
+  SQLITE_READ_MISSING,
+} = require("./sqlite-reader");
 
 const DEFAULT_SOURCE = "codex";
 const DEFAULT_MODEL = "unknown";
@@ -3370,7 +3374,7 @@ function resolveKimiDefaultModel(env = process.env) {
 // token. Source is merged with Kiro IDE (source='kiro') and canonicalized
 // model names are used so CLI and IDE rows collapse when they refer to the
 // same underlying Bedrock model. Cursor state is per-request-id so mutable
-// requests can be reprocessed (subtract-old/add-new on fingerprint change).
+// requests can be reprocessed (a grown request adds only its growth, #65).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const KIRO_CLI_CHARS_PER_TOKEN = 4;
@@ -3508,7 +3512,7 @@ async function readKiroCliMessageChars(jsonlPath, turnMessageIds) {
 // sibling. Returns [{ request_id, model_id, request_start_timestamp_ms,
 // input_tokens, output_tokens }]. We use the same request_id dedup slot as
 // the SQLite path so mutations (turn rewritten on next flush) go through
-// the subtract-old/add-new path in parseKiroCliIncremental.
+// the positive-only per-request delta in parseKiroCliIncremental.
 async function readKiroCliSessionTurns(jsonPath) {
   if (!jsonPath || !fssync.existsSync(jsonPath)) return [];
   let parsed;
@@ -3682,15 +3686,27 @@ function readKiroCliRequests(dbPath, env = process.env, sqliteOptions = {}) {
     "json_extract(value, '$.user_turn_metadata.requests') AS requests_json " +
     "FROM conversations_v2 " +
     "WHERE json_extract(value, '$.user_turn_metadata.requests') IS NOT NULL";
-  const rows = readSqliteJsonRows(dbPath, sql, {
+  // #66 built the {ok, reason} taxonomy for exactly this caller. There is
+  // deliberately no GATE — a degraded read only shrinks the result, which
+  // clamps to a zero delta — but "no gate needed" is not "no signal needed".
+  // Without this an operator whose database has been corrupt or locked for
+  // weeks sees a clean sync and a healthy status line, because
+  // warnSqliteUnavailable fires only for a missing sqlite BACKEND.
+  const readResult = readSqliteJsonRowsWithStatus(dbPath, sql, {
     label: "Kiro CLI",
     env,
     maxBuffer: 128 * 1024 * 1024,
     timeout: 120_000,
     ...sqliteOptions,
   });
+  if (!readResult.ok && readResult.reason !== SQLITE_READ_MISSING) {
+    const stderr = (sqliteOptions && sqliteOptions.stderr) || process.stderr;
+    stderr.write(
+      `[kiro-cli] SQLite read degraded (${readResult.reason}); Kiro CLI totals may be stale this sync\n`,
+    );
+  }
   const flat = [];
-  for (const row of rows) {
+  for (const row of readResult.rows) {
     let requests;
     try {
       requests = JSON.parse(row.requests_json || "[]");
@@ -3713,7 +3729,63 @@ function readKiroCliRequests(dbPath, env = process.env, sqliteOptions = {}) {
       });
     }
   }
-  return flat;
+  return { ok: readResult.ok, reason: readResult.reason, rows: flat };
+}
+
+// ── #65: per-request, never-pruned, positive-only watermark ────────────────
+//
+// The bug: `readKiroCliRequests` reads the whole database with NO age filter,
+// while `cursors.kiroCli.requests` was pruned at 90 days AND capped at 20,000
+// entries. The memory window was strictly smaller than the read window, so an
+// evicted-but-still-returned request was re-added on every sync, forever.
+//
+// The fix is the smallest one that actually closes it: keep that same
+// per-request record, stop pruning it, and only ever ADD the growth.
+//
+// INTENT — TWO RULES, AND EVERY DEFECT THIS FILE HAS SEEN CAME FROM BREAKING
+// ONE OF THEM. Do not "optimise" either away.
+//
+//   1. NEVER PRUNE. The reader has no age or count filter, so anything
+//      dropped from this map is re-added in full on the next sync. That IS
+//      issue #65. Dropping only the age cap and keeping the count cap merely
+//      converts an age-triggered recount into a volume-triggered one.
+//
+//   2. THE DELTA IS CLAMPED AT ZERO — this parser never subtracts. Attribution
+//      is only ever needed to justify a DECREASE, so never decreasing removes
+//      the need for it entirely:
+//        • a shrinking read (deleted session, corrupt file, unreadable or
+//          vanished database, partial parse) produces a zero delta, so no
+//          health gate is needed to protect against it;
+//        • `source="kiro"` hourly buckets are shared with the Kiro IDE parser,
+//          and since we only add we never need to know the IDE's share, so no
+//          change to the shared `cursors.hourly` schema is needed either.
+//
+// Keying by request identity rather than by bucket also removes two whole
+// failure modes that a bucket-keyed version had: a request replaced by a
+// different request of equal value in the same bucket is still counted, and a
+// request that changes bucket or loses its model id contributes a zero delta
+// instead of opening a phantom bucket.
+//
+// Cost, stated plainly: a genuine downward correction never propagates, and a
+// request that moves to another bucket leaves its earlier contribution behind
+// in the old one. State size grows with Kiro's own history rather than being
+// bounded — that is the deliberate trade for correctness, and the number
+// belongs in the release notes rather than in a prune policy.
+const KIRO_WATERMARK_VERSION = 2;
+
+// A stored value is only usable as a floor when it is a finite, non-negative
+// number. Anything else is corruption from a user-writable cursor file, not a
+// zero: reading it as zero would make `delta = want - 0 = want` and re-add the
+// whole contribution. Both call sites must use this — an earlier version had
+// one loop fall back to 0 and its sibling fall back to `want`, which laundered
+// corruption into a legitimate-looking zero.
+function kiroWatermarkFloor(cell, field, fallback) {
+  if (!cell || typeof cell !== "object") return fallback;
+  const value = cell[field];
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return fallback;
+  }
+  return value;
 }
 
 async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onProgress, env, sqliteOptions } = {}) {
@@ -3747,12 +3819,16 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
   // SQLite carries a persisted request_id UUID; session files synthesize
   // `${sessionId}:${loop_id.rand}`. When kiro-cli migrates a live session
   // into SQLite the same turn lands under a new request_id — the cross-
-  // source retraction pass below (D-1 + TASK-007) matches session_id ↔
+  // same turn lands under a new request_id; the watermark makes that a
+  // no-op because the bucket and its value are unchanged (see #65).
+  // (historical note: a cross-source retraction pass used to live below)
+  // was: source retraction pass matched session_id ↔
   // SQLite conversation_id OR continuation_id to subtract the orphan
   // session-file cursor entry before the new SQLite row is processed.
-  const flatDb = fssync.existsSync(dbPath)
+  const dbRead = fssync.existsSync(dbPath)
     ? readKiroCliRequests(dbPath, resolvedEnv, sqliteOptions)
-    : [];
+    : { ok: true, reason: null, rows: [] };
+  const flatDb = dbRead.rows;
   const sessionFilesList = resolveKiroCliSessionFiles(resolvedEnv);
   let flatSessions = [];
   for (const jsonPath of sessionFilesList) {
@@ -3761,7 +3837,7 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
   }
   // Per-request state replaces the old seenIds set. Each entry captures
   // what we contributed for that request_id last time, so a later mutation
-  // (same request_id, different fingerprint) can subtract-old/add-new
+  // (same request_id, different fingerprint) contributes only its growth
   // instead of being skipped forever.
   const requestState =
     kiroCliState.requests && typeof kiroCliState.requests === "object"
@@ -3806,53 +3882,17 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
       migratedMsgIds.add(row.message_id);
   }
   if (migratedConvIds.size > 0) {
-    // Pre-collect to retract so mutation during iteration is safe.
-    // Retraction stays session-level: for every cursor entry whose
-    // session_id has any row in SQLite, subtract its prior contribution.
-    // This is provably correct because turns still live in the session
-    // file get re-added in this same run via the (turn-granular) filter
-    // below, producing a net delta of zero for un-migrated turns.
-    const toRetract = [];
-    for (const [reqId, prev] of Object.entries(requestState)) {
-      if (!prev || typeof prev !== "object") continue;
-      // Bug-2: prefer the stored session_id tag (new schema); fall back
-      // to colon-split for legacy cursors pre-dating this change.
-      let sid = null;
-      if (typeof prev.session_id === "string" && prev.session_id) {
-        sid = prev.session_id;
-      } else {
-        const colon = reqId.indexOf(":");
-        if (colon > 0) sid = reqId.slice(0, colon);
-      }
-      if (!sid || !migratedConvIds.has(sid)) continue;
-      toRetract.push([reqId, prev, sid]);
-    }
-    for (const [reqId, prev, sid] of toRetract) {
-      if (prev.input_tokens || prev.output_tokens) {
-        const prevBucket = getHourlyBucket(
-          hourlyState,
-          "kiro",
-          prev.model,
-          prev.bucketStart,
-        );
-        addTotals(prevBucket.totals, {
-          input_tokens: -prev.input_tokens,
-          cached_input_tokens: 0,
-          cache_creation_input_tokens: 0,
-          output_tokens: -prev.output_tokens,
-          reasoning_output_tokens: 0,
-          total_tokens: -(prev.input_tokens + prev.output_tokens),
-          conversation_count: -1,
-        });
-        touchedBuckets.add(bucketKey("kiro", prev.model, prev.bucketStart));
-      }
-      delete requestState[reqId];
-      if (debugEnabled) {
-        process.stderr.write(
-          `[kiro-cli] retracted migrated session entry (conv ${sid})\n`,
-        );
-      }
-    }
+    // #65: the cursor-retraction pass that used to live here is gone. It
+    // walked the age- and count-capped `requestState` to subtract a migrated
+    // conversation's earlier contribution — the very state whose eviction
+    // causes #65. Under a positive-only watermark it is unnecessary: the same
+    // turn arriving from SQLite instead of a session file lands in the same
+    // (model, bucketStart) with the same value, so `desired` is unchanged and
+    // the delta is zero.
+    //
+    // The turn-granular filter below DOES have to stay: it removes a turn that
+    // is present in BOTH readers within a SINGLE sync, which would otherwise
+    // inflate `desired` itself.
     // Turn-granular filter: drop a session-file turn only when at least
     // one of its assistant/tool_result message_ids is present in SQLite
     // (i.e. this specific turn has been flushed). Newer turns in the
@@ -3892,11 +3932,16 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
     // Clamp + cap BEFORE flushing so the early-return path applies the
     // same guarantees as the main path (fixes a skip that flushed
     // negative conversation_counts and left the cap unapplied).
-    const cappedEarly = clampAndCapKiroCliState({
-      requestState,
-      hourlyState,
-      touchedBuckets,
-    });
+    // Clamp only. The cap is deliberately NOT applied here either: pruning a
+    // request from this map means the reader re-adds it in full next sync,
+    // which is issue #65 (INTENT rule 1).
+    for (const key of touchedBuckets) {
+      const b = hourlyState.buckets && hourlyState.buckets[key];
+      if (b && b.totals && b.totals.conversation_count < 0) {
+        b.totals.conversation_count = 0;
+      }
+    }
+    const cappedEarly = requestState;
     const bucketsQueued = await enqueueTouchedBuckets({
       queuePath,
       hourlyState,
@@ -3905,18 +3950,39 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
     const updatedAt = new Date().toISOString();
     hourlyState.updatedAt = updatedAt;
     cursors.hourly = hourlyState;
-    cursors.kiroCli = { ...kiroCliState, requests: cappedEarly, updatedAt };
+    // Stamp the era marker only when doing so cannot be mistaken later for
+    // "already adopted". For a cursor that has prior state but no marker — a
+    // pre-#65 install — stamping here would make the NEXT sync skip adoption
+    // and re-add the entire corpus on top of the existing inflation. Leave
+    // such a cursor pre-era so adoption still fires when data appears.
+    const priorEra = kiroCliState.watermarkVersion === KIRO_WATERMARK_VERSION;
+    const priorState = Object.keys(kiroCliState).length > 0;
+    cursors.kiroCli = {
+      ...kiroCliState,
+      requests: cappedEarly,
+      ...(!priorState || priorEra ? { watermarkVersion: KIRO_WATERMARK_VERSION } : {}),
+      updatedAt,
+    };
     return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued };
   }
   const cb = typeof onProgress === "function" ? onProgress : null;
   let recordsProcessed = 0;
-  let eventsAggregated = 0;
+
+  // What the CURRENT reader output says each request contributed. Deltas are
+  // taken per request against the watermark after the loop.
+  const desiredRequests = {};
+  let seenRequests = 0;
 
   for (let i = 0; i < flat.length; i++) {
     const r = flat[i];
     recordsProcessed++;
 
-    const requestId = r.request_id || r.message_id;
+    // Identity must be STABLE ACROSS TIERS. When kiro-cli flushes a live
+    // session into SQLite the same turn reappears under a brand-new
+    // request_id, so keying on request_id first would count it twice — the
+    // cross-source double count that TASK-007's retraction pass used to undo.
+    // `message_id` survives that migration, so prefer it.
+    const requestId = r.message_id || r.request_id;
     if (!requestId) continue;
 
     const promptChars = toNonNegativeInt(r.user_prompt_length);
@@ -3935,54 +4001,46 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
 
     // Fingerprint captures every field whose change should cause a re-bucket.
     const fingerprint = `${promptChars}:${responseChars}:${model}:${tsMs}`;
-    const prev = requestState[requestId];
-    if (prev && prev.fingerprint === fingerprint) continue; // unchanged
-
-    // Subtract the prior contribution (if any) from its prior bucket so the
-    // bucket's absolute totals reflect the CURRENT truth, not the historical
-    // truth. enqueueTouchedBuckets will emit the net delta at flush time.
-    if (prev && (prev.input_tokens || prev.output_tokens)) {
-      const prevBucket = getHourlyBucket(hourlyState, "kiro", prev.model, prev.bucketStart);
-      addTotals(prevBucket.totals, {
-        input_tokens: -prev.input_tokens,
-        cached_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-        output_tokens: -prev.output_tokens,
-        reasoning_output_tokens: 0,
-        total_tokens: -(prev.input_tokens + prev.output_tokens),
-        conversation_count: -1,
-      });
-      touchedBuckets.add(bucketKey("kiro", prev.model, prev.bucketStart));
+    // `requests` is an ARRAY per turn while `message_id` plausibly identifies
+    // the TURN, so two distinct requests can share one identity. Last-write-
+    // wins would silently halve them, and an undercount here is unrecoverable.
+    // Accumulate instead, keeping each underlying request's own share so a
+    // repeated row replaces rather than adds. Cross-tier duplicates of the
+    // same turn are already removed by the turn-granular filter above, so
+    // whatever still shares an identity here is genuinely distinct work.
+    //
+    // This is safe whether or not kiro-cli actually emits shared message_ids:
+    // with one request per turn it reduces to the single-entry case exactly.
+    const partKey = r.request_id || r.message_id;
+    if (!desiredRequests[requestId]) seenRequests += 1;
+    // The pre-watermark cursor keyed `request_id || message_id`; this one keys
+    // `message_id || request_id`. Carry the other key so adoption can probe
+    // both — without it every legacy entry misses and adoption sees an empty
+    // cursor.
+    const altKey = r.request_id && r.message_id
+      ? (requestId === r.message_id ? r.request_id : r.message_id)
+      : null;
+    const entry = desiredRequests[requestId] || {
+      altKey,
+      parts: new Map(),
+      input_tokens: 0,
+      output_tokens: 0,
+    };
+    entry.parts.set(partKey, { input: approxInput, output: approxOutput });
+    let sumInput = 0;
+    let sumOutput = 0;
+    for (const part of entry.parts.values()) {
+      sumInput += part.input;
+      sumOutput += part.output;
     }
-
-    // Add the new contribution.
-    if (approxInput > 0 || approxOutput > 0) {
-      const bucket = getHourlyBucket(hourlyState, "kiro", model, bucketStart);
-      addTotals(bucket.totals, {
-        input_tokens: approxInput,
-        cached_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-        output_tokens: approxOutput,
-        reasoning_output_tokens: 0,
-        total_tokens: approxInput + approxOutput,
-        conversation_count: 1,
-      });
-      touchedBuckets.add(bucketKey("kiro", model, bucketStart));
-      eventsAggregated++;
-    }
-
-    // Always record the cursor entry (even for zero-token requests) so we
-    // don't re-count later if Kiro rewrites this request with real data.
-    // Bug-2: tag session-origin entries with session_id so the retraction
-    // pass can identify them regardless of request_id format (the
-    // no-loop_id fallback produces a bare UUID with no colon, which would
-    // otherwise be indistinguishable from SQLite's UUID keys).
-    requestState[requestId] = {
+    desiredRequests[requestId] = {
+      ...entry,
+      altKey: entry.altKey || altKey,
       fingerprint,
       bucketStart,
       model,
-      input_tokens: approxInput,
-      output_tokens: approxOutput,
+      input_tokens: sumInput,
+      output_tokens: sumOutput,
       ...(r.session_id ? { session_id: r.session_id } : {}),
     };
 
@@ -3991,23 +4049,152 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
         index: i + 1,
         total: flat.length,
         recordsProcessed,
-        eventsAggregated,
+        // Deltas are applied after this loop; report requests seen so far.
+        // Counter, not Object.keys — this reader has no age limit, so
+        // recomputing it every 50 records is quadratic in total history.
+        eventsAggregated: seenRequests,
         bucketsQueued: touchedBuckets.size,
       });
     }
   }
 
-  const cappedState = clampAndCapKiroCliState({
-    requestState,
-    hourlyState,
-    touchedBuckets,
-  });
+  // ── Apply max(0, current - watermark), per request ───────────────────────
+  // `requestState` IS the watermark: the highest contribution this parser has
+  // ever applied for each request id. It is never pruned (INTENT rule 1).
+  const watermarkEra = kiroCliState.watermarkVersion === KIRO_WATERMARK_VERSION;
+  const hasPriorState = Object.keys(kiroCliState).length > 0;
+
+  // A cursor written by a NEWER version must be left alone rather than
+  // silently rewritten down to this schema.
+  if (
+    typeof kiroCliState.watermarkVersion === "number" &&
+    kiroCliState.watermarkVersion > KIRO_WATERMARK_VERSION
+  ) {
+    return { recordsProcessed, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+
+  // Adoption: a pre-watermark cursor's tokens are already in the hourly
+  // buckets — inflated, because that is #65. Seed each request's watermark
+  // from what we see now and apply no delta, so the existing total is frozen
+  // rather than added to a second time. This freezes prior inflation; it does
+  // not repair it, because repair would need the CLI's share of a shared kiro
+  // bucket and the hourly state does not record that. Say so in the release
+  // notes. Requests arriving AFTER adoption are absent from the watermark and
+  // are therefore counted in full.
+  // Adoption is decided PER REQUEST, never as one flag for the whole sync. A
+  // single `adopting` latch froze every request it saw — including ones that
+  // had never reached a bucket — and permanently lost all work created in the
+  // upgrade window.
+  //
+  // For a pre-watermark cursor the question "was this request already added?"
+  // has three answers, and the old cursor's own prune policy resolves the
+  // ambiguous one:
+  //   • a prior record exists (under EITHER key scheme — the old cursor keyed
+  //     `request_id || message_id`, this one keys `message_id || request_id`,
+  //     so both must be probed or every entry misses) -> already counted, and
+  //     its recorded value is the floor, so later growth still lands;
+  //   • no record, and the bucket is OLDER than the old age cap -> it was
+  //     pruned, i.e. counted but forgotten -> freeze it;
+  //   • no record, and the bucket is NEWER than the cap -> the old cursor
+  //     would still be holding it if it had ever been counted, so it is
+  //     genuinely new -> count it in full.
+  const migrating = hasPriorState && !watermarkEra;
+  const legacyPruneCutoffMs = Date.now() - KIRO_CLI_CURSOR_MAX_AGE_MS;
+  const priorFor = (want, requestId) => {
+    const direct = requestState[requestId];
+    if (direct) return direct;
+    // Probe the other key scheme so a pre-watermark cursor is not misread as
+    // empty.
+    const alt = want.altKey ? requestState[want.altKey] : null;
+    return alt || null;
+  };
+  const presumedCounted = (want) => {
+    if (!migrating) return false;
+    const ts = Date.parse(want.bucketStart);
+    return Number.isFinite(ts) && ts < legacyPruneCutoffMs;
+  };
+
+  let eventsAggregated = 0;
+  let adoptionComplete = true;
+  for (const [requestId, want] of Object.entries(desiredRequests)) {
+    const prior = priorFor(want, requestId);
+    const frozen = !prior && presumedCounted(want);
+    if (!prior && migrating && !frozen && !dbRead.ok) {
+      // A degraded read during the migration sync cannot tell "new" from
+      // "the DB just did not report it", so adoption is not finished.
+      adoptionComplete = false;
+    }
+
+    const floorInput = frozen
+      ? want.input_tokens
+      : prior
+      ? kiroWatermarkFloor(prior, "input_tokens", want.input_tokens)
+      : 0;
+    const floorOutput = frozen
+      ? want.output_tokens
+      : prior
+      ? kiroWatermarkFloor(prior, "output_tokens", want.output_tokens)
+      : 0;
+
+    const dInput = Math.max(0, want.input_tokens - floorInput);
+    const dOutput = Math.max(0, want.output_tokens - floorOutput);
+
+    // `counted` is RECORDED, not inferred. Inferring it from `!prior` meant a
+    // request first seen with zero tokens never contributed its conversation
+    // when it later grew — Kiro rewriting a request with real data is normal.
+    const alreadyCounted = prior ? prior.counted === true : frozen;
+    const dConv = !alreadyCounted && (dInput > 0 || dOutput > 0) ? 1 : 0;
+
+    requestState[requestId] = {
+      fingerprint: want.fingerprint,
+      bucketStart: want.bucketStart,
+      model: want.model,
+      input_tokens: Math.max(floorInput, want.input_tokens),
+      output_tokens: Math.max(floorOutput, want.output_tokens),
+      counted: alreadyCounted || dConv === 1,
+      ...(want.session_id ? { session_id: want.session_id } : {}),
+    };
+
+    if (!dInput && !dOutput && !dConv) continue;
+
+    const bucket = getHourlyBucket(hourlyState, "kiro", want.model, want.bucketStart);
+    addTotals(bucket.totals, {
+      input_tokens: dInput,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: dOutput,
+      reasoning_output_tokens: 0,
+      total_tokens: dInput + dOutput,
+      conversation_count: dConv,
+    });
+    touchedBuckets.add(bucketKey("kiro", want.model, want.bucketStart));
+    eventsAggregated += 1;
+  }
+
+  // Clamp only; the cap is deliberately NOT applied (INTENT rule 1).
+  for (const key of touchedBuckets) {
+    const bucket = hourlyState.buckets && hourlyState.buckets[key];
+    if (bucket && bucket.totals && bucket.totals.conversation_count < 0) {
+      bucket.totals.conversation_count = 0;
+    }
+  }
 
   const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
   const updatedAt = new Date().toISOString();
   hourlyState.updatedAt = updatedAt;
   cursors.hourly = hourlyState;
-  cursors.kiroCli = { ...kiroCliState, requests: cappedState, updatedAt };
+  cursors.kiroCli = {
+    ...kiroCliState,
+    requests: requestState,
+    // Stamp only when this sync could actually complete the migration. The
+    // early-return path applies the same caution; applying it there and not
+    // here let one degraded read end migration prematurely and re-count the
+    // whole corpus on the next healthy sync.
+    ...(!migrating || adoptionComplete
+      ? { watermarkVersion: KIRO_WATERMARK_VERSION }
+      : {}),
+    updatedAt,
+  };
 
   return { recordsProcessed, eventsAggregated, bucketsQueued };
 }
@@ -4024,7 +4211,8 @@ function clampAndCapKiroCliState({ requestState, hourlyState, touchedBuckets }) 
   // TASK-010: clamp conversation_count to >= 0 on Kiro-touched buckets
   // only. The shared enqueueTouchedBuckets is left untouched so
   // legitimate negatives from the 10 other parsers are not masked. Kiro
-  // negatives come from the subtract-old pass on mutation or retraction.
+  // negatives can only come from the other kiro writers now; this parser
+  // never emits one (#65).
   for (const key of touchedBuckets) {
     const bucket = hourlyState.buckets && hourlyState.buckets[key];
     if (bucket && bucket.totals && bucket.totals.conversation_count < 0) {
