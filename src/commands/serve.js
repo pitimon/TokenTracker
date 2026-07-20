@@ -2,7 +2,6 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const fssync = require("node:fs");
-const cp = require("node:child_process");
 
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { createLocalApiHandler, resolveQueuePath } = require("../lib/local-api");
@@ -20,7 +19,7 @@ const NPM_PACKAGE_NAME = "@ipv9/tokentracker-cli";
 const LOCAL_BIND_HOST = "127.0.0.1";
 
 function buildPortInUseHint(port) {
-  return `Port ${port} is still in use after cleanup. Try: npx ${NPM_PACKAGE_NAME} serve --port ${port + 1}\n`;
+  return `Port ${port} is unavailable. Try: npx ${NPM_PACKAGE_NAME} serve --port ${port + 1}\n`;
 }
 
 function isPortUnavailableError(error) {
@@ -155,7 +154,6 @@ async function cmdServe(argv) {
   try {
     port = await listenOnAvailablePort(server, opts.port, {
       allowFallback: !opts.portExplicit,
-      ensurePortFreeFn: opts.portExplicit ? ensurePortFree : null,
       onRetry: (failedPort) => {
         process.stdout.write(`Port ${failedPort} unavailable, trying ${failedPort + 1}...\n`);
       },
@@ -208,47 +206,6 @@ async function cmdServe(argv) {
   await new Promise(() => {});
 }
 
-function findPidOnPort(port) {
-  try {
-    const out = cp.execFileSync("lsof", ["-ti", `tcp:${port}`], { encoding: "utf8", timeout: 5000 });
-    const pids = out.trim().split(/\s+/).map(Number).filter((n) => Number.isFinite(n) && n > 0);
-    return pids;
-  } catch (_e) {
-    return [];
-  }
-}
-
-async function ensurePortFree(port) {
-  const pids = findPidOnPort(port);
-  if (pids.length === 0) return;
-
-  // Don't kill ourselves
-  const self = process.pid;
-  const targets = pids.filter((p) => p !== self);
-  if (targets.length === 0) return;
-
-  process.stdout.write(`Stopping previous server on port ${port} (pid ${targets.join(", ")})...\n`);
-  for (const pid of targets) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch (_e) {}
-  }
-
-  // Wait briefly for port to free up
-  for (let i = 0; i < 10; i++) {
-    await new Promise((r) => setTimeout(r, 300));
-    if (findPidOnPort(port).length === 0) return;
-  }
-
-  // Force kill if still alive
-  for (const pid of targets) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch (_e) {}
-  }
-  await new Promise((r) => setTimeout(r, 500));
-}
-
 function listenOnce(server, port, host) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -283,7 +240,6 @@ async function listenOnAvailablePort(
     host = LOCAL_BIND_HOST,
     allowFallback = false,
     maxAttempts = DEFAULT_MAX_PORT_ATTEMPTS,
-    ensurePortFreeFn = null,
     onRetry = null,
   } = {},
 ) {
@@ -292,10 +248,6 @@ async function listenOnAvailablePort(
   let lastError = null;
 
   for (let i = 0; i < attempts && port < 65536; i++, port++) {
-    if (ensurePortFreeFn) {
-      await ensurePortFreeFn(port);
-    }
-
     try {
       await listenOnce(server, port, host);
       return port;
