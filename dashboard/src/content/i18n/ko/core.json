@@ -137,7 +137,6 @@
   "settings.menubar.syncing": "동기화 중…",
   "settings.menubar.updates": "업데이트",
   "settings.menubar.checkUpdates": "업데이트 확인",
-  "settings.footer.statusPage": "시스템 상태",
   "menubar.slot.primary": "첫 번째 위치",
   "menubar.slot.secondary": "두 번째 위치",
   "menubar.native_only": "라이브 메뉴 막대 표시를 편집하려면 macOS용 TokenTrackerBar를 여세요.",

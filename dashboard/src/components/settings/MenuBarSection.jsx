@@ -1,7 +1,6 @@
 import React from "react";
-import { Activity, Download, RefreshCw } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import { useNativeSettings } from "../../hooks/use-native-settings.js";
-import { STATUSPAGE_URL } from "../../lib/config";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { SectionCard, SettingsRow, ToggleSwitch } from "./Controls.jsx";
@@ -71,32 +70,22 @@ export function MenuBarSection() {
 export function NativeAppFooter() {
   const { available, settings, runAction } = useNativeSettings();
   const showNativeInfo = available && settings?.version;
+  // The status-page link was the only other thing this footer rendered. With the
+  // hosted service gone there is nothing to show when the native app is absent,
+  // so render nothing rather than an empty flex row.
+  if (!showNativeInfo) return null;
 
   return (
     <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-500">
-      {showNativeInfo ? (
-        <>
-          <span>TokenTrackerBar v{settings.version}</span>
-          <span aria-hidden>·</span>
-          <button
-            type="button"
-            onClick={() => runAction("openAbout")}
-            className="underline-offset-2 transition-colors hover:text-oai-gray-700 hover:underline dark:hover:text-oai-gray-300"
-          >
-            GitHub
-          </button>
-          <span aria-hidden>·</span>
-        </>
-      ) : null}
-      <a
-        href={STATUSPAGE_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 underline-offset-2 transition-colors hover:text-oai-gray-700 hover:underline dark:hover:text-oai-gray-300"
+      <span>TokenTrackerBar v{settings.version}</span>
+      <span aria-hidden>·</span>
+      <button
+        type="button"
+        onClick={() => runAction("openAbout")}
+        className="underline-offset-2 transition-colors hover:text-oai-gray-700 hover:underline dark:hover:text-oai-gray-300"
       >
-        <Activity className="h-3.5 w-3.5" aria-hidden />
-        {copy("settings.footer.statusPage")}
-      </a>
+        GitHub
+      </button>
     </div>
   );
 }

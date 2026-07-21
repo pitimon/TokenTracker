@@ -137,7 +137,6 @@
   "settings.menubar.syncing": "正在同步...",
   "settings.menubar.updates": "更新",
   "settings.menubar.checkUpdates": "檢查更新",
-  "settings.footer.statusPage": "系統狀態",
   "menubar.slot.primary": "第一個位置",
   "menubar.slot.secondary": "第二個位置",
   "menubar.native_only": "開啟 macOS 版 TokenTrackerBar 後可編輯選單欄顯示。",

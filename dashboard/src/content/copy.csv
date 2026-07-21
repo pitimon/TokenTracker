@@ -270,7 +270,6 @@ settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,Trigg
 settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,Syncing…,,active
 settings.menubar.updates,ui,SettingsPage,SettingsPage,mb_updates,Updates,,active
 settings.menubar.checkUpdates,ui,SettingsPage,SettingsPage,mb_check_updates,Check for updates,,active
-settings.footer.statusPage,ui,SettingsPage,NativeAppFooter,status_page,System status,,active
 menubar.slot.primary,ui,WidgetsPage,MenuBarDisplayCard,slot_primary,Primary slot,,active
 menubar.slot.secondary,ui,WidgetsPage,MenuBarDisplayCard,slot_secondary,Secondary slot,,active
 menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,Open TokenTrackerBar for macOS to edit the live menu bar display.,,active
