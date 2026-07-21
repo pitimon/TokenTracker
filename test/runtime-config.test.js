@@ -23,6 +23,16 @@ test("resolveRuntimeConfig prefers CLI over config over env", () => {
   assert.equal(fromConfig.sources.httpTimeoutMs, "config");
 });
 
+test("resolveRuntimeConfig reads TOKENTRACKER env when cli and config are absent", () => {
+  // Without this the env rung is unpinned: deleting it from the pick chain
+  // entirely left the other two tests green.
+  const result = resolveRuntimeConfig({
+    env: { TOKENTRACKER_HTTP_TIMEOUT_MS: "2000" },
+  });
+  assert.equal(result.httpTimeoutMs, 2000);
+  assert.equal(result.sources.httpTimeoutMs, "env");
+});
+
 test("resolveRuntimeConfig ignores non-TOKENTRACKER env inputs", () => {
   const result = resolveRuntimeConfig({
     env: { LEGACY_HTTP_TIMEOUT_MS: "9999", HTTP_TIMEOUT_MS: "9999" },
@@ -35,11 +45,11 @@ test("resolveRuntimeConfig normalizes timeout and flags", () => {
     env: {
       TOKENTRACKER_HTTP_TIMEOUT_MS: "500",
       TOKENTRACKER_DEBUG: "1",
-      TOKENTRACKER_AUTO_RETRY_NO_SPAWN: "1",
     },
   });
 
   assert.equal(result.httpTimeoutMs, 1000);
   assert.equal(result.debug, true);
-  assert.equal(result.autoRetryNoSpawn, true);
+  // autoRetryNoSpawn is gone: it opted out of a background spawn that no
+  // longer exists once cloud upload was removed.
 });

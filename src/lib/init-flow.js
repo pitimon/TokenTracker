@@ -27,9 +27,12 @@ function renderAuthTransition({ authUrl, canAutoOpen }) {
 }
 
 function renderSuccessBox({ configPath, dashboardUrl }) {
-  const identityLine = "Account linked.";
-  const lines = ["You are all set!", "", identityLine, `Token saved to: ${configPath}`, ""];
-  if (dashboardUrl) lines.push(`View your stats at: ${dashboardUrl}`);
+  // Local-only: there is no account and no remote dashboard. `dashboardUrl` is
+  // null on a clean install now that the cloud default is gone, so fall back to
+  // the address `serve` actually listens on — otherwise setup finishes without
+  // telling the user where to look.
+  const lines = ["You are all set!", "", `Config saved to: ${configPath}`, ""];
+  lines.push(`View your stats at: ${dashboardUrl || "http://localhost:7680"}`);
   lines.push("You can close this terminal window.");
   process.stdout.write(`${renderBox(lines)}\n`);
 }

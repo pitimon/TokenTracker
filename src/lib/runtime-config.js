@@ -15,24 +15,15 @@ function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaul
     DEFAULT_HTTP_TIMEOUT_MS,
   );
   const debug = pickBoolean(cli.debug, config.debug, env?.TOKENTRACKER_DEBUG, defaults.debug, false);
-  const autoRetryNoSpawn = pickBoolean(
-    cli.autoRetryNoSpawn,
-    config.autoRetryNoSpawn,
-    env?.TOKENTRACKER_AUTO_RETRY_NO_SPAWN,
-    defaults.autoRetryNoSpawn,
-    false,
-  );
 
   return {
     dashboardUrl: dashboardUrl.value,
     httpTimeoutMs: httpTimeoutMs.value,
     debug: debug.value,
-    autoRetryNoSpawn: autoRetryNoSpawn.value,
     sources: {
       dashboardUrl: dashboardUrl.source,
       httpTimeoutMs: httpTimeoutMs.source,
       debug: debug.source,
-      autoRetryNoSpawn: autoRetryNoSpawn.source,
     },
   };
 }

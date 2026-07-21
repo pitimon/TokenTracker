@@ -444,21 +444,6 @@ function trimOutput(value, max = 4000) {
   return t.length <= max ? t : t.slice(t.length - max);
 }
 
-function normalizeRemoteHttpBaseUrl(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    url.username = "";
-    url.password = "";
-    url.hash = "";
-    return url.toString().replace(/\/$/, "");
-  } catch (_e) {
-    return null;
-  }
-}
 
 
 function parseCookieHeader(value) {
@@ -695,45 +680,6 @@ const HOP_BY_HOP_HEADERS = new Set([
   "trailers",
 ]);
 
-// Strip forbidden + hop-by-hop headers when forwarding an inbound request to
-// fetch(). Honours the Connection header's named-headers list (RFC 7230 §6.1)
-// so values like `Connection: keep-alive, x-custom` also drop x-custom.
-function buildProxyHeaders(headers) {
-  const entries =
-    headers && typeof headers.entries === "function"
-      ? Array.from(headers.entries())
-      : Object.entries(headers || {});
-
-  const connectionNamed = new Set();
-  const normalized = [];
-  for (const [rawKey, rawValue] of entries) {
-    if (rawValue == null) continue;
-    const key = String(rawKey).toLowerCase();
-    normalized.push([key, rawValue]);
-    if (key === "connection") {
-      const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-      for (const v of values) {
-        String(v)
-          .split(",")
-          .map((part) => part.trim().toLowerCase())
-          .filter(Boolean)
-          .forEach((part) => connectionNamed.add(part));
-      }
-    }
-  }
-
-  const out = {};
-  for (const [key, rawValue] of normalized) {
-    if (HOP_BY_HOP_HEADERS.has(key) || connectionNamed.has(key)) continue;
-    if (Array.isArray(rawValue)) {
-      const joined = rawValue.filter((e) => e != null).map(String).join(", ");
-      if (joined) out[key] = joined;
-      continue;
-    }
-    out[key] = String(rawValue);
-  }
-  return out;
-}
 
 // ---------------------------------------------------------------------------
 // Main handler factory

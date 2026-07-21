@@ -22,6 +22,15 @@ async function readHookSource(relativePath) {
 // leave the dashboard permanently empty. Asserting the guard is GONE is what
 // protects that, and it is why this file was inverted rather than deleted.
 function assertNoTokenGate(source, file) {
+  // Absence alone is a tautology — an empty file, or a hook that fetches
+  // nothing at all, would satisfy it. Assert the POSITIVE first: the hook
+  // still reaches the local API. Only then does the absence of the gate mean
+  // "fetches without a token" rather than "does not fetch".
+  assert.ok(
+    /\bfetch[A-Za-z]*\s*\(|apiFetch|fetchLocalJson|get[A-Z][A-Za-z]*\s*\(/.test(source),
+    `${file} must still issue a data request`,
+  );
+  assert.ok(source.length > 200, `${file} looks empty or truncated`);
   assert.equal(
     /resolvedToken/.test(source),
     false,

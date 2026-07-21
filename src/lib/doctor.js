@@ -151,7 +151,6 @@ function buildRuntimeChecks(runtime = {}) {
     ? Number(runtime.httpTimeoutMs)
     : null;
   const debug = Boolean(runtime.debug);
-  const autoRetryNoSpawn = Boolean(runtime.autoRetryNoSpawn);
 
   // base URL / device token checks removed: local-only, there is no remote
   // endpoint to point at and no credential to hold.
@@ -189,16 +188,11 @@ function buildRuntimeChecks(runtime = {}) {
     },
   });
 
-  checks.push({
-    id: "runtime.auto_retry_no_spawn",
-    status: "ok",
-    detail: autoRetryNoSpawn ? "auto retry spawn disabled" : "auto retry spawn enabled",
-    critical: false,
-    meta: {
-      auto_retry_no_spawn: autoRetryNoSpawn,
-      source: runtime?.sources?.autoRetryNoSpawn || null,
-    },
-  });
+  // runtime.auto_retry_no_spawn removed: scheduleAutoRetry and
+  // spawnAutoRetryProcess went with cloud upload, so this reported on a spawn
+  // path that cannot happen — and told anyone setting the env var that their
+  // opt-out had taken effect on nothing.
+
 
   return checks;
 }

@@ -127,7 +127,12 @@ test("notify handler still chains normal original notify commands", async () => 
   }
 });
 
-test("init preserves existing config fields and custom URLs", async () => {
+// Inverted deliberately. init used to carry the whole previous config forward,
+// which kept a live cloud bearer token on disk after the upgrade to local-only
+// — and this release also removed the `status` / `diagnostics` lines that once
+// revealed it, so nothing would ever have told the user it was there. init now
+// scrubs the cloud fields and keeps everything else.
+test("init scrubs cloud credentials and endpoints while preserving local config", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-init-config-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
@@ -165,11 +170,15 @@ test("init preserves existing config fields and custom URLs", async () => {
 
     const config = JSON.parse(await fs.readFile(path.join(trackerDir, "config.json"), "utf8"));
     assert.equal(config.installedAt, "2026-04-01T00:00:00.000Z");
-    assert.equal(config.baseUrl, "https://self-hosted.example");
-    assert.equal(config.dashboardUrl, "https://dashboard.example");
-    assert.equal(config.deviceToken, "device-token");
     assert.equal(config.deviceId, "device-id");
     assert.equal(config.customFlag, true);
+    assert.equal(config.baseUrl, undefined, "cloud endpoint must be scrubbed");
+    assert.equal(config.dashboardUrl, undefined, "cloud dashboard URL must be scrubbed");
+    assert.equal(
+      config.deviceToken,
+      undefined,
+      "a live cloud credential must not survive the upgrade",
+    );
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;
