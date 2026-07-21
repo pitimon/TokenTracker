@@ -9,7 +9,6 @@ Kiro, Hermes Agent, GitHub Copilot, Kimi Code, oh-my-pi (omp), and CodeBuddy.
 
 ## Priority URLs
 - [Homepage](https://www.tokentracker.cc/)
-- [Leaderboard](https://www.tokentracker.cc/leaderboard)
 - [Claude IP check](https://www.tokentracker.cc/ip-check)
 
 ## Post-install (local) views
@@ -47,7 +46,6 @@ on the user's own machine — they are not public URLs:
 - [feed.xml](https://www.tokentracker.cc/feed.xml)
 - [robots.txt](https://www.tokentracker.cc/robots.txt)
 - Data principle: token counts only, never prompts or conversation content.
-- Local-first: all parsing, aggregation, and dashboard rendering happen on-device. Cloud sync is optional.
 
 ## Contact
 - [GitHub issues](https://github.com/mm7894215/TokenTracker/issues)

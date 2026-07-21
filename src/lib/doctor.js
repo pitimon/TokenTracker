@@ -29,7 +29,8 @@ async function buildDoctorReport({
     checks.push(await checkCliEntrypoint(paths.cliPath));
   }
 
-  checks.push(await checkNetwork({ baseUrl: runtime?.baseUrl || null, fetch }));
+  // No cloud reachability check: TokenTracker is local-only, so there is no
+  // remote endpoint whose availability could affect anything here.
 
   if (diagnostics) {
     checks.push(...buildDiagnosticsChecks(diagnostics));
@@ -142,10 +143,6 @@ async function commandExistsOnPath(command, env = process.env) {
 
 function buildRuntimeChecks(runtime = {}) {
   const checks = [];
-  const baseUrl =
-    typeof runtime.baseUrl === "string" && runtime.baseUrl.trim() ? runtime.baseUrl.trim() : null;
-  const deviceToken =
-    typeof runtime.deviceToken === "string" && runtime.deviceToken.trim() ? "set" : "unset";
   const dashboardUrl =
     typeof runtime.dashboardUrl === "string" && runtime.dashboardUrl.trim()
       ? runtime.dashboardUrl.trim()
@@ -154,29 +151,9 @@ function buildRuntimeChecks(runtime = {}) {
     ? Number(runtime.httpTimeoutMs)
     : null;
   const debug = Boolean(runtime.debug);
-  const autoRetryNoSpawn = Boolean(runtime.autoRetryNoSpawn);
 
-  checks.push({
-    id: "runtime.base_url",
-    status: baseUrl ? "ok" : "fail",
-    detail: baseUrl ? "base_url set" : "base_url missing",
-    critical: false,
-    meta: {
-      base_url: baseUrl,
-      source: runtime?.sources?.baseUrl || null,
-    },
-  });
-
-  checks.push({
-    id: "runtime.device_token",
-    status: deviceToken === "set" ? "ok" : "warn",
-    detail: deviceToken === "set" ? "device token set" : "device token missing",
-    critical: false,
-    meta: {
-      device_token: deviceToken,
-      source: runtime?.sources?.deviceToken || null,
-    },
-  });
+  // base URL / device token checks removed: local-only, there is no remote
+  // endpoint to point at and no credential to hold.
 
   checks.push({
     id: "runtime.dashboard_url",
@@ -211,16 +188,11 @@ function buildRuntimeChecks(runtime = {}) {
     },
   });
 
-  checks.push({
-    id: "runtime.auto_retry_no_spawn",
-    status: "ok",
-    detail: autoRetryNoSpawn ? "auto retry spawn disabled" : "auto retry spawn enabled",
-    critical: false,
-    meta: {
-      auto_retry_no_spawn: autoRetryNoSpawn,
-      source: runtime?.sources?.autoRetryNoSpawn || null,
-    },
-  });
+  // runtime.auto_retry_no_spawn removed: scheduleAutoRetry and
+  // spawnAutoRetryProcess went with cloud upload, so this reported on a spawn
+  // path that cannot happen — and told anyone setting the env var that their
+  // opt-out had taken effect on nothing.
+
 
   return checks;
 }
@@ -346,48 +318,6 @@ async function checkCliEntrypoint(cliPath) {
   }
 }
 
-async function checkNetwork({ baseUrl, fetch }) {
-  if (!baseUrl) {
-    return {
-      id: "network.base_url",
-      status: "warn",
-      detail: "base_url missing (skipped)",
-      critical: false,
-      meta: { base_url: null },
-    };
-  }
-
-  const start = Date.now();
-  try {
-    if (typeof fetch !== "function") throw new Error("Missing fetch");
-    const res = await fetch(baseUrl, { method: "GET" });
-    const latency = Date.now() - start;
-    return {
-      id: "network.base_url",
-      status: "ok",
-      detail: `HTTP ${res.status} (reachable)`,
-      critical: false,
-      meta: {
-        status_code: res.status,
-        latency_ms: latency,
-        base_url: baseUrl,
-      },
-    };
-  } catch (err) {
-    const latency = Date.now() - start;
-    return {
-      id: "network.base_url",
-      status: "fail",
-      detail: "Network error",
-      critical: false,
-      meta: {
-        error: err?.message || String(err),
-        latency_ms: latency,
-        base_url: baseUrl,
-      },
-    };
-  }
-}
 
 function buildDiagnosticsChecks(diagnostics) {
   const checks = [];
@@ -409,14 +339,9 @@ function buildDiagnosticsChecks(diagnostics) {
     meta: { configured: notifyConfigured },
   });
 
-  const uploadError = diagnostics?.upload?.last_error || null;
-  checks.push({
-    id: "upload.last_error",
-    status: uploadError ? "warn" : "ok",
-    detail: uploadError ? "last upload error present" : "no upload errors",
-    critical: false,
-    meta: { last_error: uploadError ? uploadError.message || null : null },
-  });
+  // The upload.last_error check is gone with cloud upload: `diagnostics.upload`
+  // no longer exists, so the check could only ever report "no upload errors" —
+  // a permanent green that says nothing.
 
   return checks;
 }

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { resolveAuthAccessToken } from "../lib/auth-token";
 import { isMockEnabled } from "../lib/mock-data";
 import { getTimeZoneCacheKey } from "../lib/timezone";
 import { getUsageDaily, getUsageHourly } from "../lib/api";
@@ -46,9 +45,6 @@ export function usePulse({
 
   const mockEnabled = isMockEnabled();
   const cacheAllowed = !guestAllowed && !mockEnabled;
-  const isLocalMode =
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const storageKey = (() => {
     if (!cacheKey) return null;
@@ -96,19 +92,13 @@ export function usePulse({
       return;
     }
 
-    const resolvedToken = await resolveAuthAccessToken(accessToken);
-    if (!resolvedToken && !mockEnabled && !isLocalMode) {
-      // Guest / not-ready: keep whatever we have, don't error out.
-      return;
-    }
-
     const reqId = ++reqRef.current;
     setLoading(true);
     setError(null);
     try {
       const hourlyResponses = await Promise.all(
         plan.hourlyDays.map((day) =>
-          getUsageHourly({ baseUrl, accessToken: resolvedToken, day, timeZone, tzOffsetMinutes }),
+          getUsageHourly({ baseUrl, accessToken, day, timeZone, tzOffsetMinutes }),
         ),
       );
       const hourlyByDay = hourlyByDayMap(plan.hourlyDays, hourlyResponses);
@@ -119,7 +109,7 @@ export function usePulse({
       } else {
         const dailyRes = await getUsageDaily({
           baseUrl,
-          accessToken: resolvedToken,
+          accessToken,
           from: plan.dailyFrom,
           to: plan.dailyTo,
           timeZone,
@@ -156,7 +146,6 @@ export function usePulse({
     cutoffHour,
     cacheAllowed,
     mockEnabled,
-    isLocalMode,
     readFreshCache,
     writeCache,
   ]);

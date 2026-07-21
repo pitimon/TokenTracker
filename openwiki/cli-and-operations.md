@@ -12,7 +12,6 @@ help text and command modules; do not infer additional options from examples.
 | `tokentracker diagnostics` | `src/commands/diagnostics.js` |
 | `tokentracker doctor` | `src/commands/doctor.js` |
 | `tokentracker uninstall` | `src/commands/uninstall.js` |
-| `tokentracker device-login` | `src/commands/device-login.js` |
 | `tokentracker wrapped` | `src/commands/wrapped.js` |
 
 Calling `tokentracker` with no command starts `serve` with sync enabled by

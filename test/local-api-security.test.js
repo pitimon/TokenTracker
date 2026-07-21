@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
+const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 
@@ -74,85 +75,6 @@ function createSuccessfulSpawn(calls) {
   };
 }
 
-test("local sync rejects arbitrary insforgeBaseUrl overrides", async () => {
-  const calls = [];
-  const prevBaseUrl = process.env.TOKENTRACKER_INSFORGE_BASE_URL;
-  process.env.TOKENTRACKER_INSFORGE_BASE_URL = "https://allowed.example";
-  const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn(calls));
-
-  try {
-    const handler = mod.createLocalApiHandler({ queuePath: path.join(process.cwd(), "tmp-queue.jsonl") });
-    const localAuthToken = await getLocalAuthToken(handler);
-    const req = createRequest({
-      method: "POST",
-      headers: { "x-tokentracker-local-auth": localAuthToken },
-      body: JSON.stringify({
-        deviceToken: "device-token",
-        insforgeBaseUrl: "https://evil.example",
-      }),
-    });
-    const res = createResponse();
-
-    const handled = await handler(
-      req,
-      res,
-      new URL("http://127.0.0.1/functions/tokentracker-local-sync"),
-    );
-
-    assert.equal(handled, true);
-    assert.equal(res.statusCode, 400);
-    assert.deepEqual(JSON.parse(res.body.toString("utf8")), {
-      ok: false,
-      error: "Unsupported insforgeBaseUrl override",
-    });
-    assert.equal(calls.length, 0);
-  } finally {
-    restore();
-    if (prevBaseUrl === undefined) delete process.env.TOKENTRACKER_INSFORGE_BASE_URL;
-    else process.env.TOKENTRACKER_INSFORGE_BASE_URL = prevBaseUrl;
-  }
-});
-
-test("local sync accepts the configured insforgeBaseUrl override", async () => {
-  const calls = [];
-  const prevBaseUrl = process.env.TOKENTRACKER_INSFORGE_BASE_URL;
-  process.env.TOKENTRACKER_INSFORGE_BASE_URL = "https://allowed.example";
-
-  const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn(calls));
-
-  try {
-    const handler = mod.createLocalApiHandler({ queuePath: path.join(process.cwd(), "tmp-queue.jsonl") });
-    const localAuthToken = await getLocalAuthToken(handler);
-    const req = createRequest({
-      method: "POST",
-      headers: { "x-tokentracker-local-auth": localAuthToken },
-      body: JSON.stringify({
-        deviceToken: "device-token",
-        insforgeBaseUrl: "https://allowed.example/",
-      }),
-    });
-    const res = createResponse();
-
-    const handled = await handler(
-      req,
-      res,
-      new URL("http://127.0.0.1/functions/tokentracker-local-sync"),
-    );
-
-    assert.equal(handled, true);
-    assert.equal(res.statusCode, 200);
-    assert.equal(calls.length, 1);
-    assert.equal(
-      calls[0].options.env.TOKENTRACKER_INSFORGE_BASE_URL,
-      "https://allowed.example",
-    );
-  } finally {
-    restore();
-    if (prevBaseUrl === undefined) delete process.env.TOKENTRACKER_INSFORGE_BASE_URL;
-    else process.env.TOKENTRACKER_INSFORGE_BASE_URL = prevBaseUrl;
-  }
-});
-
 test("local sync rejects requests without the local auth token", async () => {
   const calls = [];
   const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn(calls));
@@ -183,27 +105,26 @@ test("local sync rejects requests without the local auth token", async () => {
   }
 });
 
-test("auth bridge mutation requires the local auth token", async () => {
-  const { mod, restore } = loadLocalApiWithSpawn(createSuccessfulSpawn([]));
-
-  try {
-    const handler = mod.createLocalApiHandler({ queuePath: path.join(process.cwd(), "tmp-queue.jsonl") });
-    const req = createRequest({
-      method: "PUT",
-      body: JSON.stringify({ native: true }),
-    });
-    const res = createResponse();
-
-    const handled = await handler(
-      req,
-      res,
-      new URL("http://127.0.0.1/api/auth-bridge/verifier"),
+// Guard, added when the cloud was removed. `local-api` used to reverse-proxy
+// /api/auth/* to InsForge and keep a server-side cookie relay on disk. Both are
+// gone; this pins them gone, because a reintroduced proxy on a localhost port
+// is an open relay any local process can drive.
+test("local-api exposes no cloud auth proxy or cookie relay", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "src", "lib", "local-api.js"),
+    "utf8",
+  );
+  for (const gone of [
+    '"/api/auth-bridge/verifier"',
+    '"/api/auth/',
+    "relayCookies",
+    "insforge",
+    "TOKENTRACKER_DEVICE_TOKEN",
+  ]) {
+    assert.equal(
+      source.includes(gone),
+      false,
+      `${gone} must stay removed from local-api.js`,
     );
-
-    assert.equal(handled, true);
-    assert.equal(res.statusCode, 401);
-    assert.deepEqual(JSON.parse(res.body.toString("utf8")), { error: "Unauthorized" });
-  } finally {
-    restore();
   }
 });

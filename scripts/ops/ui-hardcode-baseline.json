@@ -1,53 +1,27 @@
 {
-  "generatedAt": "2026-07-05T23:12:21.287Z",
+  "generatedAt": "2026-07-21T01:05:11.837Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 263,
-    "rawText": 172
+    "colors": 172,
+    "rawText": 128
   },
   "files": {
-    "dashboard/src/components/InsforgeUserHeaderControls.jsx": {
-      "colors": 0,
-      "rawText": 3,
-      "rawTextTokens": [
-        ") : avatarSrc && !avatarFailed ? (",
-        ") : initialsFromName(displayName) === \"?\" ? ("
-      ]
-    },
-    "dashboard/src/components/LeaderboardSummaryCard.jsx": {
-      "colors": 3,
-      "rawText": 0,
-      "rawTextTokens": []
-    },
-    "dashboard/src/components/LoginCard.jsx": {
-      "colors": 4,
-      "rawText": 1,
-      "rawTextTokens": [
-        "); const GITHUB_ICON = ("
-      ]
-    },
-    "dashboard/src/components/SortableColumnHeader.jsx": {
-      "colors": 4,
-      "rawText": 0,
-      "rawTextTokens": []
-    },
-    "dashboard/src/components/leaderboard/LeaderboardProfileModal.jsx": {
-      "colors": 6,
-      "rawText": 2,
-      "rawTextTokens": [
-        "0 && n",
-        "1 && ("
-      ]
-    },
-    "dashboard/src/components/settings/AccountSection.jsx": {
+    "dashboard/src/App.jsx": {
       "colors": 0,
       "rawText": 1,
       "rawTextTokens": [
-        "; return ("
+        "); content = showSidebar ?"
+      ]
+    },
+    "dashboard/src/App.preload.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "Limits nav"
       ]
     },
     "dashboard/src/components/settings/MenuBarSection.jsx": {
@@ -55,27 +29,6 @@
       "rawText": 1,
       "rawTextTokens": [
         "GitHub"
-      ]
-    },
-    "dashboard/src/contexts/LoginModalContext.jsx": {
-      "colors": 0,
-      "rawText": 1,
-      "rawTextTokens": [
-        "setIsOpen(false), []); return ("
-      ]
-    },
-    "dashboard/src/pages/DashboardPage.jsx": {
-      "colors": 2,
-      "rawText": 0,
-      "rawTextTokens": []
-    },
-    "dashboard/src/pages/DevicePage.jsx": {
-      "colors": 0,
-      "rawText": 3,
-      "rawTextTokens": [
-        "Approve your CLI",
-        "CLI code",
-        "Sign in first, then return to this page."
       ]
     },
     "dashboard/src/pages/IpCheckPage.jsx": {
@@ -99,14 +52,6 @@
         "for the header row, NOT the semantic",
         "setTimeout(r, 1500)); let dnsServers = []; for (let attempt = 0; attempt",
         "sidesteps all UA semantics. return ("
-      ]
-    },
-    "dashboard/src/pages/LeaderboardProfilePage.jsx": {
-      "colors": 2,
-      "rawText": 2,
-      "rawTextTokens": [
-        ") : realSignedIn ? (",
-        "Token Tracker"
       ]
     },
     "dashboard/src/pages/SkillDetailPanel.jsx": {
@@ -224,7 +169,7 @@
         "Conversations",
         "Model Breakdown",
         "tokens",
-        "with position: fixed, so use viewport // coordinates directly. This keeps it visible inside the leaderboard // profile modal, where the Dialog.Popup has both `overflow-hidden` and // a `transform` (from the open/close transition) — that combo clips any // absolute-positioned tooltip rendered inside the modal subtree. const rect = e.currentTarget.getBoundingClientRect(); const viewportWidth = typeof window !== \"undefined\" ? window.innerWidth : 1024; const x = rect.left + rect.width / 2; const y = rect.top; const halfWidth = 140; let shiftX = 0; if (x"
+        "with position: fixed, so use viewport // coordinates directly. This keeps it visible inside a modal whose // Dialog.Popup has both `overflow-hidden` and a `transform` (from the // open/close transition) — that combo clips any absolute-positioned // tooltip rendered inside the modal subtree. const rect = e.currentTarget.getBoundingClientRect(); const viewportWidth = typeof window !== \"undefined\" ? window.innerWidth : 1024; const x = rect.left + rect.width / 2; const y = rect.top; const halfWidth = 140; let shiftX = 0; if (x"
       ]
     },
     "dashboard/src/ui/dashboard/components/ActivityHeatmap3D.jsx": {
@@ -280,13 +225,6 @@
       "rawText": 1,
       "rawTextTokens": [
         ") : showAnimatedSummary ? ( // Share card keeps the plain rolling Counter."
-      ]
-    },
-    "dashboard/src/ui/dashboard/components/LikeButton.jsx": {
-      "colors": 6,
-      "rawText": 1,
-      "rawTextTokens": [
-        "setTriggerNumAnim(false), 500); const colors = [\"#ff4757\", \"#ff6b81\", \"#ffa502\", \"#70a1ff\", \"#2ed573\", \"#a29bfe\"]; const shapes = [\"circle\", \"heart\"]; const newParticles = []; for (let i = 0; i"
       ]
     },
     "dashboard/src/ui/dashboard/components/ProviderIcon.jsx": {
@@ -390,93 +328,6 @@
         "en",
         "zh",
         "zh-tw"
-      ]
-    },
-    "dashboard/src/ui/marketing/MarketingLanding.jsx": {
-      "colors": 22,
-      "rawText": 20,
-      "rawTextTokens": [
-        ") : ( // 未登录：Sign In 展示为主行动实色按钮，点击唤起 Modal",
-        ") : signedIn ? ( // 已登录：Open Dashboard 升级为主行动实色按钮",
-        "01",
-        "02",
-        "03",
-        "1,420,850",
-        "42 DAY ACTIVE STREAK",
-        "740,560",
-        "89.5% Eff.",
-        "92.1% Eff.",
-        "924,110",
-        "98.4% Eff.",
-        "ALEX",
-        "CHAMP",
-        "CHARLIE",
-        "Community Rankings (Global)",
-        "Realtime",
-        "SYSTEM: // LEADERBOARD_PREVIEW_FEED",
-        "Token Tracker",
-        "VOLT"
-      ]
-    },
-    "dashboard/src/ui/marketing/components/BorderGlow.jsx": {
-      "colors": 6,
-      "rawText": 0,
-      "rawTextTokens": []
-    },
-    "dashboard/src/ui/marketing/components/LaserFlow.jsx": {
-      "colors": 1,
-      "rawText": 0,
-      "rawTextTokens": []
-    },
-    "dashboard/src/ui/marketing/components/LightRays.jsx": {
-      "colors": 1,
-      "rawText": 0,
-      "rawTextTokens": []
-    },
-    "dashboard/src/ui/marketing/components/SpotlightCard.jsx": {
-      "colors": 2,
-      "rawText": 0,
-      "rawTextTokens": []
-    },
-    "dashboard/src/ui/marketing/components/TiltedCard.jsx": {
-      "colors": 2,
-      "rawText": 0,
-      "rawTextTokens": []
-    },
-    "dashboard/src/ui/share/HeatmapStrip.jsx": {
-      "colors": 5,
-      "rawText": 1,
-      "rawTextTokens": [
-        "= 7) return null; const level = normalizeLevel(cell); const x = wi * (cellSize + gap); const y = di * (cellSize + gap); const fill = level === null ? empty : innerPalette[level]; return ("
-      ]
-    },
-    "dashboard/src/ui/share/ShareModal.tsx": {
-      "colors": 1,
-      "rawText": 5,
-      "rawTextTokens": [
-        "(\"\"); const [variant, setVariant] = useState",
-        "(\"annual-report\"); const cardRef = useRef",
-        "(null); const [handleOverride, setHandleOverride] = useState",
-        "(null); const timerRef = useRef",
-        "PNG"
-      ]
-    },
-    "dashboard/src/ui/share/variants/AnnualReportCard.jsx": {
-      "colors": 24,
-      "rawText": 4,
-      "rawTextTokens": [
-        "!v||v",
-        "Token Tracker",
-        "tokentracker.cc"
-      ]
-    },
-    "dashboard/src/ui/share/variants/BroadsheetCard.jsx": {
-      "colors": 0,
-      "rawText": 3,
-      "rawTextTokens": [
-        "0; return (",
-        "The Token Tracker",
-        "→ tokentracker.cc"
       ]
     }
   }

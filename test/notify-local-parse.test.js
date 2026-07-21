@@ -49,7 +49,7 @@ async function setupTokenlessInstall(t) {
   delete env.TOKENTRACKER_DEVICE_TOKEN;
 
   const entry = path.join(path.resolve(__dirname, ".."), "bin", "tracker.js");
-  await runNode([entry, "init", "--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"], env);
+  await runNode([entry, "init", "--yes", "--no-auth", "--no-open"], env);
 
   const trackerDir = path.join(tmp, ".tokentracker", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });

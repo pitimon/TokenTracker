@@ -818,8 +818,9 @@ export function SkillsPage() {
     }
   }, [discoverData.length, loadDiscover, source, tab]);
 
-  // Popular = skills.sh search results aggregated by install count (no leaderboard
-  // endpoint exists), loaded lazily on first switch to the Popular source.
+  // Popular = skills.sh search results aggregated by install count (no
+  // dedicated ranking endpoint exists), loaded lazily on first switch to
+  // the Popular source.
   useEffect(() => {
     if (tab !== "browse" || source !== SOURCE_POPULAR) return;
     if (popularData.length === 0) {

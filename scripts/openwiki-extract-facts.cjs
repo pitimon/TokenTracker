@@ -75,20 +75,12 @@ function extractFacts({ root = ROOT } = {}) {
     { path: "/dashboard", component: "DashboardPage", evidence: `${appPath}:${lineFor(app, app.indexOf("isDashboardDefaultPath"))}` },
   ];
   const routeComponents = [
-    ["/leaderboard", "LeaderboardPage"],
     ["/limits", "LimitsPage"],
     ["/settings", "SettingsPage"],
     ["/skills", "SkillsPage"],
     ["/widgets", "WidgetsPage"],
     ["/ip-check", "IpCheckPage"],
-    ["/auth/callback", "NativeAuthCallbackPage"],
-    ["/auth/native-callback", "NativeAuthCallbackPage"],
-    ["/login", "LoginPage"],
-    ["/device", "DevicePage"],
     ["/wrapped", "WrappedPage"],
-    ["/landing", "LandingPage"],
-    ["/share/:token", "ShareCard"],
-    ["/u/:userId", "LeaderboardProfilePage"],
   ];
   for (const [routePath, component] of routeComponents) {
     const literal = routePath.replace(/\/:.+$/, "");

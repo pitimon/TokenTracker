@@ -19,19 +19,31 @@ test("App.jsx parses without duplicate identifier errors", async () => {
   await assert.doesNotReject(parseDashboardFile("dashboard/src/App.jsx"));
 });
 
-test("App.jsx routes to /leaderboard page", () => {
+// Inverted deliberately. These used to assert the routes EXIST; the Leaderboard
+// and Login pages were removed when TokenTracker became local-only, so the
+// useful assertion now is that they do not come back — a deleted test would
+// have pinned nothing.
+test("App.jsx has no cloud-era routes (leaderboard, login, device)", () => {
   const appPath = path.join(repoRoot, "dashboard/src/App.jsx");
   const source = fs.readFileSync(appPath, "utf8");
-  assert.equal(source.includes('"/rankings"'), false, "Removed /rankings route should not exist");
-  assert.equal(source.includes('"/leaderboard"'), true, "/leaderboard route should exist");
-  assert.equal(source.includes("LeaderboardPage"), true, "LeaderboardPage should be referenced");
+  for (const gone of ['"/leaderboard"', '"/rankings"', '"/login"', '"/device"']) {
+    assert.equal(source.includes(gone), false, `${gone} route must stay removed`);
+  }
+  for (const gone of ["LeaderboardPage", "LoginPage", "DevicePage", "NativeAuthCallbackPage"]) {
+    assert.equal(source.includes(gone), false, `${gone} must stay removed`);
+  }
 });
 
-test("App.jsx routes to /login page", () => {
+test("App.jsx serves the dashboard at the root path", () => {
   const appPath = path.join(repoRoot, "dashboard/src/App.jsx");
   const source = fs.readFileSync(appPath, "utf8");
-  assert.equal(source.includes('"/login"'), true, "/login route should exist");
-  assert.equal(source.includes("LoginPage"), true, "LoginPage should be referenced");
+  assert.equal(source.includes("LandingPage"), false, "the marketing landing is removed");
+  // App.jsx dispatches on the normalized pathname rather than <Route path>,
+  // so assert against that style — the same way the /widgets check below does.
+  assert.ok(
+    source.includes('normalizedPath === "/"'),
+    "the root path must resolve to the dashboard so it is reachable at localhost:7680/",
+  );
 });
 
 test("App.jsx keeps menu bar configuration inside /widgets", () => {

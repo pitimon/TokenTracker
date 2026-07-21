@@ -54,8 +54,8 @@ describe("ActivityHeatmap", () => {
   });
 
   it("forces 2D when embedded, ignoring the persisted 3D dashboard preference", () => {
-    // Reproduces the leaderboard-modal regression: picking 3D on the standalone
-    // dashboard persists "3d" to localStorage, which the embedded modal instance
+    // Reproduces an embedded-modal regression: picking 3D on the standalone
+    // dashboard persists "3d" to localStorage, which an embedded instance
     // would otherwise read and render in 3D.
     window.localStorage.setItem("tt:heatmap-view", "3d");
 

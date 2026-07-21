@@ -5,39 +5,35 @@
       {
         "name": "serve",
         "default": true,
-        "evidence": "src/cli.js:16"
+        "evidence": "src/cli.js:15"
       },
       {
         "name": "init",
-        "evidence": "src/cli.js:29"
+        "evidence": "src/cli.js:28"
       },
       {
         "name": "sync",
-        "evidence": "src/cli.js:32"
+        "evidence": "src/cli.js:31"
       },
       {
         "name": "status",
-        "evidence": "src/cli.js:35"
+        "evidence": "src/cli.js:34"
       },
       {
         "name": "diagnostics",
-        "evidence": "src/cli.js:38"
+        "evidence": "src/cli.js:37"
       },
       {
         "name": "doctor",
-        "evidence": "src/cli.js:41"
+        "evidence": "src/cli.js:40"
       },
       {
         "name": "uninstall",
-        "evidence": "src/cli.js:44"
-      },
-      {
-        "name": "device-login",
-        "evidence": "src/cli.js:47"
+        "evidence": "src/cli.js:43"
       },
       {
         "name": "wrapped",
-        "evidence": "src/cli.js:50"
+        "evidence": "src/cli.js:46"
       }
     ]
   },
@@ -48,7 +44,7 @@
         "methods": [
           "POST"
         ],
-        "evidence": "src/lib/local-api.js:1244",
+        "evidence": "src/lib/local-api.js:896",
         "mutation": true
       },
       {
@@ -56,7 +52,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1287",
+        "evidence": "src/lib/local-api.js:930",
         "mutation": false
       },
       {
@@ -64,7 +60,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1298",
+        "evidence": "src/lib/local-api.js:941",
         "mutation": false
       },
       {
@@ -72,7 +68,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1383",
+        "evidence": "src/lib/local-api.js:1026",
         "mutation": false
       },
       {
@@ -80,7 +76,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1394",
+        "evidence": "src/lib/local-api.js:1037",
         "mutation": false
       },
       {
@@ -88,7 +84,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1462",
+        "evidence": "src/lib/local-api.js:1105",
         "mutation": false
       },
       {
@@ -96,7 +92,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1527",
+        "evidence": "src/lib/local-api.js:1170",
         "mutation": false
       },
       {
@@ -104,7 +100,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1573",
+        "evidence": "src/lib/local-api.js:1216",
         "mutation": false
       },
       {
@@ -112,7 +108,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1650",
+        "evidence": "src/lib/local-api.js:1293",
         "mutation": false
       },
       {
@@ -120,7 +116,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1660",
+        "evidence": "src/lib/local-api.js:1303",
         "mutation": false
       },
       {
@@ -128,7 +124,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1670",
+        "evidence": "src/lib/local-api.js:1313",
         "mutation": false
       },
       {
@@ -137,7 +133,7 @@
           "GET",
           "POST"
         ],
-        "evidence": "src/lib/local-api.js:1704",
+        "evidence": "src/lib/local-api.js:1347",
         "mutation": true
       },
       {
@@ -145,7 +141,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1854",
+        "evidence": "src/lib/local-api.js:1497",
         "mutation": false
       }
     ]
@@ -155,82 +151,42 @@
       {
         "path": "/",
         "component": "DashboardPage",
-        "evidence": "dashboard/src/App.jsx:108"
+        "evidence": "dashboard/src/App.jsx:54"
       },
       {
         "path": "/dashboard",
         "component": "DashboardPage",
-        "evidence": "dashboard/src/App.jsx:108"
-      },
-      {
-        "path": "/leaderboard",
-        "component": "LeaderboardPage",
-        "evidence": "dashboard/src/App.jsx:109"
+        "evidence": "dashboard/src/App.jsx:54"
       },
       {
         "path": "/limits",
         "component": "LimitsPage",
-        "evidence": "dashboard/src/App.jsx:196"
+        "evidence": "dashboard/src/App.jsx:55"
       },
       {
         "path": "/settings",
         "component": "SettingsPage",
-        "evidence": "dashboard/src/App.jsx:197"
+        "evidence": "dashboard/src/App.jsx:56"
       },
       {
         "path": "/skills",
         "component": "SkillsPage",
-        "evidence": "dashboard/src/App.jsx:198"
+        "evidence": "dashboard/src/App.jsx:57"
       },
       {
         "path": "/widgets",
         "component": "WidgetsPage",
-        "evidence": "dashboard/src/App.jsx:199"
+        "evidence": "dashboard/src/App.jsx:58"
       },
       {
         "path": "/ip-check",
         "component": "IpCheckPage",
-        "evidence": "dashboard/src/App.jsx:200"
-      },
-      {
-        "path": "/auth/callback",
-        "component": "NativeAuthCallbackPage",
-        "evidence": "dashboard/src/App.jsx:233"
-      },
-      {
-        "path": "/auth/native-callback",
-        "component": "NativeAuthCallbackPage",
-        "evidence": "dashboard/src/App.jsx:233"
-      },
-      {
-        "path": "/login",
-        "component": "LoginPage",
-        "evidence": "dashboard/src/App.jsx:235"
-      },
-      {
-        "path": "/device",
-        "component": "DevicePage",
-        "evidence": "dashboard/src/App.jsx:237"
+        "evidence": "dashboard/src/App.jsx:59"
       },
       {
         "path": "/wrapped",
         "component": "WrappedPage",
-        "evidence": "dashboard/src/App.jsx:242"
-      },
-      {
-        "path": "/landing",
-        "component": "LandingPage",
-        "evidence": "dashboard/src/App.jsx:191"
-      },
-      {
-        "path": "/share/:token",
-        "component": "ShareCard",
-        "evidence": "dashboard/src/App.jsx:94"
-      },
-      {
-        "path": "/u/:userId",
-        "component": "LeaderboardProfilePage",
-        "evidence": "dashboard/src/App.jsx:6"
+        "evidence": "dashboard/src/App.jsx:60"
       }
     ]
   },

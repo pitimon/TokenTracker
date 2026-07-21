@@ -63,13 +63,6 @@ const {
 const { computeClaudeGroundTruthBuckets } = require("../lib/claude-categorizer");
 const { createProgress, renderBar, formatNumber, formatBytes } = require("../lib/progress");
 const {
-  normalizeState: normalizeUploadState,
-  decideAutoUpload,
-  recordUploadFailure,
-  recordUploadSuccess,
-  parseRetryAfterMs,
-} = require("../lib/upload-throttle");
-const {
   isCursorInstalled,
   extractCursorSessionToken,
   fetchCursorUsageCsv,
@@ -77,7 +70,6 @@ const {
 } = require("../lib/cursor-config");
 const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
-const { resolveRuntimeConfig } = require("../lib/runtime-config");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -146,14 +138,11 @@ async function cmdSync(argv) {
     const queueStatePath = path.join(trackerDir, "queue.state.json");
     const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
     const projectQueueStatePath = path.join(trackerDir, "project.queue.state.json");
-    const uploadThrottlePath = path.join(trackerDir, "upload.throttle.json");
     const grokSignalPath = path.join(trackerDir, "grok-last-session.json");
     const legacyGrokSignalPath = path.join(trackerDir, "tracker", "grok-last-session.json");
 
     const config = await readJson(configPath);
     const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
-    const uploadThrottle = normalizeUploadState(await readJson(uploadThrottlePath));
-    let uploadThrottleState = uploadThrottle;
     let grokHookSignal = null;
     let grokHookSignalPath = null;
     for (const candidate of [grokSignalPath, legacyGrokSignalPath]) {
@@ -928,69 +917,7 @@ async function cmdSync(argv) {
 
     progress?.stop();
 
-    const runtime = resolveRuntimeConfig({ config: config || {}, env: process.env });
 
-    let uploadResult = { inserted: 0, skipped: 0 };
-    let uploadAttempted = false;
-
-    if (runtime.deviceToken && runtime.baseUrl) {
-      uploadAttempted = true;
-      try {
-        uploadResult = await drainQueueToCloud({
-          baseUrl: runtime.baseUrl,
-          deviceToken: runtime.deviceToken,
-          queuePath,
-          queueStatePath,
-          maxBatches: opts.drain ? 100 : 5,
-          batchSize: 200,
-        });
-        // Record success so the exponential backoff step resets — otherwise
-        // a single past failure keeps us pessimistically throttled forever.
-        uploadThrottleState = recordUploadSuccess({
-          nowMs: Date.now(),
-          state: uploadThrottleState,
-        });
-        await writeJson(uploadThrottlePath, uploadThrottleState);
-      } catch (e) {
-        // Persist a backoff on 429 / 5xx so the next auto-sync waits instead
-        // of retrying immediately and making the rate-limit worse. The
-        // throttle module already parses Retry-After when we surface it on
-        // the error object (drainQueueToCloud stamps err.status + err.retryAfterMs).
-        uploadThrottleState = recordUploadFailure({
-          nowMs: Date.now(),
-          state: uploadThrottleState,
-          error: e,
-        });
-        await writeJson(uploadThrottlePath, uploadThrottleState);
-        if (!opts.auto) {
-          process.stderr.write(`Upload error: ${e?.message || e}\n`);
-        }
-      }
-    }
-
-    const afterState = (await readJson(queueStatePath)) || { offset: 0 };
-    const queueSize = await safeStatSize(queuePath);
-    const projectAfterState = (await readJson(projectQueueStatePath)) || { offset: 0 };
-    const projectQueueSize = await safeStatSize(projectQueuePath);
-    const pendingBytes =
-      Math.max(0, queueSize - Number(afterState.offset || 0)) +
-      Math.max(0, projectQueueSize - Number(projectAfterState.offset || 0));
-
-    if (pendingBytes <= 0) {
-      await clearAutoRetry(trackerDir);
-    } else if (opts.auto && uploadAttempted) {
-      const retryAtMs = Number(uploadThrottleState?.nextAllowedAtMs || 0);
-      if (retryAtMs > Date.now()) {
-        await scheduleAutoRetry({
-          trackerDir,
-          retryAtMs,
-          reason: "backlog",
-          pendingBytes,
-          source: "auto-backlog",
-          autoRetryNoSpawn: runtime.autoRetryNoSpawn,
-        });
-      }
-    }
 
     const totalParsed =
       parseResult.filesProcessed +
@@ -1045,9 +972,6 @@ async function cmdSync(argv) {
     const summary = {
       totalParsed,
       totalBuckets,
-      upload: uploadResult,
-      uploadAttempted,
-      pendingBytes,
     };
 
     if (!opts.auto) {
@@ -1056,12 +980,6 @@ async function cmdSync(argv) {
           "Sync finished:",
           `- Parsed files: ${totalParsed}`,
           `- New 30-min buckets queued: ${totalBuckets}`,
-          runtime.deviceToken
-            ? `- Uploaded: ${uploadResult.inserted} inserted, ${uploadResult.skipped} skipped`
-            : "- Uploaded: skipped (no device token)",
-          runtime.deviceToken && pendingBytes > 0 && !opts.drain
-            ? `- Remaining: ${formatBytes(pendingBytes)} pending (run sync again, or use --drain)`
-            : null,
           "",
         ]
           .filter(Boolean)
@@ -1276,102 +1194,10 @@ function deriveAutoSkipReason({ decision, state }) {
   return "throttled";
 }
 
-async function scheduleAutoRetry({
-  trackerDir,
-  retryAtMs,
-  reason,
-  pendingBytes,
-  source,
-  autoRetryNoSpawn,
-}) {
-  const retryMs = coerceRetryMs(retryAtMs);
-  if (!retryMs) return { scheduled: false, retryAtMs: 0 };
 
-  const retryPath = path.join(trackerDir, AUTO_RETRY_FILENAME);
-  const nowMs = Date.now();
-  const existing = await readJson(retryPath);
-  const existingMs = coerceRetryMs(existing?.retryAtMs);
-  if (existingMs && existingMs >= retryMs - 1000) {
-    return { scheduled: false, retryAtMs: existingMs };
-  }
 
-  const payload = {
-    version: 1,
-    retryAtMs: retryMs,
-    retryAt: new Date(retryMs).toISOString(),
-    reason: typeof reason === "string" && reason.length > 0 ? reason : "throttled",
-    pendingBytes: Math.max(0, Number(pendingBytes || 0)),
-    scheduledAt: new Date(nowMs).toISOString(),
-    source: typeof source === "string" ? source : "auto",
-  };
 
-  await writeJson(retryPath, payload);
 
-  const delayMs = Math.min(AUTO_RETRY_MAX_DELAY_MS, Math.max(0, retryMs - nowMs));
-  if (delayMs <= 0) return { scheduled: false, retryAtMs: retryMs };
-  if (autoRetryNoSpawn) {
-    return { scheduled: false, retryAtMs: retryMs };
-  }
-
-  spawnAutoRetryProcess({
-    retryPath,
-    trackerBinPath: path.join(trackerDir, "app", "bin", "tracker.js"),
-    fallbackPkg: "@ipv9/tokentracker-cli",
-    delayMs,
-  });
-  return { scheduled: true, retryAtMs: retryMs };
-}
-
-async function clearAutoRetry(trackerDir) {
-  const retryPath = path.join(trackerDir, AUTO_RETRY_FILENAME);
-  await fs.unlink(retryPath).catch(() => {});
-}
-
-function spawnAutoRetryProcess({ retryPath, trackerBinPath, fallbackPkg, delayMs }) {
-  const script = buildAutoRetryScript({ retryPath, trackerBinPath, fallbackPkg, delayMs });
-  try {
-    const child = cp.spawn(process.execPath, ["-e", script], {
-      detached: true,
-      stdio: "ignore",
-      env: process.env,
-    });
-    child.unref();
-  } catch (_e) {}
-}
-
-function buildAutoRetryScript({ retryPath, trackerBinPath, fallbackPkg, delayMs }) {
-  return (
-    `'use strict';\n` +
-    `const fs = require('node:fs');\n` +
-    `const cp = require('node:child_process');\n` +
-    `const retryPath = ${JSON.stringify(retryPath)};\n` +
-    `const trackerBinPath = ${JSON.stringify(trackerBinPath)};\n` +
-    `const fallbackPkg = ${JSON.stringify(fallbackPkg)};\n` +
-    `const delayMs = ${Math.max(0, Math.floor(delayMs || 0))};\n` +
-    `setTimeout(() => {\n` +
-    `  let retryAtMs = 0;\n` +
-    `  try {\n` +
-    `    const raw = fs.readFileSync(retryPath, 'utf8');\n` +
-    `    retryAtMs = Number(JSON.parse(raw).retryAtMs || 0);\n` +
-    `  } catch (_) {}\n` +
-    `  if (!retryAtMs || Date.now() + 1000 < retryAtMs) process.exit(0);\n` +
-    `  const argv = ['sync', '--auto', '--from-retry'];\n` +
-    `  const cmd = fs.existsSync(trackerBinPath)\n` +
-    `    ? [process.execPath, trackerBinPath, ...argv]\n` +
-    `    : ['npx', '--yes', fallbackPkg, ...argv];\n` +
-    `  try {\n` +
-    `    const child = cp.spawn(cmd[0], cmd.slice(1), { detached: true, stdio: 'ignore', env: process.env });\n` +
-    `    child.unref();\n` +
-    `  } catch (_) {}\n` +
-    `}, delayMs);\n`
-  );
-}
-
-function coerceRetryMs(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.floor(n);
-}
 
 async function writeOpenclawSignal(trackerDir) {
   const openclawSignalPath = path.join(trackerDir, "openclaw.signal");
@@ -1382,63 +1208,10 @@ async function writeOpenclawSignal(trackerDir) {
   }
 }
 
-const AUTO_RETRY_FILENAME = "auto.retry.json";
 const AUTO_RETRY_MAX_DELAY_MS = 2 * 60 * 60 * 1000;
 
-const INGEST_SLUG = "tokentracker-ingest";
 const MAX_INGEST_BUCKETS = 500;
 
-async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePath, maxBatches = 5, batchSize = 200 }) {
-  const state = (await readJson(queueStatePath)) || { offset: 0 };
-  let offset = Number(state.offset || 0);
-  let inserted = 0;
-  let skipped = 0;
-
-  const queueSize = await safeStatSize(queuePath);
-  const limit = Math.min(Math.max(1, Math.floor(Number(batchSize || 200))), MAX_INGEST_BUCKETS);
-
-  for (let batch = 0; batch < maxBatches; batch++) {
-    if (offset >= queueSize) break;
-    const result = await readQueueBatch(queuePath, offset, limit);
-    if (result.buckets.length === 0) break;
-
-    const root = baseUrl.replace(/\/$/, "");
-    const anonKey = process.env.TOKENTRACKER_INSFORGE_ANON_KEY || "";
-    const headers = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Authorization: `Bearer ${deviceToken}`,
-    };
-    if (anonKey) headers.apikey = anonKey;
-    const res = await fetch(`${root}/functions/${INGEST_SLUG}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ hourly: result.buckets }),
-    });
-
-    const rawText = await res.text().catch(() => "");
-    let data = {};
-    try { data = JSON.parse(rawText); } catch { data = {}; }
-    if (!res.ok) {
-      const err = new Error(`HTTP ${res.status}: ${rawText.substring(0, 500)}`);
-      err.status = res.status;
-      const retryAfter = res.headers?.get?.("Retry-After") ?? null;
-      const retryAfterMs = parseRetryAfterMs(retryAfter);
-      if (retryAfterMs !== null) err.retryAfterMs = retryAfterMs;
-      throw err;
-    }
-
-    inserted += Number(data?.inserted || 0);
-    skipped += Number(data?.skipped || 0);
-
-    offset = result.nextOffset;
-    state.offset = offset;
-    state.updatedAt = new Date().toISOString();
-    await writeJson(queueStatePath, state);
-  }
-
-  return { inserted, skipped };
-}
 
 async function readQueueBatch(queuePath, startOffset, maxBuckets) {
   const st = await fs.stat(queuePath).catch(() => null);

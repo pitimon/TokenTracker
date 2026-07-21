@@ -5,7 +5,7 @@ const { test } = require("node:test");
 const {
   buildBrowserOpenErrorMessage,
   spawnBrowserCommand,
-} = require("../src/lib/browser-auth");
+} = require("../src/lib/browser-open");
 
 test("browser open warning includes manual URL and Linux xdg-utils fix", () => {
   const message = buildBrowserOpenErrorMessage({

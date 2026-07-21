@@ -1,28 +1,11 @@
-const DEFAULT_BASE_URL = "https://srctyff5.us-east.insforge.app";
-const DEFAULT_DASHBOARD_URL = "https://www.tokentracker.cc";
 const DEFAULT_HTTP_TIMEOUT_MS = 20_000;
 
 function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaults = {} } = {}) {
-  const baseUrl = pickString(
-    cli.baseUrl,
-    config.baseUrl,
-    env?.TOKENTRACKER_INSFORGE_BASE_URL,
-    defaults.baseUrl,
-    DEFAULT_BASE_URL,
-  );
   const dashboardUrl = pickString(
     cli.dashboardUrl,
     config.dashboardUrl,
     env?.TOKENTRACKER_DASHBOARD_URL,
     defaults.dashboardUrl,
-    DEFAULT_DASHBOARD_URL,
-  );
-  const deviceToken = pickString(
-    cli.deviceToken,
-    config.deviceToken,
-    env?.TOKENTRACKER_DEVICE_TOKEN,
-    defaults.deviceToken,
-    null,
   );
   const httpTimeoutMs = pickHttpTimeoutMs(
     cli.httpTimeoutMs,
@@ -32,28 +15,15 @@ function resolveRuntimeConfig({ cli = {}, config = {}, env = process.env, defaul
     DEFAULT_HTTP_TIMEOUT_MS,
   );
   const debug = pickBoolean(cli.debug, config.debug, env?.TOKENTRACKER_DEBUG, defaults.debug, false);
-  const autoRetryNoSpawn = pickBoolean(
-    cli.autoRetryNoSpawn,
-    config.autoRetryNoSpawn,
-    env?.TOKENTRACKER_AUTO_RETRY_NO_SPAWN,
-    defaults.autoRetryNoSpawn,
-    false,
-  );
 
   return {
-    baseUrl: baseUrl.value,
     dashboardUrl: dashboardUrl.value,
-    deviceToken: deviceToken.value,
     httpTimeoutMs: httpTimeoutMs.value,
     debug: debug.value,
-    autoRetryNoSpawn: autoRetryNoSpawn.value,
     sources: {
-      baseUrl: baseUrl.source,
       dashboardUrl: dashboardUrl.source,
-      deviceToken: deviceToken.source,
       httpTimeoutMs: httpTimeoutMs.source,
       debug: debug.source,
-      autoRetryNoSpawn: autoRetryNoSpawn.source,
     },
   };
 }
@@ -115,8 +85,6 @@ function clampInt(value, min, max) {
 }
 
 module.exports = {
-  DEFAULT_BASE_URL,
-  DEFAULT_DASHBOARD_URL,
   DEFAULT_HTTP_TIMEOUT_MS,
   resolveRuntimeConfig,
 };

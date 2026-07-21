@@ -5,7 +5,6 @@ const { cmdDiagnostics } = require("./commands/diagnostics");
 const { cmdDoctor } = require("./commands/doctor");
 const { cmdUninstall } = require("./commands/uninstall");
 const { cmdServe } = require("./commands/serve");
-const { cmdDeviceLogin } = require("./commands/device-login");
 const { cmdWrapped } = require("./commands/wrapped");
 
 async function run(argv) {
@@ -44,9 +43,6 @@ async function run(argv) {
     case "uninstall":
       await cmdUninstall(rest);
       return;
-    case "device-login":
-      await cmdDeviceLogin(rest);
-      return;
     case "wrapped":
       await cmdWrapped(rest);
       return;
@@ -64,29 +60,24 @@ function printHelp() {
       "Usage:",
       "  npx --yes @ipv9/tokentracker-cli                                         Start local dashboard",
       "  npx --yes @ipv9/tokentracker-cli [--debug] serve [--port 7680] [--open] [--no-open] [--sync]",
-      "  npx --yes @ipv9/tokentracker-cli [--debug] init [--yes] [--dry-run] [--no-open] [--link-code <code>]",
+      "  npx --yes @ipv9/tokentracker-cli [--debug] init [--yes] [--dry-run] [--no-open]",
       "  npx --yes @ipv9/tokentracker-cli [--debug] sync [--auto] [--drain] [--from-openclaw]",
       "  npx --yes @ipv9/tokentracker-cli [--debug] status [--probe-keychain] [--probe-keychain-details]",
       "  npx --yes @ipv9/tokentracker-cli [--debug] diagnostics [--out diagnostics.json]",
-      "  npx --yes @ipv9/tokentracker-cli [--debug] doctor [--json] [--out doctor.json] [--base-url <url>]",
+      "  npx --yes @ipv9/tokentracker-cli [--debug] doctor [--json] [--out doctor.json]",
       "  npx --yes @ipv9/tokentracker-cli [--debug] uninstall [--purge]",
-      "  npx --yes @ipv9/tokentracker-cli [--debug] device-login [--json] [--base-url <url>]",
       "  npx --yes @ipv9/tokentracker-cli [--debug] wrapped [--year 2026] [--json]",
       "",
       "Notes:",
-      "  - init: consent first, local setup next, browser sign-in last.",
+      "  - init: consent first, then local setup. This build is local-only.",
       "  - --yes skips the consent menu (non-interactive safe).",
       "  - --dry-run previews changes without writing files.",
-      "  - optional: --link-code <code> skips browser login when provided by Dashboard.",
       "  - Every Code notify installs when ~/.code/config.toml exists.",
       "  - OpenClaw hook auto-links when OpenClaw is installed (requires gateway restart).",
-      "  - auto sync waits for a device token.",
-      "  - optional: --dashboard-url for hosted landing.",
       "  - serve prints the local dashboard URL; pass --open to ask the OS to open a browser.",
-      "  - sync parses ~/.codex/sessions/**/rollout-*.jsonl and ~/.code/sessions/**/rollout-*.jsonl, then uploads token deltas only when cloud credentials are configured.",
+      "  - sync parses ~/.codex/sessions/**/rollout-*.jsonl and ~/.code/sessions/**/rollout-*.jsonl into the local queue. Nothing is uploaded.",
       "  - --from-openclaw marks sync runs triggered by OpenClaw hooks.",
       "  - --debug shows original backend errors.",
-      "  - device-login pairs a headless CLI / SSH session with a browser sign-in (15-min code).",
       "",
     ].join("\n"),
   );

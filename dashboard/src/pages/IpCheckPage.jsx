@@ -11,7 +11,7 @@ import { copy } from "../lib/copy";
 // DNS leak detection hits *.d.ip.net.coffee directly so the resolver query
 // reaches ip.net.coffee's authoritative DNS.
 //
-// On the deployed web app (tokentracker.cc) there's no local CLI proxy. We hit
+// On a non-localhost deployment there's no local CLI proxy. We hit
 // ip.net.coffee directly instead: its /api/* endpoints send
 // `access-control-allow-origin: *`, and — crucially — a direct browser fetch
 // exits from the visitor's own IP, so the probe still reports the user's real
@@ -584,7 +584,7 @@ export default function IpCheckPage() {
           // hit ip.net.coffee's authoritative server — which is the whole
           // point of this detection. Mixed-content blocking only applies on
           // https pages; this feature is local-only (http://127.0.0.1:7680)
-          // so http is fine. On https pages (e.g. www.tokentracker.cc) the
+          // so http is fine. On a non-localhost https deployment the
           // /proxy/ipcheck/* prefix doesn't exist anyway, so the page is
           // effectively gated to the local runtime.
           img.src = `http://${token}-${i}.d.ip.net.coffee/pixel.gif?_=${Date.now()}`;

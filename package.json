@@ -80,8 +80,7 @@
     "zed",
     "goose",
     "local-first",
-    "rate-limits",
-    "leaderboard"
+    "rate-limits"
   ],
   "license": "MIT",
   "engines": {

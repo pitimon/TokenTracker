@@ -57,7 +57,6 @@ const {
   resolvePiAgentDir,
   piAgentDirCollidesWithOmp,
 } = require("../lib/rollout");
-const { resolveRuntimeConfig, DEFAULT_BASE_URL } = require("../lib/runtime-config");
 const {
   BOLD,
   DIM,
@@ -86,7 +85,6 @@ const ASCII_LOGO = [
 ].join("\n");
 
 const DIVIDER = "----------------------------------------------";
-const DEFAULT_DASHBOARD_URL = "https://www.tokentracker.cc";
 
 // Single source of truth for the welcome screen's provider count + sample list.
 // Keep in sync with the supported-tools table in CLAUDE.md.
@@ -120,11 +118,6 @@ async function cmdInit(argv) {
   const linkCodeStatePath = path.join(trackerDir, "link_code_state.json");
 
   const existingConfig = await readJson(configPath);
-  const runtime = resolveRuntimeConfig({
-    cli: { baseUrl: opts.baseUrl, dashboardUrl: opts.dashboardUrl },
-    config: existingConfig || {},
-    env: process.env,
-  });
   const notifyPath = path.join(binDir, "notify.cjs");
   const appDir = path.join(trackerDir, "app");
   const trackerBinPath = path.join(appDir, "bin", "tracker.js");
@@ -156,7 +149,6 @@ async function cmdInit(argv) {
       home,
       trackerDir,
       notifyPath,
-      runtime,
     });
     renderLocalReport({ summary: preview.summary, isDryRun: true });
     renderAccountNotLinked({ context: "dry-run" });
@@ -178,7 +170,6 @@ async function cmdInit(argv) {
       notifyPath,
       appDir,
       trackerBinPath,
-      runtime,
       existingConfig,
     });
   } catch (err) {
@@ -280,20 +271,10 @@ function renderAccountNotLinked({ context } = {}) {
   renderLocalSuccess();
 }
 
-function shouldUseBrowserAuth({ deviceToken, opts }) {
-  if (deviceToken) return false;
-  if (opts.noAuth) return false;
-  if (opts.linkCode) return false;
-  if (opts.email || opts.password) return false;
-  return true;
-}
-
-async function buildDryRunSummary({ opts, home, trackerDir, notifyPath, runtime }) {
-  const deviceToken = runtime?.deviceToken || null;
-  const pendingBrowserAuth = shouldUseBrowserAuth({ deviceToken, opts });
+async function buildDryRunSummary({ opts, home, trackerDir, notifyPath }) {
   const context = buildIntegrationTargets({ home, trackerDir, notifyPath });
   const summary = await previewIntegrations({ context });
-  return { summary, pendingBrowserAuth, deviceToken };
+  return { summary };
 }
 
 async function runSetup({
@@ -307,15 +288,12 @@ async function runSetup({
   notifyPath,
   appDir,
   trackerBinPath,
-  runtime,
   existingConfig,
 }) {
   await ensureDir(trackerDir);
   await ensureDir(binDir);
-  let deviceToken = runtime?.deviceToken || null;
   let deviceId = existingConfig?.deviceId || null;
   const installedAt = existingConfig?.installedAt || new Date().toISOString();
-  let pendingBrowserAuth = false;
 
   await installLocalTrackerApp({ appDir });
 
@@ -323,13 +301,33 @@ async function runSetup({
     existingConfig && typeof existingConfig === "object" && !Array.isArray(existingConfig)
       ? existingConfig
       : {};
+  // Scrub cloud credentials and endpoints on upgrade. Spreading the previous
+  // config forward kept a live InsForge bearer token in config.json, and this
+  // branch also removed the `status` / `diagnostics` lines that used to reveal
+  // it — so the user is told "local-only, nothing is uploaded" while a valid
+  // credential sits on disk with nothing left to report or rotate it.
+  const {
+    deviceToken: _removedDeviceToken,
+    baseUrl: _removedBaseUrl,
+    dashboardUrl: _removedDashboardUrl,
+    ...carriedConfig
+  } = existingPlainConfig;
   const config = {
-    ...existingPlainConfig,
+    ...carriedConfig,
     installedAt,
-    baseUrl: opts.baseUrl || existingPlainConfig.baseUrl || DEFAULT_BASE_URL,
   };
-  if (opts.dashboardUrl) {
-    config.dashboardUrl = opts.dashboardUrl;
+
+  // Files written by the removed cloud paths. The only code that ever deleted
+  // relay-cookies.json was clearRelayCookies(), which went with the auth proxy,
+  // so an upgrading machine would otherwise keep a refresh token forever.
+  for (const stale of ["relay-cookies.json", "upload.throttle.json", "auto.retry.json"]) {
+    try {
+      await fs.unlink(path.join(trackerDir, stale));
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        process.stderr.write(`[tokentracker] could not remove ${stale}: ${error.message}\n`);
+      }
+    }
   }
 
   await writeJson(configPath, config);
@@ -350,8 +348,6 @@ async function runSetup({
 
   return {
     summary,
-    pendingBrowserAuth,
-    deviceToken,
     deviceId,
     installedAt,
   };
@@ -803,8 +799,6 @@ function arraysEqual(a, b) {
 
 function parseArgs(argv) {
   const out = {
-    baseUrl: null,
-    dashboardUrl: null,
     email: null,
     password: null,
     deviceName: null,
@@ -817,13 +811,33 @@ function parseArgs(argv) {
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--base-url") out.baseUrl = argv[++i] || null;
-    else if (a === "--dashboard-url") out.dashboardUrl = argv[++i] || null;
-    else if (a === "--email") out.email = argv[++i] || null;
-    else if (a === "--password") out.password = argv[++i] || null;
-    else if (a === "--device-name") out.deviceName = argv[++i] || null;
-    else if (a === "--link-code") out.linkCode = argv[++i] || null;
-    else if (a === "--no-auth") out.noAuth = true;
+    // Cloud sign-in flags (--email/--password/--device-name/--link-code/
+    // --no-auth) are gone: there is no account to sign into. Accept and
+    // ignore --no-auth so existing scripts and hooks do not start failing
+    // with "Unknown option"; the others were only ever used with it.
+    if (a === "--no-auth") {
+      // Accepted and ignored: it was the "skip sign-in" opt-out, and there is
+      // no sign-in left to skip. Silently tolerated so existing hooks and
+      // scripts do not start failing with "Unknown option".
+      out.noAuth = true;
+    } else if (a === "--email" || a === "--password" || a === "--device-name") {
+      i += 1;
+    } else if (
+      a.startsWith("--email=") ||
+      a.startsWith("--password=") ||
+      a.startsWith("--device-name=")
+    ) {
+      // Swallow the `=` form too. Falling through raised
+      // `Unknown option: --password=hunter2`, and bin/tracker.js prints the
+      // stack — putting the secret on stderr and into any captured log.
+    } else if (a === "--link-code" || a.startsWith("--link-code=")) {
+      // Fail loudly. Unlike the others this was documented standalone, so a
+      // user pairing a device would otherwise see "Setup complete!" and
+      // believe the code was honored.
+      throw new Error(
+        "--link-code is no longer supported: TokenTracker is local-only and has no device pairing.",
+      );
+    }
     else if (a === "--no-open") out.noOpen = true;
     else if (a === "--yes") out.yes = true;
     else if (a === "--dry-run") out.dryRun = true;
