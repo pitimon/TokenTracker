@@ -6,11 +6,6 @@ import { useUsageData } from "../hooks/use-usage-data.js";
 import { useUsageLimits } from "../hooks/use-usage-limits.js";
 import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
 import { usePulse } from "../hooks/use-pulse";
-import {
-  isAccessTokenReady,
-  normalizeAccessToken,
-  resolveAuthAccessToken,
-} from "../lib/auth-token";
 import { copy } from "../lib/copy";
 import { useLocale } from "../hooks/useLocale.js";
 import { useCurrency } from "../hooks/useCurrency.js";
@@ -27,12 +22,10 @@ import { getMockNow, isMockEnabled } from "../lib/mock-data";
 import { publishUsageLimitsPreloadState } from "../lib/dashboard-preload.js";
 import {
   buildFleetData,
-  buildTopModels,
   buildUsageInsights,
   enrichDailyRows,
   resolveDisplayTokens,
 } from "../lib/model-breakdown";
-import { safeWriteClipboardImage } from "../lib/safe-browser";
 import { isScreenshotModeEnabled } from "../lib/screenshot-mode";
 import {
   formatTimeZoneLabel,
@@ -47,8 +40,6 @@ import {
 } from "../lib/api";
 import { ActivityHeatmap } from "../ui/dashboard/components/ActivityHeatmap.jsx";
 import { DashboardView } from "../ui/dashboard/views/DashboardView.jsx";
-import { ShareModal } from "../ui/share/ShareModal";
-import { useShareCardData } from "../ui/share/use-share-card-data";
 
 const PERIODS = ["day", "24h", "week", "month", "total", "custom"];
 const AUTO_REFRESH_STORAGE_KEY = "tt:dashboard-auto-refresh-ms";
@@ -136,11 +127,6 @@ function addUtcDays(date, days) {
 
 export function DashboardPage({
   baseUrl,
-  auth,
-  signedIn,
-  sessionSoftExpired,
-  publicMode = false,
-  publicToken = null,
   onMainContentVisible,
 }) {
   const { resolvedLocale } = useLocale();
@@ -155,8 +141,6 @@ export function DashboardPage({
     if (typeof window === "undefined") return false;
     return isScreenshotModeEnabled(window.location.search);
   }, []);
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [shareModalOpen, setShareModalOpen] = useState(false);
   const identityScrambleDurationMs = 2200;
   const [coreIndexCollapsed, setCoreIndexCollapsed] = useState(true);
   const [manualSyncLoading, setManualSyncLoading] = useState(false);
@@ -169,52 +153,24 @@ export function DashboardPage({
   const lastLocalDayRef = useRef(null);
   const mainContentVisibleNotifiedRef = useRef(false);
   const mockEnabled = isMockEnabled();
-  const authTokenAllowed = signedIn && !sessionSoftExpired;
-  const authAccessToken = useMemo(() => {
-    if (!authTokenAllowed) return null;
-    if (typeof auth === "function") return auth;
-    if (typeof auth === "string") return auth;
-    if (auth && typeof auth === "object") return auth;
-    return null;
-  }, [auth, authTokenAllowed]);
-  const effectiveAuthToken = authTokenAllowed ? authAccessToken : null;
-  const accessToken = publicMode ? normalizeAccessToken(publicToken) : effectiveAuthToken;
-  const authTokenReady = authTokenAllowed && isAccessTokenReady(effectiveAuthToken);
-  const guestAllowed = signedIn && sessionSoftExpired && !publicMode;
+  // No auth/cloud token in local-only mode — the local CLI API needs no
+  // Authorization header, and there's never a "guest" (soft-expired) session.
+  const accessToken = null;
+  const guestAllowed = false;
 
   // 本地模式判断
   const isLocalMode = typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   useEffect(() => {
-    // 本地模式：跳过登录检查，直接获取 userStatus
-    if (!isLocalMode && (!signedIn || mockEnabled || publicMode)) {
-      setUserStatus(null);
-      return;
-    }
-    if (!isLocalMode && !authTokenReady) {
+    if (!isLocalMode && !mockEnabled) {
       setUserStatus(null);
       return;
     }
     let active = true;
     (async () => {
-      let resolvedToken = null;
       try {
-        resolvedToken = await resolveAuthAccessToken(effectiveAuthToken);
-      } catch (_err) {
-        resolvedToken = null;
-      }
-      if (!active) return;
-      // 本地模式允许空 token
-      if (!resolvedToken && !isLocalMode) {
-        setUserStatus(null);
-        return;
-      }
-      try {
-        const data = await getUserStatus({
-          baseUrl,
-          accessToken: resolvedToken,
-        });
+        const data = await getUserStatus({ baseUrl });
         if (!active) return;
         setUserStatus(data && typeof data === "object" ? data : null);
       } catch (_err) {
@@ -225,7 +181,7 @@ export function DashboardPage({
     return () => {
       active = false;
     };
-  }, [authTokenReady, baseUrl, effectiveAuthToken, mockEnabled, publicMode, signedIn]);
+  }, [baseUrl, isLocalMode, mockEnabled]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -247,7 +203,7 @@ export function DashboardPage({
     () => mockNow || new Date(dashboardNowMs),
     [dashboardNowMs, mockNow],
   );
-  const cacheKey = publicMode ? null : auth?.userId || auth?.email || "default";
+  const cacheKey = "default";
   const [selectedPeriod, setSelectedPeriod] = useState("day");
   const [customFrom, setCustomFrom] = useState(null);
   const [customTo, setCustomTo] = useState(null);
@@ -651,7 +607,7 @@ export function DashboardPage({
 
   const activeDays = useMemo(() => {
     // 本地模式下跳过登录检查
-    if (!signedIn && !mockEnabled && !publicMode && !isLocalMode) return 0;
+    if (!mockEnabled && !isLocalMode) return 0;
     const serverActive = Number(heatmap?.active_days);
     if (Number.isFinite(serverActive)) return serverActive;
 
@@ -680,7 +636,7 @@ export function DashboardPage({
     }
 
     return count;
-  }, [signedIn, mockEnabled, heatmap?.active_days, heatmap?.weeks, heatmapDaily]);
+  }, [mockEnabled, isLocalMode, heatmap?.active_days, heatmap?.weeks, heatmapDaily]);
 
   const [prevPeriod, setPrevPeriod] = useState("month");
   const handlePeriodChange = useCallback((p) => {
@@ -888,29 +844,14 @@ export function DashboardPage({
       }),
     [usageSource, resolvedLocale],
   );
-  const identityRawName = useMemo(() => {
-    if (typeof auth?.name !== "string") return "";
-    return auth.name.trim();
-  }, [auth?.name]);
-  const publicIdentityName = "";
-
-  const identityLabel = useMemo(() => {
-    if (!identityRawName || identityRawName.includes("@")) {
-      return copy("dashboard.identity.fallback");
-    }
-    return identityRawName;
-  }, [identityRawName]);
+  // No cloud identity in local-only mode — always the fallback label.
+  const identityLabel = copy("dashboard.identity.fallback");
 
   const identityHandle = useMemo(() => {
     return identityLabel.replace(/[^a-zA-Z0-9._-]/g, "_");
   }, [identityLabel]);
 
-  const identityDisplayName = useMemo(() => {
-    if (publicMode) {
-      return publicIdentityName || copy("dashboard.identity.fallback");
-    }
-    return identityHandle;
-  }, [identityHandle, publicIdentityName, publicMode]);
+  const identityDisplayName = identityHandle;
   const identityStartDate = useMemo(() => {
     let earliest = null;
 
@@ -941,7 +882,6 @@ export function DashboardPage({
     return earliest;
   }, [heatmap?.weeks, heatmapDaily]);
   const identitySubscriptions = useMemo(() => {
-    if (publicMode) return [];
     const rows = Array.isArray(userStatus?.subscriptions?.items)
       ? userStatus.subscriptions.items
       : [];
@@ -971,7 +911,7 @@ export function DashboardPage({
       })
       .filter(Boolean);
     return normalized.slice(0, 6);
-  }, [publicMode, userStatus]);
+  }, [userStatus]);
 
   const activityHeatmapBlock = (
     <ActivityHeatmap
@@ -1034,156 +974,7 @@ export function DashboardPage({
   const allowBreakdownToggle = !screenshotMode;
   const screenshotTitleLine1 = copy("dashboard.screenshot.title_line1");
   const screenshotTitleLine2 = copy("dashboard.screenshot.title_line2");
-  const screenshotTwitterLabel = copy("dashboard.screenshot.twitter_label");
-  const screenshotTwitterButton = copy("dashboard.screenshot.twitter_button");
-  const screenshotTwitterHint = copy("dashboard.screenshot.twitter_hint");
   const placeholderShort = copy("shared.placeholder.short");
-  const agentSummary = useMemo(() => {
-    const sources = Array.isArray(modelBreakdown?.sources) ? modelBreakdown.sources : [];
-    let topSource = null;
-    let topSourceTokens = 0;
-
-    for (const source of sources) {
-      const tokens = resolveDisplayTokens(source?.totals);
-      if (!Number.isFinite(tokens) || tokens <= 0) continue;
-      if (tokens > topSourceTokens) {
-        topSourceTokens = tokens;
-        topSource = source;
-      }
-    }
-
-    let agentName = placeholderShort;
-    let modelName = placeholderShort;
-    let modelPercent = "0.0";
-
-    if (topSource && topSourceTokens > 0) {
-      agentName = topSource?.source ? String(topSource.source).toUpperCase() : placeholderShort;
-      const models = Array.isArray(topSource?.models) ? topSource.models : [];
-      let topModelTokens = 0;
-      for (const model of models) {
-        const tokens = resolveDisplayTokens(model?.totals);
-        if (!Number.isFinite(tokens) || tokens <= 0) continue;
-        if (tokens > topModelTokens) {
-          topModelTokens = tokens;
-          modelName = model?.model ? String(model.model) : placeholderShort;
-        }
-      }
-      if (topModelTokens > 0) {
-        modelPercent = ((topModelTokens / topSourceTokens) * 100).toFixed(1);
-      }
-    }
-
-    return { agentName, modelName, modelPercent };
-  }, [modelBreakdown, placeholderShort]);
-  const displayTotalTokens = toDisplayNumber(summaryTotalTokens);
-  const twitterTotalTokens = displayTotalTokens === "-" ? placeholderShort : displayTotalTokens;
-  const screenshotTwitterText = copy("dashboard.screenshot.twitter_text", {
-    total_tokens: twitterTotalTokens,
-    agent_name: agentSummary.agentName,
-    model_name: agentSummary.modelName,
-    model_percent: agentSummary.modelPercent,
-  });
-  const screenshotTwitterUrl = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    const intentUrl = new URL("https://twitter.com/intent/tweet");
-    intentUrl.searchParams.set("text", screenshotTwitterText);
-    // Link to the sharer's own profile when signed in, so the tweet drives to
-    // their stats (and the embeddable badge) rather than the generic homepage.
-    const sharePath = auth?.userId ? `/u/${auth.userId}` : "/";
-    intentUrl.searchParams.set("url", `https://www.tokentracker.cc${sharePath}?ref=share`);
-    return intentUrl.toString();
-  }, [screenshotTwitterText, auth?.userId]);
-  const captureScreenshotBlob = useCallback(async () => {
-    if (typeof window === "undefined") return null;
-    const waitForHeatmapLatest = async () => {
-      const maxWaitMs = 2000;
-      const start = performance.now();
-      while (performance.now() - start < maxWaitMs) {
-        const el = document.querySelector("[data-heatmap-scroll='true']");
-        if (!el) return;
-        if (el.dataset.latestMonthReady === "true") return;
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-      }
-    };
-    const root = document.querySelector("#root") || document.body;
-    const docEl = document.documentElement;
-    const { scrollWidth, scrollHeight } = document.documentElement;
-    docEl?.classList.add("screenshot-capture");
-    document.body?.classList.add("screenshot-capture");
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    await waitForHeatmapLatest();
-    try {
-      const { toBlob, toPng } = await import("html-to-image");
-      const blob = await toBlob(root, {
-        backgroundColor: "#050505",
-        pixelRatio: 2,
-        cacheBust: true,
-        width: scrollWidth,
-        height: scrollHeight,
-        style: {
-          width: `${scrollWidth}px`,
-          height: `${scrollHeight}px`,
-        },
-        filter: (node) =>
-          !(node instanceof HTMLElement) || node.dataset?.screenshotExclude !== "true",
-      });
-      if (blob) return blob;
-      const dataUrl = await toPng(root, {
-        backgroundColor: "#050505",
-        pixelRatio: 2,
-        cacheBust: true,
-        width: scrollWidth,
-        height: scrollHeight,
-        style: {
-          width: `${scrollWidth}px`,
-          height: `${scrollHeight}px`,
-        },
-        filter: (node) =>
-          !(node instanceof HTMLElement) || node.dataset?.screenshotExclude !== "true",
-      });
-      if (!dataUrl) return null;
-      const response = await fetch(dataUrl);
-      return await response.blob();
-    } finally {
-      docEl?.classList.remove("screenshot-capture");
-      document.body?.classList.remove("screenshot-capture");
-    }
-  }, []);
-  const handleShareToX = useCallback(async () => {
-    if (typeof window === "undefined" || isCapturing) return;
-    setIsCapturing(true);
-    const userAgent = navigator?.userAgent || "";
-    const isIOS = /iP(hone|od|ad)/i.test(userAgent);
-    const isSafari =
-      /Safari/i.test(userAgent) && !/Chrome|Chromium|Edg|OPR|CriOS|FxiOS/i.test(userAgent);
-    const canCopyImage =
-      typeof navigator !== "undefined" &&
-      Boolean(navigator.clipboard?.write) &&
-      typeof window !== "undefined" &&
-      Boolean(window.ClipboardItem);
-    const allowBypassClipboard = !canCopyImage || isIOS || isSafari;
-    let copied = allowBypassClipboard;
-    try {
-      const blob = await captureScreenshotBlob();
-      if (blob && canCopyImage) {
-        if (typeof document !== "undefined" && !document.hasFocus()) {
-          window.focus?.();
-        }
-        copied = await safeWriteClipboardImage(blob);
-      }
-    } catch (error) {
-      console.error("Failed to capture screenshot", error);
-    } finally {
-      setIsCapturing(false);
-      if (!copied) {
-        console.warn("Failed to write screenshot to clipboard.");
-        return;
-      }
-      if (screenshotTwitterUrl) {
-        window.location.href = screenshotTwitterUrl;
-      }
-    }
-  }, [captureScreenshotBlob, isCapturing, screenshotTwitterUrl]);
   const periodsForDisplay = useMemo(() => (screenshotMode ? [] : PERIODS), [screenshotMode]);
 
   const metricsRows = useMemo(
@@ -1264,30 +1055,6 @@ export function DashboardPage({
     () => buildUsageInsights(modelBreakdown, { copyFn: copy }),
     [modelBreakdown],
   );
-  const topModels = useMemo(
-    () => buildTopModels(modelBreakdown, { limit: 3, copyFn: copy }),
-    [modelBreakdown],
-  );
-
-  const shareCardData = useShareCardData({
-    enabled: shareModalOpen,
-    handle: identityDisplayName,
-    startDate: identityStartDate,
-    activeDays,
-    summary,
-    topModels,
-    period,
-    periodFrom: from,
-    periodTo: to,
-    heatmap,
-    accessToken: typeof accessToken === "string" ? accessToken : null,
-    userId: auth?.userId || null,
-    currency,
-    exchangeRate: rate,
-  });
-  const openShareModal = useCallback(() => setShareModalOpen(true), []);
-  const closeShareModal = useCallback(() => setShareModalOpen(false), []);
-
   const openCostModal = useCallback(() => setCostModalOpen(true), []);
   const closeCostModal = useCallback(() => setCostModalOpen(false), []);
   const costInfoEnabled = summaryCostValue && summaryCostValue !== "-" && fleetData.length > 0;
@@ -1317,10 +1084,8 @@ export function DashboardPage({
   }, [onMainContentVisible, usageLoadingState]);
 
   return (
-    <>
     <DashboardView
       copy={copy}
-      onOpenShare={openShareModal}
       screenshotMode={screenshotMode}
       screenshotTitleLine1={screenshotTitleLine1}
       screenshotTitleLine2={screenshotTitleLine2}
@@ -1344,11 +1109,6 @@ export function DashboardPage({
       period={period}
       trendTimeZoneLabel={trendTimeZoneLabel}
       activityHeatmapBlock={activityHeatmapBlock}
-      isCapturing={isCapturing}
-      handleShareToX={handleShareToX}
-      screenshotTwitterLabel={screenshotTwitterLabel}
-      screenshotTwitterButton={screenshotTwitterButton}
-      screenshotTwitterHint={screenshotTwitterHint}
       periodsForDisplay={periodsForDisplay}
       setSelectedPeriod={handlePeriodChange}
       autoRefreshOptions={AUTO_REFRESH_OPTIONS}
@@ -1407,12 +1167,5 @@ export function DashboardPage({
       costModalOpen={costModalOpen}
       closeCostModal={closeCostModal}
     />
-    <ShareModal
-      open={shareModalOpen}
-      onClose={closeShareModal}
-      data={shareCardData}
-      twitterText={screenshotTwitterText}
-    />
-    </>
   );
 }

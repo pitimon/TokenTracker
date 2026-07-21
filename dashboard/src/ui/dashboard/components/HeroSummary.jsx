@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Info, SquareArrowOutUpRight } from "lucide-react";
+import { Info } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 import { Card, Button, Counter, SplitFlapNumber } from "../../components";
 import { useTheme } from "../../../hooks/useTheme.js";
@@ -63,7 +63,6 @@ export function HeroSummary({
   onCustomRangeApply,
   customRangeOpen,
   onCustomRangeOpenChange,
-  onOpenShare,
   emphasized = false,
 }) {
   const shouldReduceMotion = useReducedMotion();
@@ -238,17 +237,6 @@ export function HeroSummary({
                   </option>
                 ))}
               </select>
-            ) : null}
-            {onOpenShare ? (
-              <button
-                type="button"
-                onClick={onOpenShare}
-                aria-label={copy("share.button.aria")}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-brand hover:text-oai-brand transition-colors duration-200"
-              >
-                <SquareArrowOutUpRight className="h-3.5 w-3.5" strokeWidth={2} />
-                {copy("share.button.label")}
-              </button>
             ) : null}
             {onRefresh && (
               <RefreshButton loading={loading} onClick={onRefresh} />

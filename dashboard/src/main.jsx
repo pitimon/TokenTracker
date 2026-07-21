@@ -1,7 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { InsforgeAuthProvider } from "./contexts/InsforgeAuthContext.jsx";
 import { LocaleProvider } from "./ui/foundation/LocaleProvider.jsx";
 import { CurrencyProvider } from "./ui/foundation/CurrencyProvider.jsx";
 import App from "./App.jsx";
@@ -19,9 +18,7 @@ createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <LocaleProvider>
       <CurrencyProvider>
-        <InsforgeAuthProvider>
-          <RouterProvider router={router} />
-        </InsforgeAuthProvider>
+        <RouterProvider router={router} />
       </CurrencyProvider>
     </LocaleProvider>
   </React.StrictMode>,

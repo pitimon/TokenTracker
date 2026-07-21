@@ -107,8 +107,7 @@ export function ActivityHeatmap({
   // When `true`, the heatmap renders bare: no outer card chrome (rounded
   // border + bg + padding), no inner title row (heading + 2D/3D toggle +
   // timezone label). Use this when the host already provides a section
-  // wrapper (e.g. the leaderboard profile modal). Default keeps the
-  // standalone dashboard appearance.
+  // wrapper. Default keeps the standalone dashboard appearance.
   embedded = false,
 }) {
   const { resolvedTheme } = useTheme();
@@ -162,10 +161,10 @@ export function ActivityHeatmap({
     setHoveredCell(cell);
 
     // Tooltip is portaled to <body> with position: fixed, so use viewport
-    // coordinates directly. This keeps it visible inside the leaderboard
-    // profile modal, where the Dialog.Popup has both `overflow-hidden` and
-    // a `transform` (from the open/close transition) — that combo clips any
-    // absolute-positioned tooltip rendered inside the modal subtree.
+    // coordinates directly. This keeps it visible inside a modal whose
+    // Dialog.Popup has both `overflow-hidden` and a `transform` (from the
+    // open/close transition) — that combo clips any absolute-positioned
+    // tooltip rendered inside the modal subtree.
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1024;
     const x = rect.left + rect.width / 2;
@@ -261,10 +260,9 @@ export function ActivityHeatmap({
     : (isDark ? PALETTES.emerald.dark : PALETTES.emerald.light);
 
   const [view, setView] = useState(() => {
-    // Embedded hosts (e.g. the leaderboard profile modal) have no 2D/3D
-    // toggle and must always render the compact 2D grid. Ignore the persisted
-    // dashboard preference so a user who picked 3D on the dashboard doesn't
-    // see 3D inside the modal.
+    // Embedded hosts have no 2D/3D toggle and must always render the
+    // compact 2D grid. Ignore the persisted dashboard preference so a user
+    // who picked 3D on the dashboard doesn't see 3D inside the embed.
     if (embedded) return "2d";
     try {
       const stored = window.localStorage?.getItem("tt:heatmap-view");

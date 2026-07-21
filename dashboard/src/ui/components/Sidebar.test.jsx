@@ -36,13 +36,15 @@ function renderLayout() {
 }
 
 describe("getNavGroups", () => {
-  it("hides leaderboard by default on local dashboard hosts", () => {
-    expect(window.location.hostname).toBe("localhost");
-    expect(navIds(getNavGroups())).not.toContain("leaderboard");
-  });
-
-  it("keeps leaderboard available when explicitly enabled for hosted/cloud UI", () => {
-    expect(navIds(getNavGroups({ includeLeaderboard: true }))).toContain("leaderboard");
+  it("exposes only the local-only nav entries", () => {
+    expect(navIds(getNavGroups())).toEqual([
+      "usage",
+      "limits",
+      "widgets",
+      "skills",
+      "ip-check",
+      "settings",
+    ]);
   });
 });
 

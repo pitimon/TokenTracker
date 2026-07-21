@@ -1,16 +1,12 @@
 import copyRaw from "../content/copy.csv?raw";
 import zhCore from "../content/i18n/zh/core.json";
 import zhDashboard from "../content/i18n/zh/dashboard.json";
-import zhMarketing from "../content/i18n/zh/marketing.json";
 import zhTwCore from "../content/i18n/zh-TW/core.json";
 import zhTwDashboard from "../content/i18n/zh-TW/dashboard.json";
-import zhTwMarketing from "../content/i18n/zh-TW/marketing.json";
 import jaCore from "../content/i18n/ja/core.json";
 import jaDashboard from "../content/i18n/ja/dashboard.json";
-import jaMarketing from "../content/i18n/ja/marketing.json";
 import koCore from "../content/i18n/ko/core.json";
 import koDashboard from "../content/i18n/ko/dashboard.json";
-import koMarketing from "../content/i18n/ko/marketing.json";
 import {
   getInitialLocalePreference,
   normalizeResolvedLocale,
@@ -26,22 +22,18 @@ const LOCALE_REGISTRIES: Record<string, TranslationRegistry> = {
   [ZH_CN_LOCALE]: {
     ...zhCore,
     ...zhDashboard,
-    ...zhMarketing,
   },
   [ZH_TW_LOCALE]: {
     ...zhTwCore,
     ...zhTwDashboard,
-    ...zhTwMarketing,
   },
   [JA_LOCALE]: {
     ...jaCore,
     ...jaDashboard,
-    ...jaMarketing,
   },
   [KO_LOCALE]: {
     ...koCore,
     ...koDashboard,
-    ...koMarketing,
   },
 };
 

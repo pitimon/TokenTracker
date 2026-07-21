@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
 import { formatDateLocal, formatDateUTC } from "../lib/date-range";
 import { isMockEnabled } from "../lib/mock-data";
 import { getLocalDayKey, getTimeZoneCacheKey } from "../lib/timezone";
@@ -25,7 +24,6 @@ export function useUsageData({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mockEnabled = isMockEnabled();
-  const tokenReady = isAccessTokenReady(accessToken);
   const cacheAllowed = !guestAllowed && !mockEnabled;
 
   const storageKey = (() => {
@@ -70,13 +68,7 @@ export function useUsageData({
     }
   }, [storageKey]);
 
-  const isLocalMode = typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-
   const refresh = useCallback(async () => {
-    const resolvedToken = await resolveAuthAccessToken(accessToken);
-    // 本地模式允许空 token
-    if (!resolvedToken && !mockEnabled && !isLocalMode) return;
     setLoading(true);
     setError(null);
     try {
@@ -86,7 +78,7 @@ export function useUsageData({
         const [dailyResult, summaryResult] = await Promise.allSettled([
           getUsageDaily({
             baseUrl,
-            accessToken: resolvedToken,
+            accessToken,
             from,
             to,
             timeZone,
@@ -94,7 +86,7 @@ export function useUsageData({
           }),
           getUsageSummary({
             baseUrl,
-            accessToken: resolvedToken,
+            accessToken,
             from,
             to,
             timeZone,
@@ -108,7 +100,7 @@ export function useUsageData({
       } else {
         summaryRes = await getUsageSummary({
           baseUrl,
-          accessToken: resolvedToken,
+          accessToken,
           from,
           to,
           timeZone,
@@ -131,7 +123,7 @@ export function useUsageData({
         try {
           const fallback = await getUsageSummary({
             baseUrl,
-            accessToken: resolvedToken,
+            accessToken,
             from,
             to,
             timeZone,
@@ -214,30 +206,14 @@ export function useUsageData({
     cacheAllowed,
     now,
     readCache,
-    tokenReady,
     timeZone,
     to,
     tzOffsetMinutes,
     clearCache,
     writeCache,
-    isLocalMode,
   ]);
 
   useEffect(() => {
-    const isLocalMode = typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-    const isLocalModeCheck = typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-    if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalModeCheck) {
-      setDaily([]);
-      setSummary(null);
-      setRolling(null);
-      setError(null);
-      setLoading(false);
-      setSource("edge");
-      setFetchedAt(null);
-      return;
-    }
     if (!cacheAllowed) {
       clearCache();
       setDaily([]);
@@ -270,11 +246,9 @@ export function useUsageData({
     mockEnabled,
     readCache,
     refresh,
-    tokenReady,
     guestAllowed,
     cacheAllowed,
     clearCache,
-    isLocalMode,
   ]);
 
   const normalizedSource = mockEnabled ? "mock" : source;

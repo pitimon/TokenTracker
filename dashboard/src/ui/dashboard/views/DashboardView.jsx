@@ -1,5 +1,5 @@
 import React from "react";
-import { Shell, Button } from "../../components";
+import { Shell } from "../../components";
 import { CostAnalysisModal } from "../components/CostAnalysisModal.jsx";
 import { DataDetails } from "../components/DataDetails.jsx";
 import { StatsPanel } from "../components/StatsPanel.jsx";
@@ -16,7 +16,6 @@ export function DashboardView(props) {
 
   const {
     copy,
-    onOpenShare,
     screenshotMode,
     screenshotTitleLine1,
     screenshotTitleLine2,
@@ -40,10 +39,6 @@ export function DashboardView(props) {
     period,
     trendTimeZoneLabel,
     activityHeatmapBlock,
-    isCapturing,
-    handleShareToX,
-    screenshotTwitterButton,
-    screenshotTwitterHint,
     periodsForDisplay,
     setSelectedPeriod,
     autoRefreshOptions,
@@ -142,7 +137,6 @@ export function DashboardView(props) {
               onCostInfo={costInfoEnabled ? openCostModal : null}
               onRefresh={screenshotMode ? null : refreshAll}
               loading={usageLoadingState}
-              onOpenShare={screenshotMode ? null : onOpenShare}
               customFrom={customFrom}
               customTo={customTo}
               onCustomRangeApply={onCustomRangeApply}
@@ -168,25 +162,6 @@ export function DashboardView(props) {
                   to={usageTo}
                 />
               </div>
-            </div>
-
-            <div
-              className="flex flex-col items-center gap-2"
-              data-screenshot-exclude="true"
-              style={isCapturing ? { display: "none" } : undefined}
-            >
-              <Button
-                type="button"
-                onClick={handleShareToX}
-                variant="primary"
-                size="lg"
-                disabled={isCapturing}
-              >
-                {screenshotTwitterButton}
-              </Button>
-              <span className="text-sm text-oai-gray-500 dark:text-oai-gray-300">
-                {screenshotTwitterHint}
-              </span>
             </div>
           </div>
         ) : (
@@ -223,7 +198,6 @@ export function DashboardView(props) {
                     onCostInfo={costInfoEnabled ? openCostModal : null}
                     onRefresh={screenshotMode ? null : refreshAll}
                     loading={usageLoadingState}
-                    onOpenShare={screenshotMode ? null : onOpenShare}
                     customFrom={customFrom}
                     customTo={customTo}
                     onCustomRangeApply={onCustomRangeApply}

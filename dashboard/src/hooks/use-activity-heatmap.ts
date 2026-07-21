@@ -4,7 +4,6 @@ import {
   computeActiveStreakDays,
   getHeatmapRangeLocal,
 } from "../lib/activity-heatmap";
-import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
 import { isMockEnabled } from "../lib/mock-data";
 import { getTimeZoneCacheKey } from "../lib/timezone";
 import { getUsageDaily, getUsageHeatmap } from "../lib/api";
@@ -29,11 +28,7 @@ export function useActivityHeatmap({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mockEnabled = isMockEnabled();
-  const tokenReady = isAccessTokenReady(accessToken);
   const cacheAllowed = !guestAllowed;
-
-  const isLocalMode = typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const storageKey = useMemo(() => {
     if (!cacheKey) return null;
@@ -76,15 +71,13 @@ export function useActivityHeatmap({
   }, [storageKey]);
 
   const refresh = useCallback(async () => {
-    const resolvedToken = await resolveAuthAccessToken(accessToken);
-    if (!resolvedToken && !mockEnabled && !isLocalMode) return;
     setLoading(true);
     setError(null);
     try {
       try {
         const res = await getUsageHeatmap({
           baseUrl,
-          accessToken: resolvedToken,
+          accessToken,
           weeks,
           to: range.to,
           weekStartsOn,
@@ -182,7 +175,7 @@ export function useActivityHeatmap({
 
       const dailyRes = await getUsageDaily({
         baseUrl,
-        accessToken: resolvedToken,
+        accessToken,
         from: range.from,
         to: range.to,
         timeZone,
@@ -255,25 +248,15 @@ export function useActivityHeatmap({
     range.from,
     range.to,
     readCache,
-    tokenReady,
     timeZone,
     tzOffsetMinutes,
     weekStartsOn,
     weeks,
     clearCache,
     writeCache,
-    isLocalMode,
   ]);
 
   useEffect(() => {
-    if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
-      setDaily([]);
-      setLoading(false);
-      setError(null);
-      setHeatmap(null);
-      setSource("edge");
-      return;
-    }
     if (!cacheAllowed) {
       clearCache();
       setDaily([]);
@@ -294,11 +277,9 @@ export function useActivityHeatmap({
     mockEnabled,
     readCache,
     refresh,
-    tokenReady,
     guestAllowed,
     cacheAllowed,
     clearCache,
-    isLocalMode,
   ]);
 
   const normalizedSource = mockEnabled ? "mock" : source === "client" ? "edge" : source;

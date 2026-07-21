@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { isAccessTokenReady, resolveAuthAccessToken } from "../lib/auth-token";
 import { formatDateLocal, formatDateUTC } from "../lib/date-range";
 import { isMockEnabled } from "../lib/mock-data";
 import { getLocalDayKey, getTimeZoneCacheKey } from "../lib/timezone";
@@ -30,7 +29,6 @@ export function useTrendData({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mockEnabled = isMockEnabled();
-  const tokenReady = isAccessTokenReady(accessToken);
   const cacheAllowed = !guestAllowed && !mockEnabled;
   const sharedEnabled = Array.isArray(sharedRows);
   const sharedFrom = sharedRange?.from || from;
@@ -92,9 +90,6 @@ export function useTrendData({
     }
   }, [storageKey]);
 
-  const isLocalMode = typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-
   const refresh = useCallback(async () => {
     if (sharedEnabled) {
       setRows(Array.isArray(sharedRows) ? sharedRows : []);
@@ -105,8 +100,6 @@ export function useTrendData({
       setError(null);
       return;
     }
-    const resolvedToken = await resolveAuthAccessToken(accessToken);
-    if (!resolvedToken && !mockEnabled && !isLocalMode) return;
     setLoading(true);
     setError(null);
     try {
@@ -114,7 +107,7 @@ export function useTrendData({
       if (mode === "hourly") {
         response = await fetchHourlyTrend({
           baseUrl,
-          accessToken: resolvedToken,
+          accessToken,
           from,
           to,
           period,
@@ -125,7 +118,7 @@ export function useTrendData({
       } else if (mode === "monthly") {
         response = await getUsageMonthly({
           baseUrl,
-          accessToken: resolvedToken,
+          accessToken,
           months,
           to,
           timeZone,
@@ -134,7 +127,7 @@ export function useTrendData({
       } else {
         response = await getUsageDaily({
           baseUrl,
-          accessToken: resolvedToken,
+          accessToken,
           from,
           to,
           timeZone,
@@ -251,7 +244,6 @@ export function useTrendData({
     months,
     period,
     readCache,
-    tokenReady,
     sharedEnabled,
     sharedFrom,
     sharedRows,
@@ -262,7 +254,6 @@ export function useTrendData({
     now,
     clearCache,
     writeCache,
-    isLocalMode,
   ]);
 
   useEffect(() => {
@@ -273,15 +264,6 @@ export function useTrendData({
       setFetchedAt(null);
       setLoading(false);
       setError(null);
-      return;
-    }
-    if (!tokenReady && !guestAllowed && !mockEnabled && !isLocalMode) {
-      setRows([]);
-      setRange({ from, to });
-      setError(null);
-      setLoading(false);
-      setSource("edge");
-      setFetchedAt(null);
       return;
     }
     if (!cacheAllowed) {
@@ -339,11 +321,9 @@ export function useTrendData({
     sharedFrom,
     sharedRows,
     sharedTo,
-    tokenReady,
     guestAllowed,
     cacheAllowed,
     clearCache,
-    isLocalMode,
     mode,
     from,
     to,

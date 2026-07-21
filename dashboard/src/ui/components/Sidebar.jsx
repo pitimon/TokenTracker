@@ -3,7 +3,6 @@ import { Link, useLocation } from "react-router-dom";
 import {
   BarChart3,
   Gauge,
-  Trophy,
   LayoutGrid,
   Globe,
   Puzzle,
@@ -25,22 +24,13 @@ import { isNativeApp, isNativeEmbed, isNativeWindowsApp } from "../../lib/native
 const STORAGE_KEY = "tt.sidebarCollapsed";
 const APP_VERSION = String(import.meta.env.VITE_APP_VERSION || "0.0.0").trim();
 
-function isLocalDashboardHost() {
-  if (typeof window === "undefined") return false;
-  const h = window.location.hostname;
-  return h === "localhost" || h === "127.0.0.1" || h === "::1";
-}
-
-export function getNavGroups({ includeLeaderboard = !isLocalDashboardHost() } = {}) {
+export function getNavGroups() {
   // copy() must be called at render time so locale switches apply.
   // Validator regex picks up these literal calls.
   const generalItems = [
     { id: "usage", to: "/dashboard", icon: BarChart3, label: copy("nav.usage") },
     { id: "limits", to: "/limits", icon: Gauge, label: copy("nav.limits") },
   ];
-  if (includeLeaderboard) {
-    generalItems.push({ id: "leaderboard", to: "/leaderboard", icon: Trophy, label: copy("nav.leaderboard") });
-  }
   return [
     {
       id: "general",
@@ -112,9 +102,6 @@ function isActive(pathname, to) {
   const normalized = pathname.replace(/\/+$/, "") || "/";
   if (to === "/dashboard") {
     return normalized === "/dashboard" || normalized === "/";
-  }
-  if (to === "/leaderboard") {
-    return normalized === "/leaderboard" || normalized.startsWith("/leaderboard/");
   }
   return normalized === to;
 }
@@ -452,7 +439,7 @@ function MobileTopBar({ onOpenDrawer }) {
         <Menu className="h-5 w-5" aria-hidden />
       </IconButton>
       <Link
-        to="/landing"
+        to="/"
         className="flex items-center gap-2 no-underline hover:opacity-80 transition-opacity"
         aria-label="Token Tracker"
       >

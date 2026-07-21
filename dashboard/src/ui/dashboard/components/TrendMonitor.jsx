@@ -366,8 +366,8 @@ export function TrendMonitor({
   className = "",
   // When `true`, the trend renders bare: no outer card chrome (rounded
   // border + bg + padding), no inner heading. Use this when the host
-  // already provides a section wrapper (e.g. the leaderboard profile
-  // modal). Default keeps the standalone dashboard appearance.
+  // already provides a section wrapper. Default keeps the standalone
+  // dashboard appearance.
   embedded = false,
   // Tailwind height class for the bar row. The hardcoded h-40 is the small
   // dashboard card; the zoom modal passes a tall class (e.g. h-[60vh]) so the

@@ -16,17 +16,27 @@ async function readHookSource(relativePath) {
   return fs.readFile(absPath, "utf8");
 }
 
-function assertMissingJwtGuard(source, file) {
-  const guardRegex = /if\s*\(\s*!resolvedToken\s*&&\s*!mockEnabled\s*(?:&&\s*!isLocalMode\s*)?\)\s*return\s*;/;
-  assert.ok(
-    guardRegex.test(source),
-    `expected missing-JWT guard in ${file} ("if (!resolvedToken && !mockEnabled) return;")`,
+// Inverted deliberately. These hooks used to refuse to fetch without a cloud
+// access token. TokenTracker is local-only now: they read from the CLI's own
+// server on localhost, so gating them on a token that can never arrive would
+// leave the dashboard permanently empty. Asserting the guard is GONE is what
+// protects that, and it is why this file was inverted rather than deleted.
+function assertNoTokenGate(source, file) {
+  assert.equal(
+    /resolvedToken/.test(source),
+    false,
+    `${file} must not gate local fetches on a cloud access token`,
+  );
+  assert.equal(
+    /auth-token/.test(source),
+    false,
+    `${file} must not import the removed auth-token helper`,
   );
 }
 
-test("hooks stop requests when access token is missing (no guest bypass)", async () => {
+test("hooks fetch local data without requiring an access token", async () => {
   for (const file of hookFiles) {
     const source = await readHookSource(file);
-    assertMissingJwtGuard(source, file);
+    assertNoTokenGate(source, file);
   }
 });

@@ -8,21 +8,18 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 import os from "node:os";
 
+// The landing and share pages were removed when TokenTracker became
+// local-only. index.html still needs real meta, so those keys became app.meta.*
+// rather than being dropped — otherwise the dashboard ships an empty <title>
+// and the build says nothing, because a missing key only warns.
 const COPY_REQUIRED_KEYS = [
-  "landing.meta.title",
-  "landing.meta.description",
-  "landing.meta.og_site_name",
-  "landing.meta.og_type",
-  "landing.meta.og_image",
-  "landing.meta.og_url",
-  "landing.meta.twitter_card",
-  "share.meta.title",
-  "share.meta.description",
-  "share.meta.og_site_name",
-  "share.meta.og_type",
-  "share.meta.og_image",
-  "share.meta.og_url",
-  "share.meta.twitter_card",
+  "app.meta.title",
+  "app.meta.description",
+  "app.meta.og_site_name",
+  "app.meta.og_type",
+  "app.meta.og_image",
+  "app.meta.og_url",
+  "app.meta.twitter_card",
 ];
 
 const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -161,10 +158,9 @@ function buildMeta(prefix = "landing") {
   };
 }
 
-function resolveMetaPrefix(ctx) {
-  const rawPath = String(ctx?.path || ctx?.filename || ctx?.originalUrl || "").toLowerCase();
-  if (rawPath.includes("share")) return "share";
-  return "landing";
+// Only one HTML entry remains, so there is nothing left to switch on.
+function resolveMetaPrefix() {
+  return "app";
 }
 
 function injectRichMeta(html, prefix) {
@@ -1164,7 +1160,6 @@ export default defineConfig(({ mode }) => {
   // breaking the native OAuth callback (see CLAUDE.md). macOS never loads pet.html.
   const rollupInput = {
     main: path.resolve(ROOT_DIR, "index.html"),
-    share: path.resolve(ROOT_DIR, "share.html"),
   };
   if (process.env.TOKENTRACKER_BUILD_PET === "1") {
     rollupInput.pet = path.resolve(ROOT_DIR, "pet.html");

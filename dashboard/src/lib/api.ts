@@ -7,11 +7,8 @@ import {
   getMockUsageCategoryBreakdown,
   getMockUsageSummary,
   getMockProjectUsageSummary,
-  getMockLeaderboard,
   isMockEnabled,
 } from "./mock-data";
-import { getInsforgeRemoteUrl, getInsforgeAnonKey } from "./insforge-config";
-import { isValidJwtShape } from "./auth-token";
 import { getLocalApiAuthHeaders } from "./local-api-auth";
 
 type AnyRecord = Record<string, any>;
@@ -30,58 +27,7 @@ const PATHS = {
   usageLimits: "tokentracker-usage-limits",
 };
 
-/**
- * usage-* (local CLI) → account-* (cloud) slug map. The cloud `account-*`
- * edge functions mirror the local `tokentracker-usage-*` response schema
- * exactly (see their source: "Mirrors local-api.js ... response schema"),
- * so the dashboard components render identically off either source.
- */
-const USAGE_TO_ACCOUNT_SLUG: Record<string, string> = {
-  "tokentracker-usage-summary": "tokentracker-account-summary",
-  "tokentracker-usage-daily": "tokentracker-account-daily",
-  "tokentracker-usage-hourly": "tokentracker-account-hourly",
-  "tokentracker-usage-monthly": "tokentracker-account-monthly",
-  "tokentracker-usage-heatmap": "tokentracker-account-heatmap",
-  "tokentracker-usage-model-breakdown": "tokentracker-account-model-breakdown",
-};
-
-function isLocalhostHost() {
-  return (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-  );
-}
-
 async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRecord) {
-  const accessToken = options?.accessToken as string | undefined;
-  const accountSlug = USAGE_TO_ACCOUNT_SLUG[slug];
-
-  // Deployed web (e.g. tokentracker.cc): there's no local CLI behind
-  // window.location.origin, so usage-* calls would 404. When the visitor is
-  // signed in and the slug has a cloud account-* mirror, route to the cloud
-  // aggregator (cross-device usage by user_id) with the auth token. Local CLI
-  // (localhost) keeps the original same-origin usage-* path.
-  if (!isLocalhostHost() && accessToken && accountSlug) {
-    const base = getInsforgeRemoteUrl().replace(/\/$/, "");
-    const url = new URL(`${base}/functions/${accountSlug}`);
-    if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        if (value != null && value !== "") url.searchParams.set(key, String(value));
-      }
-    }
-    const headers: Record<string, string> = { Accept: "application/json" };
-    const anonKey = getInsforgeAnonKey();
-    if (anonKey) headers.apikey = anonKey;
-    if (isValidJwtShape(accessToken)) headers.Authorization = `Bearer ${accessToken}`;
-    const response = await fetch(url.toString(), { headers, cache: "no-store" });
-    if (!response.ok) {
-      const err: any = new Error(`Request failed with HTTP ${response.status}`);
-      err.status = response.status;
-      throw err;
-    }
-    return response.json();
-  }
-
   const url = new URL(`/functions/${slug}`, window.location.origin);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
@@ -161,204 +107,6 @@ export async function getProjectUsageSummary({
   return fetchLocalJson(PATHS.projectUsageSummary, params);
 }
 
-async function fetchInsforgeFunction(slug: string, options: {
-  method?: string;
-  accessToken?: string;
-  params?: AnyRecord;
-  body?: unknown;
-} = {}) {
-  const baseUrl = getInsforgeRemoteUrl();
-  if (!baseUrl) throw new Error("InsForge base URL not configured");
-  const root = baseUrl.replace(/\/$/, "");
-  const url = new URL(`${root}/functions/${slug}`);
-  if (options.params) {
-    for (const [key, value] of Object.entries(options.params)) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
-    }
-  }
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-  };
-  const anonKey = getInsforgeAnonKey();
-  if (anonKey) headers.apikey = anonKey;
-  // Only attach Authorization if the token is a well-formed JWT. InsForge's
-  // platform gateway validates the JWT before user code runs and returns
-  // HTTP 500 (JWSError) for any malformed value — which would break
-  // public endpoints like leaderboard for users whose stored token got
-  // corrupted or truncated.
-  if (options.accessToken && isValidJwtShape(options.accessToken)) {
-    headers.Authorization = `Bearer ${options.accessToken}`;
-  }
-
-  const res = await fetch(url.toString(), {
-    method: options.method || "GET",
-    headers,
-    ...(options.body != null ? { body: JSON.stringify(options.body) } : {}),
-  });
-  if (!res.ok) {
-    const err: any = new Error(`Request failed with HTTP ${res.status}`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
-
-export async function getLeaderboard({
-  accessToken,
-  userId,
-  period,
-  metric,
-  limit,
-  offset,
-}: AnyRecord = {}) {
-  if (isMockEnabled()) {
-    return getMockLeaderboard({ seed: accessToken || userId, period, metric, limit, offset });
-  }
-  // Deliberately NOT passing accessToken. Leaderboard is a public read and
-  // InsForge's gateway returns opaque 500 (JWSError) for any JWT issue
-  // (bad signature, expired, rotated secret). Passing user_id as a query
-  // param lets the server compute `is_me` without ever touching the
-  // Authorization header.
-  return fetchInsforgeFunction("tokentracker-leaderboard", {
-    params: { period, limit, offset, user_id: userId },
-  });
-}
-
-export async function getPublicVisibility({ accessToken }: AnyRecord = {}) {
-  return fetchInsforgeFunction("tokentracker-public-visibility", {
-    accessToken,
-    method: "GET",
-  });
-}
-
-export async function setPublicVisibility({
-  accessToken,
-  enabled,
-  anonymous,
-  display_name,
-  github_url,
-  show_github_url,
-}: AnyRecord = {}) {
-  const body: AnyRecord = {};
-  if (enabled !== undefined) body.enabled = Boolean(enabled);
-  if (anonymous !== undefined) body.anonymous = Boolean(anonymous);
-  if (display_name !== undefined) body.display_name = String(display_name);
-  // null is a valid value (clears the URL), so check for presence via `in`-style
-  if (github_url !== undefined) body.github_url = github_url === null ? null : String(github_url);
-  if (show_github_url !== undefined) body.show_github_url = Boolean(show_github_url);
-  return fetchInsforgeFunction("tokentracker-public-visibility", {
-    accessToken,
-    method: "POST",
-    body,
-  });
-}
-
-export async function refreshLeaderboard({ accessToken, period, source }: AnyRecord = {}) {
-  const body: AnyRecord = {};
-  if (period) body.period = period;
-  if (typeof source === "string" && source.trim()) body.source = source.trim();
-  return fetchInsforgeFunction("tokentracker-leaderboard-refresh", {
-    accessToken,
-    method: "POST",
-    body,
-  });
-}
-
-/**
- * Detailed per-user profile used by the leaderboard modal.
- * Returns hero totals, streak, best day, model highlight, per-provider
- * breakdown, 365-day heatmap and a period-scoped daily trend.
- * See dashboard/edge-patches/tokentracker-leaderboard-profile.ts for the
- * canonical response shape.
- */
-export async function getLeaderboardProfile({
-  accessToken,
-  userId,
-  period,
-}: AnyRecord = {}) {
-  if (isMockEnabled()) {
-    // Minimal stub for dashboard:dev (no live edge). Frontend layout should
-    // render without throwing; numbers don't need to be plausible.
-    const mock = getMockLeaderboard({ seed: accessToken, period, metric: "all", limit: 250, offset: 0 });
-    const entries = Array.isArray(mock?.entries) ? mock.entries : [];
-    const match: any = entries.find((entry: any) => entry?.user_id === userId) || entries[0] || null;
-    const tokens = Number(match?.total_tokens) || 0;
-    const today = new Date();
-    const heatmap = Array.from({ length: 365 }).map((_, i) => {
-      const d = new Date(today);
-      d.setUTCDate(d.getUTCDate() - (364 - i));
-      return { date: d.toISOString().slice(0, 10), total_tokens: i % 7 === 0 ? Math.floor(tokens / 365) : 0 };
-    });
-    const dailyTrend = heatmap.slice(-7);
-    return {
-      user: {
-        user_id: userId,
-        display_name: match?.display_name || "Mock User",
-        avatar_url: match?.avatar_url || null,
-        github_url: match?.github_url || null,
-        is_anonymous: false,
-        rank: match?.rank ?? null,
-      },
-      period: {
-        kind: period || "week",
-        from: mock?.from ?? null,
-        to: mock?.to ?? null,
-        generated_at: mock?.generated_at ?? new Date().toISOString(),
-      },
-      totals: {
-        total_tokens: tokens,
-        estimated_cost_usd: Number(match?.estimated_cost_usd) || 0,
-        active_days: 53,
-        avg_per_day_usd: 0,
-      },
-      streak: { current_days: 3, longest_days: 12 },
-      best_day: tokens
-        ? { date: today.toISOString().slice(0, 10), total_tokens: Math.floor(tokens / 30), estimated_cost_usd: 0 }
-        : null,
-      models: { count: 5, favorite: { model_name: "claude-opus-4-7", total_tokens: Math.floor(tokens / 2) } },
-      by_provider: [],
-      heatmap,
-      daily_trend: dailyTrend,
-    };
-  }
-  return fetchInsforgeFunction("tokentracker-leaderboard-profile", {
-    accessToken,
-    params: { user_id: userId, period },
-  });
-}
-
-function mockLikeCount(userId: string | undefined | null) {
-  if (!userId) return 0;
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return Math.abs(hash % 165) + 24;
-}
-
-export async function getProfileLikes({ userId }: AnyRecord = {}) {
-  if (isMockEnabled()) {
-    return { count: mockLikeCount(userId) };
-  }
-  // Public read — same rationale as getLeaderboard: don't attach Authorization
-  // so a malformed/expired JWT can't 500 the gateway for unauthenticated callers.
-  return fetchInsforgeFunction("tokentracker-profile-likes", {
-    params: { user_id: userId },
-  });
-}
-
-export async function bumpProfileLike({ userId, delta, accessToken }: AnyRecord = {}) {
-  if (isMockEnabled()) {
-    return { count: Math.max(0, mockLikeCount(userId) + Number(delta || 0)) };
-  }
-  return fetchInsforgeFunction("tokentracker-profile-likes", {
-    accessToken,
-    method: "POST",
-    body: { user_id: userId, delta },
-  });
-}
-
 export async function getUserStatus(_opts: AnyRecord = {}) {
   if (isMockEnabled()) {
     const now = new Date().toISOString();
@@ -367,16 +115,6 @@ export async function getUserStatus(_opts: AnyRecord = {}) {
       created_at: now,
       pro: { active: false, sources: [], expires_at: null, partial: false, as_of: now },
       subscriptions: { partial: false, as_of: now, items: [] },
-      install: {
-        partial: false,
-        as_of: now,
-        has_active_device_token: false,
-        has_active_device: false,
-        active_device_tokens: 0,
-        active_devices: 0,
-        latest_token_activity_at: null,
-        latest_device_seen_at: null,
-      },
     };
   }
   return fetchLocalJson(PATHS.userStatus);
