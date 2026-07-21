@@ -23,7 +23,7 @@
     "access": "public"
   },
   "scripts": {
-    "ci:local": "npm run dashboard:build && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && npm run docs:openwiki:check && node --test test/architecture-guardrails.test.js",
+    "ci:local": "npm run dashboard:build && npm --prefix dashboard run test && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && npm run docs:openwiki:check && node --test test/architecture-guardrails.test.js",
     "copy:pull": "node scripts/copy-sync.cjs pull",
     "copy:push": "node scripts/copy-sync.cjs push",
     "dashboard:build": "npm --prefix dashboard run build",
