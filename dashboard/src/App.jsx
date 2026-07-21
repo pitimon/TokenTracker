@@ -1,7 +1,5 @@
 import React, { lazy, Suspense, useCallback, useMemo, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/react";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { useLocale } from "./hooks/useLocale.js";
 import { ThemeProvider } from "./ui/foundation/ThemeProvider.jsx";
@@ -36,11 +34,6 @@ const WidgetsPage = lazy(() =>
   import("./pages/WidgetsPage.jsx").then((m) => ({ default: m.WidgetsPage })),
 );
 
-function shouldEnableVercelInsights() {
-  if (typeof window === "undefined") return false;
-  const host = window.location.hostname;
-  return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
-}
 
 export default function App() {
   // Subscribing to locale here makes App rerender on language switch, which
@@ -50,7 +43,6 @@ export default function App() {
   const location = useLocation();
   const dashboardMainContentVisibleRef = useRef(false);
   const dashboardResourcePreloadStartedRef = useRef(false);
-  const enableVercelInsights = shouldEnableVercelInsights();
   const screenshotMode = useMemo(() => {
     if (typeof window === "undefined") return false;
     return isScreenshotModeEnabled(window.location.search);
@@ -123,8 +115,6 @@ export default function App() {
         <ToastProvider>
           <Suspense fallback={null}>{content}</Suspense>
           {showSidebar ? <CommandPalette /> : null}
-          {enableVercelInsights ? <Analytics /> : null}
-          {enableVercelInsights ? <SpeedInsights /> : null}
         </ToastProvider>
       </ThemeProvider>
     </ErrorBoundary>
