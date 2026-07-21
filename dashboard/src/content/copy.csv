@@ -670,6 +670,4 @@ app.meta.title,app,*,*,meta_title,TokenTracker,"Local dashboard <title>; replace
 app.meta.description,app,*,*,meta_description,See how many tokens your AI coding tools use — locally.,,active
 app.meta.og_site_name,app,*,*,meta_og_site_name,TokenTracker,,active
 app.meta.og_type,app,*,*,meta_og_type,website,,active
-app.meta.og_image,app,*,*,meta_og_image,,"No hosted image: local-only build",active
-app.meta.og_url,app,*,*,meta_og_url,,"No canonical URL: served from localhost",active
 app.meta.twitter_card,app,*,*,meta_twitter_card,summary,,active

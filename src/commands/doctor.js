@@ -17,7 +17,6 @@ async function cmdDoctor(argv = []) {
   const config =
     configStatus.status === "ok" && isPlainObject(configStatus.value) ? configStatus.value : {};
   const runtime = resolveRuntimeConfig({
-    cli: { baseUrl: opts.baseUrl },
     config,
     env: process.env,
   });
@@ -62,12 +61,11 @@ async function cmdDoctor(argv = []) {
 }
 
 function parseArgs(argv) {
-  const out = { json: false, out: null, baseUrl: null };
+  const out = { json: false, out: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--json") out.json = true;
     else if (arg === "--out") out.out = argv[++i] || null;
-    else if (arg === "--base-url") out.baseUrl = argv[++i] || null;
     else throw new Error(`Unknown option: ${arg}`);
   }
   return out;

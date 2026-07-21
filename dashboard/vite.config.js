@@ -17,8 +17,6 @@ const COPY_REQUIRED_KEYS = [
   "app.meta.description",
   "app.meta.og_site_name",
   "app.meta.og_type",
-  "app.meta.og_image",
-  "app.meta.og_url",
   "app.meta.twitter_card",
 ];
 
@@ -152,8 +150,6 @@ function buildMeta(prefix = "landing") {
     description: read("description"),
     ogSiteName: read("og_site_name"),
     ogType: read("og_type"),
-    ogImage: read("og_image"),
-    ogUrl: read("og_url"),
     twitterCard: read("twitter_card"),
   };
 }
@@ -171,13 +167,10 @@ function injectRichMeta(html, prefix) {
     __TOKENTRACKER_OG_SITE_NAME__: meta.ogSiteName,
     __TOKENTRACKER_OG_TITLE__: meta.title,
     __TOKENTRACKER_OG_DESCRIPTION__: meta.description,
-    __TOKENTRACKER_OG_IMAGE__: meta.ogImage,
     __TOKENTRACKER_OG_TYPE__: meta.ogType,
-    __TOKENTRACKER_OG_URL__: meta.ogUrl,
     __TOKENTRACKER_TWITTER_CARD__: meta.twitterCard,
     __TOKENTRACKER_TWITTER_TITLE__: meta.title,
     __TOKENTRACKER_TWITTER_DESCRIPTION__: meta.description,
-    __TOKENTRACKER_TWITTER_IMAGE__: meta.ogImage,
   };
 
   let output = html;

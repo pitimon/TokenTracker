@@ -23,25 +23,21 @@ function runStatus(args) {
   return res;
 }
 
+// Inverted, not deleted: base_url/device_token_set/queue.pending_bytes used
+// to be required top-level summary fields. Cloud upload/pairing is gone, so
+// this now pins that they are absent while local fields remain.
 test("status --json emits a JSON object with required summary fields", () => {
   const res = runStatus(["--json"]);
   assert.equal(res.status, 0, `exit code: ${res.status} stderr=${res.stderr}`);
   const parsed = JSON.parse(res.stdout);
-  for (const key of [
-    "generated_at",
-    "base_url",
-    "device_token_set",
-    "queue",
-    "hooks",
-    "providers",
-    "copilot",
-    "subscriptions",
-  ]) {
+  for (const key of ["generated_at", "queue", "hooks", "providers", "copilot", "subscriptions"]) {
     assert.ok(key in parsed, `missing top-level key: ${key}`);
   }
-  assert.ok("pending_bytes" in parsed.queue);
+  assert.ok(!("base_url" in parsed), "base_url must not be reported (cloud removed)");
+  assert.ok(!("device_token_set" in parsed), "device_token_set must not be reported (cloud removed)");
+  assert.ok("size_bytes" in parsed.queue);
+  assert.ok(!("pending_bytes" in parsed.queue), "pending_bytes must not be reported (upload removed)");
   assert.ok("claude" in parsed.hooks);
-  assert.equal(typeof parsed.device_token_set, "boolean");
 });
 
 test("status --light renders an ASCII table with key columns", () => {
@@ -53,8 +49,10 @@ test("status --light renders an ASCII table with key columns", () => {
   // No ANSI / emoji / spinner artifacts
   assert.ok(!/\[/.test(res.stdout), "ANSI escapes leaked");
   assert.match(res.stdout, /^\| Key /m);
-  assert.match(res.stdout, /^\| Queue pending/m);
+  assert.match(res.stdout, /^\| Queue size/m);
   assert.match(res.stdout, /^\| Hook · claude/m);
+  assert.ok(!res.stdout.includes("Base URL"), "Base URL row must be removed");
+  assert.ok(!res.stdout.includes("Device token"), "Device token row must be removed");
 });
 
 test("status --diagnostics still emits raw diagnostics JSON (back-compat)", () => {
@@ -70,7 +68,7 @@ test("status default (no flag) still prints the human-readable list", () => {
   const res = runStatus([]);
   assert.equal(res.status, 0);
   assert.match(res.stdout, /^Status:/);
-  assert.match(res.stdout, /^- Queue: \d+ bytes pending/m);
+  assert.match(res.stdout, /^- Queue: \d+ bytes$/m);
 });
 
 test("status --bogus rejects unknown flag", () => {

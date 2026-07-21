@@ -55,7 +55,7 @@ tokentracker doctor     # health check
 - 🔌 **22 tools out of the box.** Claude Code, Codex, Cursor, Gemini, Copilot, Antigravity, OpenCode, Kiro, Zed, Goose, and more — auto-detected.
 - 💰 **Accurate cost.** 2,200+ models priced from [LiteLLM](https://github.com/BerriAI/litellm) (refreshed daily) with a bundled offline snapshot, so USD totals are right even without a network. Cross-provider records are de-duplicated so your numbers match each provider's own billing.
 - 📈 **Rate-limit tracking.** Live quota windows with reset countdowns for Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity.
-- 🧩 **Optional extras.** A worldwide leaderboard (opt-in) and a Skills tab that syncs 250+ public skills across your tools.
+- 🧩 **Skills tab.** Syncs 250+ public skills across your tools.
 
 ---
 
@@ -105,7 +105,7 @@ AI CLI tools  →  hooks / passive readers  →  local SQLite  →  dashboard
 3. Counts are aggregated into 30-minute UTC buckets in a local SQLite snapshot.
 4. The dashboard reads that snapshot and renders it in your browser's timezone.
 
-The leaderboard is the only feature that ever leaves your machine, and only when you opt in.
+Nothing leaves your machine. There is no account, no upload, and no server to sign in to.
 
 ---
 
@@ -114,7 +114,7 @@ The leaderboard is the only feature that ever leaves your machine, and only when
 | Protection | What it means |
 |---|---|
 | **No content** | Only token counts and timestamps. Never prompts, responses, or files. |
-| **Local by default** | All data stays on your machine. The leaderboard is fully opt-in. |
+| **Local only** | All data stays on your machine. There is no upload path at all. |
 | **Auditable** | Open source — read [`src/lib/rollout.js`](src/lib/rollout.js); it's just numbers and timestamps. |
 | **No telemetry** | No analytics, no crash reporting, no phone-home. |
 

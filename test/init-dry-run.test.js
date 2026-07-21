@@ -30,14 +30,7 @@ test("dry-run preview reports opencode install when config is missing", async ()
       return true;
     };
 
-    await cmdInit([
-      "--yes",
-      "--dry-run",
-      "--no-auth",
-      "--no-open",
-      "--base-url",
-      "https://example.invalid",
-    ]);
+    await cmdInit(["--yes", "--dry-run", "--no-auth", "--no-open"]);
 
     const clean = stripAnsi(output);
     assert.match(clean, /Opencode Plugin/);

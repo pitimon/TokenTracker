@@ -11,7 +11,7 @@ const {
 } = require("../lib/local-data-preflight");
 const { ensurePricingLoaded } = require("../lib/pricing");
 const { serveStaticFile } = require("../lib/static-server");
-const { openInBrowser } = require("../lib/browser-auth");
+const { openInBrowser } = require("../lib/browser-open");
 
 const DEFAULT_PORT = 7680;
 const DEFAULT_MAX_PORT_ATTEMPTS = 20;

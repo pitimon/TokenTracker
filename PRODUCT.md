@@ -4,11 +4,11 @@ register: product
 
 ## Product purpose
 
-Local-first AI token-usage tracker. Parses logs from AI coding CLIs (Claude Code, Codex, Cursor, Gemini, Copilot, Kimi, and more) into a local dashboard so developers can see how many tokens they burn, the estimated cost, and how it trends. Privacy-first: token counts only, never prompts or conversation bodies. Ships as a CLI (`serve` on :7680), a web dashboard (www.tokentracker.cc), and a self-contained macOS menu-bar app.
+Local-first AI token-usage tracker. Parses logs from AI coding CLIs (Claude Code, Codex, Cursor, Gemini, Copilot, Kimi, and more) into a local dashboard so developers can see how many tokens they burn, the estimated cost, and how it trends. Privacy-first: token counts only, never prompts or conversation bodies. Ships as a CLI (`serve` on :7680) with a dashboard it serves locally, plus a self-contained macOS menu-bar app. Nothing is uploaded: there is no account, no sync, and no server component.
 
 ## Users
 
-Developers and AI-power-users who run multiple agent CLIs daily and want a single, trustworthy view of consumption and cost. They are fluent in tools like Linear, Raycast, Vercel, and GitHub. They check usage both at a desk (deep review) and on a phone (quick glance: "how much did I burn today / where am I on the leaderboard"). They distrust inflated numbers, so accuracy and legible key metrics matter more than decoration.
+Developers and AI-power-users who run multiple agent CLIs daily and want a single, trustworthy view of consumption and cost. They are fluent in tools like Linear, Raycast, Vercel, and GitHub. They check usage at a desk for deep review and at a glance for "how much did I burn today". They distrust inflated numbers, so accuracy and legible key metrics matter more than decoration.
 
 ## Tone & principles
 

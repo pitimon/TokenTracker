@@ -204,7 +204,7 @@ test("init then uninstall restores original Codex notify (when pre-existing noti
     await fs.writeFile(codexConfigPath, originalNotify, "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const installed = await fs.readFile(codexConfigPath, "utf8");
     assert.match(installed, /^notify\s*=\s*\[.+\]\s*$/m);
@@ -271,7 +271,7 @@ test("init then uninstall removes notify when none existed", async () => {
     await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const installed = await fs.readFile(codexConfigPath, "utf8");
     assert.match(installed, /^notify\s*=\s*\[.+\]\s*$/m);
@@ -314,7 +314,7 @@ test("init skips Codex notify when config is missing", async () => {
     process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const codexConfigPath = path.join(process.env.CODEX_HOME, "config.toml");
     await assert.rejects(fs.stat(codexConfigPath), /ENOENT/);
@@ -360,7 +360,7 @@ test("init then uninstall restores original Every Code notify (when config exist
     await fs.writeFile(codeConfigPath, originalNotify, "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const installed = await fs.readFile(codeConfigPath, "utf8");
     assert.match(installed, /notify\s*=\s*\[[^\n]*notify\.cjs[^\n]*--source=every-code[^\n]*\]/);
@@ -414,7 +414,7 @@ test("init skips Every Code notify when config is missing", async () => {
     await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const codeConfigPath = path.join(process.env.CODE_HOME, "config.toml");
     await assert.rejects(fs.stat(codeConfigPath), /ENOENT/);
@@ -558,7 +558,7 @@ test("init then uninstall manages Claude hooks without removing existing hooks",
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const installedRaw = await fs.readFile(settingsPath, "utf8");
     const installed = JSON.parse(installedRaw);
@@ -638,7 +638,7 @@ test("init then uninstall manages Gemini hooks without removing existing hooks",
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const installedRaw = await fs.readFile(settingsPath, "utf8");
     const installed = JSON.parse(installedRaw);
@@ -710,7 +710,7 @@ test("init skips Gemini hooks when config directory is missing", async () => {
     await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     await assert.rejects(fs.stat(process.env.GEMINI_HOME), /ENOENT/);
   } finally {
@@ -753,7 +753,7 @@ test("init creates Gemini settings when directory exists but file is missing", a
     const settingsPath = path.join(process.env.GEMINI_HOME, "settings.json");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const createdRaw = await fs.readFile(settingsPath, "utf8");
     const created = JSON.parse(createdRaw);
@@ -804,7 +804,7 @@ test("init then uninstall manages Opencode plugin without removing other plugins
     await fs.writeFile(existingPluginPath, "// existing\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const pluginPath = path.join(pluginDir, "tokentracker.js");
     const installed = await fs.readFile(pluginPath, "utf8");
@@ -848,7 +848,7 @@ test("init installs Opencode plugin when config dir is missing", async () => {
     await fs.writeFile(codexConfigPath, "# empty\n", "utf8");
 
     process.stdout.write = () => true;
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open"]);
 
     const pluginPath = path.join(process.env.OPENCODE_CONFIG_DIR, "plugin", "tokentracker.js");
     const installed = await fs.readFile(pluginPath, "utf8");

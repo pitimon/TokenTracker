@@ -7,55 +7,21 @@ const { test } = require("node:test");
 const { buildDoctorReport } = require("../src/lib/doctor");
 const { cmdDoctor } = require("../src/commands/doctor");
 
-test("doctor treats any HTTP response as reachable", async () => {
+// Inverted: doctor used to report a cloud base_url and device token. Those
+// checks are gone with the cloud, and this now pins that they stay gone rather
+// than silently reappearing in a local-only build.
+test("doctor reports no cloud runtime checks", async () => {
   const report = await buildDoctorReport({
-    runtime: { baseUrl: "https://example" },
-    fetch: async () => ({ status: 401 }),
+    runtime: { httpTimeoutMs: 1000 },
   });
-  const check = report.checks.find((c) => c.id === "network.base_url");
-
-  assert.equal(check.status, "ok");
-  assert.equal(check.meta.status_code, 401);
-});
-
-test("doctor warns when base_url is missing", async () => {
-  const report = await buildDoctorReport({
-    runtime: {},
-    fetch: async () => ({ status: 200 }),
-  });
-  const check = report.checks.find((c) => c.id === "network.base_url");
-
-  assert.equal(check.status, "warn");
-  assert.equal(report.summary.warn, 2);
-  assert.equal(report.summary.fail, 1);
-  assert.equal(report.ok, true);
-});
-
-test("doctor marks network errors as fail", async () => {
-  const report = await buildDoctorReport({
-    runtime: { baseUrl: "https://example" },
-    fetch: async () => {
-      throw new Error("nope");
-    },
-  });
-  const check = report.checks.find((c) => c.id === "network.base_url");
-
-  assert.equal(check.status, "fail");
-  assert.equal(report.summary.fail, 1);
-  assert.equal(report.summary.warn, 1);
-  assert.equal(report.ok, true);
-});
-
-test("doctor reports runtime config status", async () => {
-  const report = await buildDoctorReport({
-    runtime: { baseUrl: "https://example", deviceToken: "token" },
-    fetch: async () => ({ status: 200 }),
-  });
-  const baseCheck = report.checks.find((c) => c.id === "runtime.base_url");
-  const tokenCheck = report.checks.find((c) => c.id === "runtime.device_token");
-
-  assert.equal(baseCheck.status, "ok");
-  assert.equal(tokenCheck.status, "ok");
+  for (const id of ["runtime.base_url", "runtime.device_token", "network.reachable"]) {
+    assert.equal(
+      report.checks.some((c) => c.id === id),
+      false,
+      `${id} must stay removed`,
+    );
+  }
+  assert.ok(report.checks.length > 0, "doctor still reports local checks");
 });
 
 test("doctor reports Node.js version and missing Linux opener", async () => {
@@ -181,46 +147,6 @@ test("doctor sets exitCode on critical failures", async () => {
     await cmdDoctor(["--json"]);
 
     assert.equal(process.exitCode, 1);
-  } finally {
-    process.stdout.write = prevWrite;
-    process.stderr.write = prevErr;
-    if (prevHome === undefined) delete process.env.HOME;
-    else process.env.HOME = prevHome;
-    globalThis.fetch = prevFetch;
-    process.exitCode = prevExit;
-    await fs.rm(tmp, { recursive: true, force: true });
-  }
-});
-
-test("doctor supports CLI base-url override", async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-doctor-"));
-  const prevHome = process.env.HOME;
-  const prevFetch = globalThis.fetch;
-  const prevWrite = process.stdout.write;
-  const prevErr = process.stderr.write;
-  const prevExit = process.exitCode;
-
-  try {
-    process.env.HOME = tmp;
-    const trackerDir = path.join(tmp, ".tokentracker", "tracker");
-    await fs.mkdir(trackerDir, { recursive: true });
-    await fs.writeFile(
-      path.join(trackerDir, "config.json"),
-      JSON.stringify({ baseUrl: "https://config.example", deviceToken: "t" }),
-      "utf8",
-    );
-    globalThis.fetch = async () => ({ status: 200 });
-    const outCapture = createWriteCapture();
-    const errCapture = createWriteCapture();
-    process.stdout.write = outCapture.write;
-    process.stderr.write = errCapture.write;
-    process.exitCode = 0;
-
-    await cmdDoctor(["--json", "--base-url", "https://override.example"]);
-
-    const payload = JSON.parse(outCapture.read());
-    const baseCheck = payload.checks.find((c) => c.id === "runtime.base_url");
-    assert.equal(baseCheck.meta.base_url, "https://override.example");
   } finally {
     process.stdout.write = prevWrite;
     process.stderr.write = prevErr;

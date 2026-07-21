@@ -3,7 +3,6 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
-const { DEFAULT_BASE_URL, resolveRuntimeConfig } = require("./runtime-config");
 const {
   filterRowsByUsageScope,
   getSourceScope,
@@ -461,19 +460,6 @@ function normalizeRemoteHttpBaseUrl(value) {
   }
 }
 
-function resolveAllowedInsforgeBaseUrl(value) {
-  const requested = normalizeRemoteHttpBaseUrl(value);
-  if (!requested) return null;
-
-  const runtime = resolveRuntimeConfig();
-  const allowed = new Set(
-    [runtime.baseUrl, DEFAULT_BASE_URL]
-      .map((entry) => normalizeRemoteHttpBaseUrl(entry))
-      .filter(Boolean),
-  );
-
-  return allowed.has(requested) ? requested : null;
-}
 
 function parseCookieHeader(value) {
   const out = new Map();
@@ -756,169 +742,7 @@ function buildProxyHeaders(headers) {
 function createLocalApiHandler({ queuePath }) {
   const qp = queuePath || resolveQueuePath();
 
-  // Server-side cookie relay: captures auth cookies from InsForge cloud responses
-  // so that both browser and WKWebView share the same login session via the proxy.
-  // Persisted to disk so cookies survive server restarts.
-  const csrfRelayCookieName = "insforge_csrf_token";
-  let relayCookies = new Map();
   const localAuthToken = crypto.randomBytes(24).toString("hex");
-  const trackerDataDir = path.join(os.homedir(), ".tokentracker", "tracker");
-  const cookiePath = path.join(trackerDataDir, "relay-cookies.json");
-
-  // Load persisted cookies on startup
-  try {
-    if (!fs.existsSync(trackerDataDir)) fs.mkdirSync(trackerDataDir, { recursive: true });
-    if (fs.existsSync(cookiePath)) {
-      const content = fs.readFileSync(cookiePath, "utf8");
-      const saved = JSON.parse(content);
-      if (saved && typeof saved === "object") {
-        let count = 0;
-        for (const [k, v] of Object.entries(saved)) {
-          relayCookies.set(k, v);
-          count++;
-        }
-        if (count > 0) console.log(`[LocalAPI] Loaded ${count} relay cookies from ${cookiePath}`);
-      }
-    }
-  } catch (e) {
-    console.error("[LocalAPI] Failed to load relay cookies:", e.message);
-  }
-
-  function persistRelayCookies() {
-    try {
-      // Sticky semantics: never replace an existing on-disk session with an empty cookie map.
-      if (relayCookies.size === 0) return;
-
-      const json = JSON.stringify(Object.fromEntries(relayCookies));
-      fs.writeFileSync(cookiePath, json, { encoding: "utf8", mode: 0o600 });
-    } catch (e) {
-      console.error("[LocalAPI] Failed to persist relay cookies:", e.message);
-    }
-  }
-
-  function clearRelayCookies(reason) {
-    if (relayCookies.size === 0) return;
-    relayCookies.clear();
-    try {
-      if (fs.existsSync(cookiePath)) fs.unlinkSync(cookiePath);
-    } catch (e) {
-      console.error("[LocalAPI] Failed to clear relay cookies:", e.message);
-      return;
-    }
-    if (reason) console.warn(`[LocalAPI] Cleared relay cookies: ${reason}`);
-  }
-
-  function captureSetCookies(headerValue) {
-    if (!headerValue) return;
-    const parts = headerValue.split(/,(?=\s*\w+=)/);
-    let changed = false;
-    for (const raw of parts) {
-      const eqIdx = raw.indexOf("=");
-      if (eqIdx < 1) continue;
-      const name = raw.substring(0, eqIdx).trim();
-      if (!name) continue;
-
-      // Basic sticky logic: if it's a deletion cookie (Max-Age=0 or past date),
-      // we only remove it if we have it.
-      const lower = raw.toLowerCase();
-      const isDeletion = lower.includes("max-age=0") || lower.includes("expires=thu, 01 jan 1970");
-      
-      if (isDeletion) {
-        if (relayCookies.has(name)) {
-          relayCookies.delete(name);
-          changed = true;
-          console.log(`[LocalAPI] Cookie deleted: ${name}`);
-        }
-      } else {
-        const oldVal = relayCookies.get(name);
-        if (oldVal !== raw.trim()) {
-          relayCookies.set(name, raw.trim());
-          changed = true;
-          console.log(`[LocalAPI] Cookie captured: ${name}`);
-        }
-      }
-    }
-    if (changed) persistRelayCookies();
-  }
-
-  function getRelayCookieValue(name, { decode = false } = {}) {
-    const raw = relayCookies.get(name);
-    if (!raw || typeof raw !== "string") return "";
-    const pair = raw.split(";")[0] || "";
-    const eqIdx = pair.indexOf("=");
-    if (eqIdx < 1) return "";
-    const value = pair.substring(eqIdx + 1).trim();
-    if (!decode) return value;
-    try {
-      return decodeURIComponent(value);
-    } catch {
-      return value;
-    }
-  }
-
-  function captureAuthTokensFromBody(bodyBuffer, contentType) {
-    if (!bodyBuffer || !String(contentType || "").toLowerCase().includes("application/json")) return;
-    let parsed = null;
-    try {
-      parsed = JSON.parse(bodyBuffer.toString("utf8"));
-    } catch {
-      return;
-    }
-    let changed = false;
-    const token = typeof parsed?.csrfToken === "string" ? parsed.csrfToken.trim() : "";
-    if (token) {
-      const cookie = `${csrfRelayCookieName}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
-      if (relayCookies.get(csrfRelayCookieName) !== cookie) {
-        relayCookies.set(csrfRelayCookieName, cookie);
-        changed = true;
-      }
-    }
-    const refreshToken = typeof parsed?.refreshToken === "string" ? parsed.refreshToken.trim() : "";
-    if (refreshToken) {
-      const cookie = `insforge_refresh_token=${encodeURIComponent(refreshToken)}; Path=/; HttpOnly; SameSite=Lax`;
-      if (relayCookies.get("insforge_refresh_token") !== cookie) {
-        relayCookies.set("insforge_refresh_token", cookie);
-        changed = true;
-      }
-    }
-    if (changed) persistRelayCookies();
-  }
-
-  function normalizeCookieHeader(value) {
-    if (Array.isArray(value)) return value.filter(Boolean).join("; ");
-    return typeof value === "string" ? value : "";
-  }
-
-  function buildRelayCookieHeader(clientCookieHeader, { relayPrecedenceNames = [] } = {}) {
-    const normalizedClientCookieHeader = normalizeCookieHeader(clientCookieHeader);
-    if (relayCookies.size === 0) return normalizedClientCookieHeader;
-    const relayPrecedence = new Set(relayPrecedenceNames);
-    const clientPairs = new Map();
-    if (normalizedClientCookieHeader) {
-      for (const part of normalizedClientCookieHeader.split(";")) {
-        const eqIdx = part.indexOf("=");
-        if (eqIdx < 1) continue;
-        const n = part.substring(0, eqIdx).trim();
-        if (n) clientPairs.set(n, part.trim());
-      }
-    }
-    // Merge relay cookies. Normal requests keep client precedence; refresh
-    // recovery can opt relay cookies into precedence over stale WebView cookies.
-    for (const [name, raw] of relayCookies) {
-      if (clientPairs.has(name) && !relayPrecedence.has(name)) continue;
-      const scIdx = raw.indexOf(";");
-      const pair = scIdx > 0 ? raw.substring(0, scIdx).trim() : raw;
-      clientPairs.set(name, pair);
-    }
-    return [...clientPairs.values()].join("; ");
-  }
-
-  // Ephemeral auth bridge: WebView sets a "native" flag before opening system browser
-  // for OAuth. The callback page (in browser) checks this flag to decide whether to
-  // relay the code back to the app or handle it as a normal web flow.
-  let _nativeAuthPending = false;
-  let _nativeAuthExpiry = 0;
-
   function isAuthorizedLocalMutation(req) {
     const headerToken = req?.headers?.["x-tokentracker-local-auth"];
     const cookieToken = parseCookieHeader(req?.headers?.cookie).get("tokentracker_local_auth");
@@ -942,124 +766,6 @@ function createLocalApiHandler({ queuePath }) {
         "Cache-Control": "no-store",
       });
       res.end(JSON.stringify({ token: localAuthToken }));
-      return true;
-    }
-
-    // --- Auth bridge: native OAuth flag (WebView ↔ system browser) ---
-    if (p === "/api/auth-bridge/verifier") {
-      const method = String(req.method || "GET").toUpperCase();
-      if (method === "PUT" || method === "POST") {
-        if (!isAuthorizedLocalMutation(req)) {
-          json(res, { error: "Unauthorized" }, 401);
-          return true;
-        }
-        const body = await readJsonBody(req);
-        _nativeAuthPending = Boolean(body?.native);
-        _nativeAuthExpiry = Date.now() + 5 * 60 * 1000; // 5 min TTL
-        json(res, { ok: true });
-        return true;
-      }
-      if (method === "GET") {
-        const isNative = _nativeAuthPending && Date.now() < _nativeAuthExpiry;
-        _nativeAuthPending = false; // one-time read
-        _nativeAuthExpiry = 0;
-        json(res, { native: isNative });
-        return true;
-      }
-      json(res, { error: "Method Not Allowed" }, 405);
-      return true;
-    }
-
-    // --- auth proxy: forward /api/auth/* to InsForge cloud ---
-    if (p.startsWith("/api/auth/")) {
-      const runtime = resolveRuntimeConfig();
-      const insforgeBase = runtime.baseUrl || DEFAULT_BASE_URL;
-      try {
-        const targetUrl = `${insforgeBase.replace(/\/$/, "")}${p}${url.search || ""}`;
-        const proxyHeaders = buildProxyHeaders(req.headers);
-        const hasClientCookie = normalizeCookieHeader(proxyHeaders["cookie"]).trim().length > 0;
-        const hasCsrfHeader = typeof proxyHeaders["x-csrf-token"] === "string" && proxyHeaders["x-csrf-token"].trim().length > 0;
-        const relayCsrfToken = getRelayCookieValue(csrfRelayCookieName);
-        if (p === "/api/auth/refresh" && relayCsrfToken) {
-          proxyHeaders["x-csrf-token"] = relayCsrfToken;
-        }
-        const hasEffectiveCsrfHeader =
-          hasCsrfHeader ||
-          (typeof proxyHeaders["x-csrf-token"] === "string" && proxyHeaders["x-csrf-token"].trim().length > 0);
-        let shouldInjectRelayCookies =
-          p !== "/api/auth/refresh" || hasClientCookie || hasEffectiveCsrfHeader;
-        const relayRefreshToken = getRelayCookieValue("insforge_refresh_token", { decode: true });
-        const shouldUseRelayRefreshFallback =
-          p === "/api/auth/refresh" && !hasClientCookie && !hasEffectiveCsrfHeader && relayRefreshToken;
-        if (shouldUseRelayRefreshFallback) {
-          shouldInjectRelayCookies = false;
-        }
-
-        // Inject relay cookies so WebView benefits from browser's login session.
-        // Refresh requests need either a browser cookie or an explicit CSRF token;
-        // otherwise replaying a stale persisted refresh cookie just manufactures
-        // Invalid CSRF errors on startup.
-        const originalCookieHeader = normalizeCookieHeader(proxyHeaders["cookie"]);
-        const mergedCookie = shouldInjectRelayCookies
-          ? buildRelayCookieHeader(originalCookieHeader, {
-              relayPrecedenceNames: p === "/api/auth/refresh"
-                ? [csrfRelayCookieName, "insforge_refresh_token"]
-                : [],
-            })
-          : originalCookieHeader;
-        const injectedRelayCookies =
-          shouldInjectRelayCookies && relayCookies.size > 0 && mergedCookie !== originalCookieHeader;
-        if (mergedCookie) proxyHeaders["cookie"] = mergedCookie;
-
-        const bodyChunks = [];
-        for await (const chunk of req) bodyChunks.push(chunk);
-        let proxyBody = bodyChunks.length > 0 ? Buffer.concat(bodyChunks) : undefined;
-        let effectiveTargetUrl = targetUrl;
-        if (shouldUseRelayRefreshFallback) {
-          effectiveTargetUrl = `${insforgeBase.replace(/\/$/, "")}/api/auth/refresh?client_type=mobile`;
-          proxyHeaders["content-type"] = "application/json";
-          delete proxyHeaders["content-length"];
-          proxyBody = Buffer.from(JSON.stringify({ refresh_token: relayRefreshToken }), "utf8");
-        }
-        const proxyRes = await fetch(effectiveTargetUrl, {
-          method: req.method || "GET",
-          headers: proxyHeaders,
-          body: proxyBody,
-          credentials: "include",
-          redirect: "manual",
-        });
-        const responseHeaders = [...proxyRes.headers.entries()]
-          .filter(([k]) => !["transfer-encoding", "connection"].includes(k.toLowerCase()))
-          .map(([k, v]) => {
-            if (k.toLowerCase() === "set-cookie") {
-              const rewritten = v.replace(/;\s*[Dd]omain=[^;]*/g, "; Domain=localhost");
-              captureSetCookies(rewritten);
-              return [k, rewritten];
-            }
-            return [k, v];
-          });
-        res.writeHead(proxyRes.status, Object.fromEntries(responseHeaders));
-        const resBody = Buffer.from(await proxyRes.arrayBuffer());
-        if (proxyRes.status >= 200 && proxyRes.status < 300) {
-          if (p === "/api/auth/logout") {
-            clearRelayCookies("sign out");
-          } else {
-            captureAuthTokensFromBody(resBody, proxyRes.headers.get("content-type"));
-          }
-        }
-        if (
-          p === "/api/auth/refresh"
-          && proxyRes.status === 403
-          && injectedRelayCookies
-          && !hasClientCookie
-          && /invalid csrf token/i.test(resBody.toString("utf8"))
-        ) {
-          clearRelayCookies("stale refresh cookie without local CSRF context");
-        }
-        res.end(resBody);
-      } catch (e) {
-        json(res, { error: `Auth proxy error: ${e?.message || e}` }, 502);
-      }
       return true;
     }
 
@@ -1101,7 +807,7 @@ function createLocalApiHandler({ queuePath }) {
           accept: req.headers["accept"] || "*/*",
           "accept-language": req.headers["accept-language"] || "en",
           "accept-encoding": req.headers["accept-encoding"] || "gzip",
-          "user-agent": "TokenTracker/IPCheck (https://www.tokentracker.cc)",
+          "user-agent": "TokenTracker/IPCheck",
           referer: `${IP_CHECK_TARGET}${targetPath}`,
         };
 
@@ -1207,7 +913,7 @@ function createLocalApiHandler({ queuePath }) {
           headers: {
             accept: req.headers["accept"] || "image/*",
             "accept-language": req.headers["accept-language"] || "en",
-            "user-agent": "TokenTracker/AvatarProxy (https://www.tokentracker.cc)",
+            "user-agent": "TokenTracker/AvatarProxy",
           },
         });
         if (!upstream.ok) {
@@ -1257,19 +963,10 @@ function createLocalApiHandler({ queuePath }) {
         } catch {
           body = {};
         }
-        const extraEnv = {};
-        if (typeof body.deviceToken === "string" && body.deviceToken.trim()) {
-          extraEnv.TOKENTRACKER_DEVICE_TOKEN = body.deviceToken.trim();
-        }
-        if (body.insforgeBaseUrl != null) {
-          const allowedBaseUrl = resolveAllowedInsforgeBaseUrl(body.insforgeBaseUrl);
-          if (!allowedBaseUrl) {
-            json(res, { ok: false, error: "Unsupported insforgeBaseUrl override" }, 400);
-            return true;
-          }
-          extraEnv.TOKENTRACKER_INSFORGE_BASE_URL = allowedBaseUrl;
-        }
-        const result = await runSyncCommand(extraEnv);
+        // Local-only: the sync command takes no cloud credentials or endpoint
+        // overrides any more, so the request body carries nothing to forward.
+        void body;
+        const result = await runSyncCommand({});
         try {
           const { resetUsageLimitsCache } = require("./usage-limits");
           resetUsageLimitsCache();
@@ -1876,7 +1573,6 @@ function createLocalApiHandler({ queuePath }) {
 
 module.exports = {
   createLocalApiHandler,
-  resolveAllowedInsforgeBaseUrl,
   resolveQueuePath,
   // Exported for cross-consumer tests (pricing + native contract lock).
   MODEL_PRICING,

@@ -6,7 +6,11 @@ const { test } = require("node:test");
 
 const { cmdStatus } = require("../src/commands/status");
 
-test("status prints last upload timestamps from upload.throttle.json", async () => {
+// Inverted, not deleted: status used to print upload.throttle.json timestamps
+// (Base URL / Last upload / Next upload after). Cloud upload is gone, so this
+// now pins that those lines are gone while local-only state (queue size, last
+// OpenClaw-triggered sync) still prints correctly.
+test("status prints local state and does not print removed cloud-upload lines", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-status-"));
   const prevHome = process.env.HOME;
   const prevCodexHome = process.env.CODEX_HOME;
@@ -27,40 +31,14 @@ test("status prints last upload timestamps from upload.throttle.json", async () 
     );
 
     await fs.writeFile(
-      path.join(trackerDir, "config.json"),
-      JSON.stringify(
-        { baseUrl: "https://example.invalid", deviceToken: "t", deviceId: "d" },
-        null,
-        2,
-      ) + "\n",
-      "utf8",
-    );
-    await fs.writeFile(
       path.join(trackerDir, "cursors.json"),
       JSON.stringify({ updatedAt: "2025-12-18T00:00:00.000Z" }) + "\n",
       "utf8",
     );
-    await fs.writeFile(path.join(trackerDir, "queue.jsonl"), "", "utf8");
-    await fs.writeFile(
-      path.join(trackerDir, "queue.state.json"),
-      JSON.stringify({ offset: 0 }) + "\n",
-      "utf8",
-    );
+    await fs.writeFile(path.join(trackerDir, "queue.jsonl"), "abcd", "utf8");
     await fs.writeFile(
       path.join(trackerDir, "openclaw.signal"),
       "2026-02-12T00:00:00.000Z\n",
-      "utf8",
-    );
-
-    const lastSuccessMs = 1766053145522; // 2025-12-18T10:19:05.522Z
-    const nextAllowedAtMs = lastSuccessMs + 1000;
-    await fs.writeFile(
-      path.join(trackerDir, "upload.throttle.json"),
-      JSON.stringify(
-        { version: 1, lastSuccessMs, nextAllowedAtMs, backoffUntilMs: 0, backoffStep: 0 },
-        null,
-        2,
-      ) + "\n",
       "utf8",
     );
 
@@ -73,10 +51,12 @@ test("status prints last upload timestamps from upload.throttle.json", async () 
 
     await cmdStatus();
 
-    assert.match(out, /- Base URL: https:\/\/example\.invalid/);
-    assert.match(out, /- Last upload: 2025-12-18T10:19:05\.522Z/);
+    assert.match(out, /- Queue: 4 bytes/);
     assert.match(out, /- Last OpenClaw-triggered sync: 2026-02-12T00:00:00.000Z/);
-    assert.match(out, /- Next upload after: 2025-12-18T10:19:06\.522Z/);
+    assert.ok(!out.includes("Base URL"), "expected Base URL line to be removed");
+    assert.ok(!out.includes("Device token"), "expected Device token line to be removed");
+    assert.ok(!/Last upload/.test(out), "expected Last upload line to be removed");
+    assert.ok(!/Next upload after/.test(out), "expected Next upload after line to be removed");
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;
@@ -108,37 +88,11 @@ test("status does not migrate legacy tracker directory", async () => {
     );
 
     await fs.writeFile(
-      path.join(legacyTrackerDir, "config.json"),
-      JSON.stringify(
-        { baseUrl: "https://example.invalid", deviceToken: "t", deviceId: "d" },
-        null,
-        2,
-      ) + "\n",
-      "utf8",
-    );
-    await fs.writeFile(
       path.join(legacyTrackerDir, "cursors.json"),
       JSON.stringify({ updatedAt: "2025-12-18T00:00:00.000Z" }) + "\n",
       "utf8",
     );
     await fs.writeFile(path.join(legacyTrackerDir, "queue.jsonl"), "", "utf8");
-    await fs.writeFile(
-      path.join(legacyTrackerDir, "queue.state.json"),
-      JSON.stringify({ offset: 0 }) + "\n",
-      "utf8",
-    );
-
-    const lastSuccessMs = 1766053145522; // 2025-12-18T10:19:05.522Z
-    const nextAllowedAtMs = lastSuccessMs + 1000;
-    await fs.writeFile(
-      path.join(legacyTrackerDir, "upload.throttle.json"),
-      JSON.stringify(
-        { version: 1, lastSuccessMs, nextAllowedAtMs, backoffUntilMs: 0, backoffStep: 0 },
-        null,
-        2,
-      ) + "\n",
-      "utf8",
-    );
 
     let out = "";
     process.stdout.write = (chunk, enc, cb) => {
@@ -149,8 +103,9 @@ test("status does not migrate legacy tracker directory", async () => {
 
     await cmdStatus();
 
-    assert.match(out, /- Base URL: unset/);
-    assert.match(out, /- Last upload: never/);
+    // Cloud upload/base-URL lines are gone entirely now (see the inverted
+    // test above) — this test's own subject is the legacy-dir behavior below.
+    assert.match(out, /- Queue: 0 bytes/);
     const newTrackerDir = path.join(tmp, ".tokentracker", "tracker");
     await assert.rejects(fs.stat(newTrackerDir));
     await fs.stat(legacyTrackerDir);
