@@ -75,5 +75,3 @@ Privacy boundary for local services:
 - The local sync wrapper exits successfully without syncing when
   `TOKENTRACKER_DEVICE_TOKEN` or `~/.tokentracker/tracker/config.json`
   `deviceToken` is configured.
-- Local dashboard mode must not preload or display leaderboard navigation on
-  `localhost`.

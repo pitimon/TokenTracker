@@ -45,14 +45,6 @@ vi.mock("./ui/foundation/ThemeProvider.jsx", () => ({
   ThemeProvider: ({ children }) => <>{children}</>,
 }));
 
-vi.mock("@vercel/analytics/react", () => ({
-  Analytics: () => null,
-}));
-
-vi.mock("@vercel/speed-insights/react", () => ({
-  SpeedInsights: () => null,
-}));
-
 vi.mock("./ui/components/Sidebar.jsx", async () => {
   const { Link } = await vi.importActual("react-router-dom");
   return {

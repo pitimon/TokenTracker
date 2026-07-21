@@ -103,7 +103,7 @@ The macOS + Windows release is **one workflow**: `release-dmg.yml` (display name
 | `src/` or `dashboard/` | ✅ | ✅ | ✅ | ✅ |
 | `TokenTrackerBar/` Swift only | ✅ | ✅ | ✅ | ✅ |
 | `TokenTrackerWin/` only | ✅ | ✅ | ✅ | ✅ |
-| `dashboard/edge-patches/`, scripts, docs, CI | — | — | — | — |
+| scripts, docs, CI | — | — | — | — |
 
 All four version locations must match or the workflows' "Verify version" steps fail (DMG checks `package.json` + `project.yml`; Windows checks `package.json` + `csproj`).
 

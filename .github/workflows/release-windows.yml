@@ -63,17 +63,12 @@ jobs:
           }
           Write-Host "Version OK: $env:VERSION"
 
-      # 1. Build dashboard. InsForge URL + anon key are public client-side values
-      # (shipped in every dashboard bundle) but MUST be present at build time or
-      # Vite inlines empty strings — breaks the leaderboard fetch and disables
-      # cloud OAuth. `dashboard/.env.local` is gitignored so CI cannot read it.
+      # 1. Build dashboard.
       - name: Install dashboard dependencies
         run: npm ci --prefix dashboard
 
       - name: Build dashboard
         env:
-          VITE_INSFORGE_BASE_URL: https://srctyff5.us-east.insforge.app
-          VITE_INSFORGE_ANON_KEY: ik_9f35735991b684f7cf57fa00bb4d0487
           # Include the floating-pet entry (pet.html). Off by default so the macOS +
           # web builds stay byte-identical; only the Windows build opts in.
           TOKENTRACKER_BUILD_PET: "1"

@@ -87,15 +87,7 @@ jobs:
       - name: Install dashboard dependencies
         run: npm ci --prefix dashboard
 
-      # InsForge URL + anon key are public client-side values (shipped in every
-      # dashboard bundle). They MUST be present at build time or Vite inlines
-      # empty strings, which breaks the leaderboard page (no baseUrl → no fetch)
-      # and disables cloud OAuth (`isCloudInsforgeConfigured()` returns false).
-      # `dashboard/.env.local` is gitignored so CI cannot read it — inject here.
       - name: Build dashboard
-        env:
-          VITE_INSFORGE_BASE_URL: https://srctyff5.us-east.insforge.app
-          VITE_INSFORGE_ANON_KEY: ik_9f35735991b684f7cf57fa00bb4d0487
         run: npm run dashboard:build
 
       # 2. Bundle EmbeddedServer (Node.js + tokentracker source)

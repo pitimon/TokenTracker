@@ -14,7 +14,6 @@ const IGNORED_DIRS = new Set([
   "build",
   ".tmp",
   "archive",
-  "edge-patches",
 ]);
 
 const CLIENT_IMPORT_PATTERNS = [];

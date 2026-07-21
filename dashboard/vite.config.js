@@ -440,9 +440,6 @@ async function handleLocalApi(req, res, url) {
       if (typeof body.deviceToken === "string" && body.deviceToken.trim()) {
         extraEnv.TOKENTRACKER_DEVICE_TOKEN = body.deviceToken.trim();
       }
-      if (typeof body.insforgeBaseUrl === "string" && /^https?:\/\//i.test(body.insforgeBaseUrl.trim())) {
-        extraEnv.TOKENTRACKER_INSFORGE_BASE_URL = body.insforgeBaseUrl.trim();
-      }
       const result = await runLocalSyncCommand(extraEnv);
       try {
         const esmRequire = createRequire(import.meta.url);
@@ -1176,30 +1173,17 @@ export default defineConfig(({ mode }) => {
           { from: /^\/functions\/.*$/, to: (ctx) => ctx.parsedUrl.pathname }
         ]
       },
-      // 代理 InsForge auth/functions 请求到云端，避免跨域 cookie 问题
-      proxy: (() => {
-        const proxies = {
-          // IP-check page proxies ip.net.coffee API + assets. Without this,
-          // 5173 dev mode shows "无数据" because trust score / geoip endpoints
-          // are not part of the Vite mock — they live on ip.net.coffee.
-          "/proxy/ipcheck": {
-            target: "https://ip.net.coffee",
-            changeOrigin: true,
-            secure: true,
-            rewrite: (p) => p.replace(/^\/proxy\/ipcheck/, ""),
-          },
-        };
-        const insforge = loadEnv("development", ROOT_DIR, "VITE_").VITE_INSFORGE_BASE_URL;
-        if (insforge) {
-          proxies["/api/auth"] = {
-            target: insforge,
-            changeOrigin: true,
-            secure: true,
-            cookieDomainRewrite: "localhost",
-          };
-        }
-        return proxies;
-      })(),
+      proxy: {
+        // IP-check page proxies ip.net.coffee API + assets. Without this,
+        // 5173 dev mode shows "无数据" because trust score / geoip endpoints
+        // are not part of the Vite mock — they live on ip.net.coffee.
+        "/proxy/ipcheck": {
+          target: "https://ip.net.coffee",
+          changeOrigin: true,
+          secure: true,
+          rewrite: (p) => p.replace(/^\/proxy\/ipcheck/, ""),
+        },
+      },
     },
   };
 });
