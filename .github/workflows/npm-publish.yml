@@ -34,9 +34,6 @@ jobs:
         run: npm ci --prefix dashboard
 
       - name: Run local CI gate
-        env:
-          VITE_INSFORGE_BASE_URL: https://srctyff5.us-east.insforge.app
-          VITE_INSFORGE_ANON_KEY: ik_9f35735991b684f7cf57fa00bb4d0487
         run: npm run ci:local
 
   publish:
@@ -72,15 +69,8 @@ jobs:
         if: steps.version-check.outputs.exists == 'false'
         run: npm ci --prefix dashboard
 
-      # InsForge URL + anon key are public client-side values shipped in every
-      # dashboard bundle. They MUST be present at build time or Vite inlines
-      # empty strings — breaks leaderboard fetch and disables cloud OAuth.
-      # `dashboard/.env.local` is gitignored so CI cannot read it.
       - name: Build dashboard
         if: steps.version-check.outputs.exists == 'false'
-        env:
-          VITE_INSFORGE_BASE_URL: https://srctyff5.us-east.insforge.app
-          VITE_INSFORGE_ANON_KEY: ik_9f35735991b684f7cf57fa00bb4d0487
         run: npm run dashboard:build
 
       - name: Publish to npm

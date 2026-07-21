@@ -3,7 +3,7 @@
     "note": "Curated price overrides. Always wins over LiteLLM. Two reasons to live here: (1) self-defined alias names that LiteLLM will never carry (kiro-*, hy3-*, composer-*, kimi-for-coding, free-tier OpenRouter routes); (2) prices we want to pin even if LiteLLM has the model (e.g. cache_write fields LiteLLM often omits). Units: USD per million tokens. Edit this file to override pricing without redeploying.",
     "units": "usd_per_million_tokens",
     "deepseek_v4_pro_discount_expiry": "2026-05-31T15:59:00Z — DeepSeek v4-pro is currently at a 75% promotional discount. After expiry the prices revert to 4x: input $1.74/M, output $3.48/M, cache_read $0.0145/M, cache_write $1.74/M. Update this file before the cutover.",
-    "sonnet5_intro_price_expiry": "2026-08-31 — Sonnet 5 intro price 2/10 reverts to 3/15 sticker. The src pricing path auto-tracks LiteLLM (no edit needed), but the 5 dashboard/edge-patches MODEL_PRICING tables hardcode 2/10 and must be reverted to 3/15 manually + re-vendor the seed. See issue #16."
+    "sonnet5_intro_price_expiry": "2026-08-31 — Sonnet 5 intro price 2/10 reverts to 3/15 sticker. The src pricing path auto-tracks LiteLLM (no edit needed); re-vendor the seed after the cutover. See issue #16."
   },
   "exact": {
     "claude-fable-5": { "input": 10, "output": 50, "cache_read": 1, "cache_write": 12.5, "note": "Pinned from Anthropic public pricing until bundled LiteLLM seed carries Fable 5." },
