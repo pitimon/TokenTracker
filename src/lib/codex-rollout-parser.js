@@ -349,6 +349,15 @@ async function parseCodexRolloutFile(filePath, { fromIso, toIso, from = null, to
   let pendingSkills = [];
   let pendingExecEnds = []; // exec_command_end payloads since last token_count
 
+  // Codex subagent-fork replay handling (issue #75). A rollout spawned via
+  // session_meta.source.subagent.thread_spawn replays the parent thread's
+  // history before an "inter_agent_communication_metadata" boundary. While in
+  // replay we advance the delta baseline but do not attribute anything, so the
+  // context breakdown reflects only the genuine child turns. Whole-file read,
+  // so no cross-call cursor is needed — a boundary-less (partial) fork simply
+  // stays in replay and contributes nothing.
+  let accounting = true;
+
   const totals = emptyTotals();
   const byTool = new Map(); // tool_name -> {name,calls,totals}
   const bySkill = new Map(); // skill_name -> {name,calls,totals}
@@ -525,19 +534,35 @@ async function parseCodexRolloutFile(filePath, { fromIso, toIso, from = null, to
     } catch {
       continue;
     }
-    const ts = typeof obj?.timestamp === "string" ? obj.timestamp : null;
-    if (!ts) continue;
-    if (fromIso && ts < fromIso) continue;
-    if (toIso && ts > toIso) continue;
-    if (!isTimestampInRequestedDayRange(ts, { from, to, timeZoneContext })) continue;
-
+    // Stateful fork-control records are handled BEFORE any timestamp/date
+    // filtering. They must never be dropped by a query window: if a date filter
+    // removed the boundary while keeping replay records on one side of it, the
+    // replayed parent history would leak back into the child's totals (the exact
+    // #75 overcount). This mirrors the pre-gate ordering in rollout.js.
     if (obj.type === "session_meta") {
       const p = obj.payload || {};
       sessionId = p.id || sessionId;
       cwd = p.cwd || cwd;
       cliVersion = p.cli_version || cliVersion;
       provider = p.model_provider || provider;
+      if (p.source?.subagent?.thread_spawn) accounting = false;
+      continue;
     }
+
+    // Boundary between replayed parent history and genuine child turns.
+    if (obj.type === "inter_agent_communication_metadata") {
+      accounting = true;
+      pendingCalls = [];
+      pendingSkills = [];
+      pendingExecEnds = [];
+      continue;
+    }
+
+    const ts = typeof obj?.timestamp === "string" ? obj.timestamp : null;
+    if (!ts) continue;
+    if (fromIso && ts < fromIso) continue;
+    if (toIso && ts > toIso) continue;
+    if (!isTimestampInRequestedDayRange(ts, { from, to, timeZoneContext })) continue;
 
     if (obj.type === "turn_context") {
       const p = obj.payload || {};
@@ -547,14 +572,17 @@ async function parseCodexRolloutFile(filePath, { fromIso, toIso, from = null, to
     }
 
     if (obj.type === "response_item" && obj.payload?.type === "function_call") {
-      pendingCalls.push(obj.payload);
-      const skill = extractSkillNameFromFunctionCall(obj.payload);
-      if (skill) pendingSkills.push(skill);
+      // Skip replayed parent tool calls; only child turns are attributed.
+      if (accounting) {
+        pendingCalls.push(obj.payload);
+        const skill = extractSkillNameFromFunctionCall(obj.payload);
+        if (skill) pendingSkills.push(skill);
+      }
       continue;
     }
 
     if (obj.type === "event_msg" && obj.payload?.type === "exec_command_end") {
-      pendingExecEnds.push(obj.payload);
+      if (accounting) pendingExecEnds.push(obj.payload);
       continue;
     }
 
@@ -564,7 +592,11 @@ async function parseCodexRolloutFile(filePath, { fromIso, toIso, from = null, to
       const lastUsage = info?.last_token_usage;
       const totalUsage = info?.total_token_usage;
       const delta = pickDelta(lastUsage, totalUsage, prevTotals);
+      // Advance the delta baseline through replay so the first child delta is
+      // measured from the last replayed cumulative, but do not attribute the
+      // replayed parent history to this child.
       if (totalUsage && typeof totalUsage === "object") prevTotals = totalUsage;
+      if (!accounting) continue;
       if (delta) attributeTurn(delta);
       continue;
     }
@@ -572,6 +604,16 @@ async function parseCodexRolloutFile(filePath, { fromIso, toIso, from = null, to
 
   rl.close();
   stream.close?.();
+
+  // Saw a subagent fork but never its boundary: the whole file was treated as
+  // replay and contributes nothing. Safe (never over-count) but silent —
+  // surface it under debug so a malformed/renamed boundary is diagnosable.
+  if (!accounting && process.env.TOKENTRACKER_DEBUG) {
+    process.stderr.write(
+      `[codex-fork] ${filePath}: subagent fork with no ` +
+        `inter_agent_communication_metadata boundary; context breakdown empty\n`,
+    );
+  }
 
   return {
     sessionId,

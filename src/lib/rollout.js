@@ -137,6 +137,7 @@ async function parseRolloutIncremental({
     const startOffset = sameFile ? prev.offset || 0 : 0;
     const lastTotal = sameFile ? prev.lastTotal || null : null;
     const lastModel = sameFile ? prev.lastModel || null : null;
+    const forkState = sameFile ? prev.codexFork || null : null;
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -155,6 +156,7 @@ async function parseRolloutIncremental({
       startOffset,
       lastTotal,
       lastModel,
+      forkState,
       hourlyState,
       touchedBuckets,
       source: fileSource,
@@ -172,6 +174,7 @@ async function parseRolloutIncremental({
       offset: result.endOffset,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
+      codexFork: result.codexFork || null,
       head: headSig,
       updatedAt: new Date().toISOString(),
     };
@@ -782,6 +785,7 @@ async function parseRolloutFile({
   startOffset,
   lastTotal,
   lastModel,
+  forkState,
   hourlyState,
   touchedBuckets,
   source,
@@ -796,7 +800,8 @@ async function parseRolloutFile({
   const st = await fs.stat(filePath);
   const endOffset = st.size;
   if (startOffset >= endOffset) {
-    return { endOffset, lastTotal, lastModel, eventsAggregated: 0 };
+    const carriedFork = forkState === "child" || forkState === "replay" ? forkState : null;
+    return { endOffset, lastTotal, lastModel, eventsAggregated: 0, codexFork: carriedFork };
   }
 
   const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
@@ -809,14 +814,37 @@ async function parseRolloutFile({
   let currentProjectKey = projectKey || null;
   let eventsAggregated = 0;
 
+  // Codex subagent-fork accounting (issue #75). A rollout spawned via
+  // session_meta.source.subagent.thread_spawn replays the parent thread's
+  // token_count history before a deterministic
+  // "inter_agent_communication_metadata" boundary, then the genuine child
+  // turns. codexFork tracks that lifecycle across incremental reads:
+  //   null    -> not a fork (or not yet known); accounting on
+  //   "replay" -> fork detected, boundary not seen; accounting off
+  //   "child"  -> boundary passed; accounting on
+  // The cumulative total_token_usage counter is continuous across the
+  // boundary, so we still advance the delta baseline through the replay
+  // (without accumulating) and let the first child delta be measured from the
+  // last replayed cumulative.
+  let codexFork = forkState === "child" || forkState === "replay" ? forkState : null;
+  let accounting = codexFork !== "replay";
+
   for await (const line of rl) {
     if (!line) continue;
+    // Format contract with Codex (issue #75): fork detection and the replay
+    // boundary are matched by these exact record-type substrings. If a future
+    // Codex format renames/reshapes them, this prefilter drops the line and the
+    // fork silently reverts to counting replayed history — update these literals
+    // (and the tests in test/codex-fork-history.test.js) as a conscious change.
     const maybeTokenCount = line.includes('"token_count"');
+    const maybeBoundary =
+      !maybeTokenCount && line.includes('"inter_agent_communication_metadata"');
     const maybeTurnContext =
       !maybeTokenCount &&
+      !maybeBoundary &&
       (line.includes('"turn_context"') || line.includes('"session_meta"')) &&
-      (line.includes('"model"') || line.includes('"cwd"'));
-    if (!maybeTokenCount && !maybeTurnContext) continue;
+      (line.includes('"model"') || line.includes('"cwd"') || line.includes('"thread_spawn"'));
+    if (!maybeTokenCount && !maybeTurnContext && !maybeBoundary) continue;
 
     let obj;
     try {
@@ -825,11 +853,27 @@ async function parseRolloutFile({
       continue;
     }
 
+    // Boundary between replayed parent history and genuine child turns.
+    if (obj?.type === "inter_agent_communication_metadata") {
+      accounting = true;
+      if (codexFork === "replay") codexFork = "child";
+      continue;
+    }
+
     if (
       (obj?.type === "turn_context" || obj?.type === "session_meta") &&
       obj?.payload &&
       typeof obj.payload === "object"
     ) {
+      if (
+        obj.type === "session_meta" &&
+        obj.payload.source?.subagent?.thread_spawn &&
+        codexFork !== "child"
+      ) {
+        // Fork detected before any boundary in this file: enter replay mode.
+        codexFork = "replay";
+        accounting = false;
+      }
       if (typeof obj.payload.model === "string") {
         model = obj.payload.model;
       }
@@ -864,6 +908,17 @@ async function parseRolloutFile({
     const totalUsage = info.total_token_usage;
 
     const delta = pickDelta(lastUsage, totalUsage, totals);
+    if (!accounting) {
+      // Replay mode (subagent fork before the boundary): advance the delta
+      // baseline so the first child delta is measured from the last replayed
+      // cumulative, but do not attribute the replayed parent history to this
+      // child. Advance unconditionally here — pickDelta can return null for a
+      // zero/duplicate delta, and we still want the baseline to track the
+      // replay. This branch is scoped to forks so the shared non-fork path
+      // below keeps its original guard order untouched.
+      if (totalUsage && typeof totalUsage === "object") totals = totalUsage;
+      continue;
+    }
     if (!delta) continue;
     delta.conversation_count = 1;
 
@@ -891,7 +946,30 @@ async function parseRolloutFile({
     eventsAggregated += 1;
   }
 
-  return { endOffset, lastTotal: totals, lastModel: model, eventsAggregated };
+  // Fail closed for a partially-written fork: the boundary never arrived, so
+  // the replay is not yet safely separable from the child. Do not advance the
+  // cursor or the persisted baseline — the completed file is re-read next pass.
+  // This degrades safely (0 tokens, never over-count) but is silent, so surface
+  // it under debug: a file that stays here across many passes is a boundary
+  // that was malformed/renamed, not merely still being written.
+  if (codexFork === "replay") {
+    if (process.env.TOKENTRACKER_DEBUG) {
+      process.stderr.write(
+        `[codex-fork] ${filePath}: subagent fork has no ` +
+          `inter_agent_communication_metadata boundary yet; deferring ` +
+          `(0 tokens ingested, cursor held at ${startOffset})\n`,
+      );
+    }
+    return {
+      endOffset: startOffset,
+      lastTotal,
+      lastModel: model,
+      eventsAggregated: 0,
+      codexFork: "replay",
+    };
+  }
+
+  return { endOffset, lastTotal: totals, lastModel: model, eventsAggregated, codexFork };
 }
 
 async function parseClaudeFile({
