@@ -2,11 +2,20 @@
 #
 # release.sh — redeploy the local dashboard LaunchAgent to a published version.
 #
-# This is a LOCAL redeploy, NOT an npm publish. It repins the dashboard
-# LaunchAgent's plist to a specific published version, reloads the agent, waits
-# for the server, and VERIFIES that the version the server actually serves
-# matches the target (by grepping the served JS bundle — no false "success" on
-# a stale bundle). Publish to npm first (`npm publish`), then run this.
+# This is a LOCAL redeploy, NOT an npm publish. It repins BOTH local
+# LaunchAgents — the dashboard (`serve --sync`) and the 5-minute local-sync
+# (`sync --auto`) — to a specific published version, reloads them, waits for the
+# server, and VERIFIES that the version the server actually serves matches the
+# target (by grepping the served JS bundle — no false "success" on a stale
+# bundle). Publish to npm first (`npm publish`), then run this.
+#
+# Why BOTH agents: they pin the version independently. If the local-sync agent
+# is left on an older version, its next tick re-parses your logs with the old
+# CLI — which can silently UNDO a data migration the new version just applied
+# (this is exactly what happened during the issue #75 rebuild: the dashboard was
+# repinned but local-sync stayed on 0.39.20 and re-inflated the corrected data).
+# Keep them on the same version. The local-sync agent is optional — skipped if
+# it is not installed.
 #
 # Why pin a version at all: this machine verifies releases, so a deterministic
 # pin means the live version badge is an exact, checkable signal (and `npx`
@@ -20,15 +29,18 @@
 #   scripts/release.sh latest     # same as no arg
 #
 # Env overrides:
-#   TOKENTRACKER_NPM_PACKAGE   default @ipv9/tokentracker-cli
+#   TOKENTRACKER_NPM_PACKAGE       default @ipv9/tokentracker-cli
 #   TOKENTRACKER_DASHBOARD_LABEL   default com.pitimon.tokentracker.dashboard
+#   TOKENTRACKER_SYNC_LABEL        default com.pitimon.tokentracker.local-sync
 #
 set -euo pipefail
 
 PACKAGE_NAME="${TOKENTRACKER_NPM_PACKAGE:-@ipv9/tokentracker-cli}"
 DASHBOARD_LABEL="${TOKENTRACKER_DASHBOARD_LABEL:-com.pitimon.tokentracker.dashboard}"
+SYNC_LABEL="${TOKENTRACKER_SYNC_LABEL:-com.pitimon.tokentracker.local-sync}"
 AGENTS_DIR="$HOME/Library/LaunchAgents"
 PLIST="$AGENTS_DIR/$DASHBOARD_LABEL.plist"
+SYNC_PLIST="$AGENTS_DIR/$SYNC_LABEL.plist"
 UID_NUM="$(id -u)"
 SERVICE_TARGET="gui/$UID_NUM/$DASHBOARD_LABEL"
 TARGET_ARG="${1:-latest}"
@@ -123,6 +135,41 @@ else
   die "served bundle does not report $VERSION (found: ${SERVED:-none}) — rollback: cp '$BACKUP' '$PLIST' && launchctl bootout '$SERVICE_TARGET'; launchctl bootstrap gui/$UID_NUM '$PLIST'"
 fi
 
+# --- 7. Repin + reload the local-sync LaunchAgent (if installed) ------------
+# Independent version pin from the dashboard. Left stale, its next tick would
+# re-parse with the old CLI and can undo a data migration (issue #75). No HTTP
+# to verify — it is an interval `sync --auto` job, not a server; the plist pin
+# is what npx resolves, so a successful repin is the check.
+SYNC_STATUS="not installed (skipped)"
+if [ -f "$SYNC_PLIST" ]; then
+  SYNC_TARGET="gui/$UID_NUM/$SYNC_LABEL"
+  SYNC_CURRENT="$(grep -oE "${PACKAGE_NAME}@[0-9][0-9A-Za-z.-]*" "$SYNC_PLIST" | head -1 | sed "s|^${PACKAGE_NAME}@||" || true)"
+  SYNC_CURRENT="${SYNC_CURRENT:-unpinned}"
+  SYNC_BACKUP="$SYNC_PLIST.bak-$SYNC_CURRENT"
+  cp "$SYNC_PLIST" "$SYNC_BACKUP"
+  sed -i '' -E "s|<string>${PACKAGE_NAME}(@[^<]*)?</string>|<string>${PACKAGE_NAME}@${VERSION}</string>|g" "$SYNC_PLIST"
+  SYNC_PINS="$(grep -c "${PACKAGE_NAME}@${VERSION}" "$SYNC_PLIST" || true)"
+  if [ "$SYNC_PINS" -lt 1 ]; then
+    cp "$SYNC_BACKUP" "$SYNC_PLIST"
+    die "local-sync: expected >=1 pin, found $SYNC_PINS — restored backup, plist unchanged"
+  fi
+  echo "> Reloading ${SYNC_LABEL}..."
+  launchctl bootout "$SYNC_TARGET" >/dev/null 2>&1 || true
+  for _ in $(seq 1 15); do
+    launchctl print "$SYNC_TARGET" >/dev/null 2>&1 || break
+    sleep 1
+  done
+  if ! launchctl bootstrap "gui/$UID_NUM" "$SYNC_PLIST" 2>/dev/null; then
+    sleep 2
+    launchctl bootstrap "gui/$UID_NUM" "$SYNC_PLIST" || die "bootstrap failed for $SYNC_PLIST"
+  fi
+  echo "✓ local-sync repinned $SYNC_PINS occurrence(s) → $VERSION (was: $SYNC_CURRENT) + reloaded"
+  SYNC_STATUS="$VERSION (was: $SYNC_CURRENT · backup: $SYNC_BACKUP)"
+else
+  echo "ℹ local-sync agent not installed ($SYNC_PLIST) — skipped"
+fi
+
 echo ""
 echo "🚀 Deployed $PACKAGE_NAME@$VERSION → http://127.0.0.1:$PORT/"
-echo "   (was: $CURRENT · backup: $BACKUP)"
+echo "   dashboard: $VERSION (was: $CURRENT · backup: $BACKUP)"
+echo "   local-sync: $SYNC_STATUS"
