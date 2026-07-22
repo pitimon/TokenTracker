@@ -73,6 +73,13 @@ const { resolveTrackerPaths } = require("../lib/tracker-paths");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
+// #75: rebuild Codex/every-code aggregates that were accumulated with the
+// pre-fix parser, which counted replayed subagent-fork parent history as child
+// consumption (up to ~40x Cache Read inflation on the local fork corpus). The
+// rolloutCumulativeDeltaReparse migration above already rebuilt these once, but
+// with the still-buggy parser, so a fresh key is required to rebuild again now
+// that the parser is fixed.
+const CODEX_FORK_OVERCOUNT_MIGRATION_KEY = "codexForkOvercountRebuild_2026_07";
 const CLAUDE_MEM_OBSERVER_REINCLUDE_KEY = "claudeMemObserverReinclude_2026_05_v3";
 const GROK_APPEND_ONLY_REPAIR_MIGRATION_KEY = "grokAppendOnlyRepair_2026_05_v4";
 const CLAUDE_MEM_OBSERVER_PATH_SEGMENT = "--claude-mem-observer-sessions";
@@ -188,6 +195,7 @@ async function cmdSync(argv) {
     }
 
     await migrateRolloutCumulativeDeltaBuckets({ cursors, queuePath, rolloutFiles });
+    await migrateCodexForkOvercountRebuild({ cursors, queuePath, projectQueuePath, rolloutFiles });
 
     const openclawFiles = openclawSignal?.sessionFile
       ? [{ path: openclawSignal.sessionFile, source: "openclaw" }]
@@ -1020,10 +1028,12 @@ module.exports = {
   cmdSync,
   migrateCursorUnknownBuckets,
   migrateRolloutCumulativeDeltaBuckets,
+  migrateCodexForkOvercountRebuild,
   reincludeClaudeMemObserverFiles,
   repairGrokQueueFromSessionSnapshots,
   CURSOR_UNKNOWN_MIGRATION_KEY,
   ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY,
+  CODEX_FORK_OVERCOUNT_MIGRATION_KEY,
   CLAUDE_MEM_OBSERVER_REINCLUDE_KEY,
   GROK_APPEND_ONLY_REPAIR_MIGRATION_KEY,
 };
@@ -1693,6 +1703,130 @@ async function migrateRolloutCumulativeDeltaBuckets({ cursors, queuePath, rollou
   }
 
   cursors.migrations[ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY] = new Date().toISOString();
+}
+
+// One-time rebuild for issue #75. The prior parser counted a Codex subagent
+// fork's replayed parent token_count history as the child's consumption. After
+// the parser fix (PR #77) that only corrects go-forward parsing — already-
+// ingested files sit at offset = EOF and are never re-read — so their inflated
+// contribution stays baked into cursors.hourly / project aggregates and the
+// dashboard until this migration retracts it and forces a clean re-parse.
+//
+// Choreography mirrors migrateRolloutCumulativeDeltaBuckets (codex-scoped, so
+// no other provider is touched): (1) drop the per-file cursors so the same-run
+// sync re-parses from offset 0 with the fixed accounting; (2) delete the
+// inflated hourly buckets and append zero rows to queue.jsonl — the dashboard
+// keep-lasts per source|model|hour_start (local-api.js readQueueData), so the
+// re-parse's corrected row supersedes the zero, or the zero stands for a file
+// no longer on disk; (3) do the same for project aggregates, which are on by
+// default (sync passes projectQueuePath) and would otherwise double-count on
+// re-parse — readProjectQueueData also keep-lasts per project_key|source|
+// hour_start. Run-once via the migrations sentinel (the issue asks for a
+// one-time rebuild, not a repeatable command).
+//
+// Project aggregates are handled conservatively: the accumulator buckets are
+// reset (so files still on disk rebuild clean and their corrected row wins via
+// keep-last), but no zero rows are written. A project bucket whose file was
+// deleted or whose repo moved keeps its prior queue row rather than being
+// zeroed — we never destroy project history we can no longer recompute. Main-
+// dashboard (source) totals are always rebuilt regardless of project
+// resolution. See step (3).
+async function migrateCodexForkOvercountRebuild({
+  cursors,
+  queuePath,
+  projectQueuePath,
+  rolloutFiles,
+}) {
+  if (!cursors || typeof cursors !== "object") return;
+  cursors.migrations = cursors.migrations || {};
+  if (cursors.migrations[CODEX_FORK_OVERCOUNT_MIGRATION_KEY]) return;
+
+  const rolloutPaths = new Set();
+  for (const entry of Array.isArray(rolloutFiles) ? rolloutFiles : []) {
+    const filePath = typeof entry === "string" ? entry : entry?.path;
+    const source = typeof entry === "string" ? "codex" : String(entry?.source || "codex");
+    if (filePath && (source === "codex" || source === "every-code")) {
+      rolloutPaths.add(filePath);
+    }
+  }
+
+  // (1) Drop per-file cursors -> clean re-parse from offset 0 with the fix.
+  if (cursors.files && typeof cursors.files === "object") {
+    for (const filePath of rolloutPaths) delete cursors.files[filePath];
+  }
+
+  // (2) Retract + delete inflated hourly codex/every-code buckets.
+  const hourlyRetractions = [];
+  const buckets = cursors.hourly?.buckets;
+  if (buckets && typeof buckets === "object") {
+    for (const key of Object.keys(buckets)) {
+      const [source, model, ...hourParts] = key.split("|");
+      if (source !== "codex" && source !== "every-code") continue;
+      hourlyRetractions.push(
+        JSON.stringify({
+          source,
+          model: model || "unknown",
+          hour_start: hourParts.join("|"),
+          input_tokens: 0,
+          cached_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+          output_tokens: 0,
+          reasoning_output_tokens: 0,
+          total_tokens: 0,
+          billable_total_tokens: 0,
+          conversation_count: 0,
+        }),
+      );
+      delete buckets[key];
+    }
+  }
+  const groupQueued = cursors.hourly?.groupQueued;
+  if (groupQueued && typeof groupQueued === "object") {
+    for (const key of Object.keys(groupQueued)) {
+      if (key.startsWith("codex|") || key.startsWith("every-code|")) {
+        delete groupQueued[key];
+      }
+    }
+  }
+  if (hourlyRetractions.length > 0) {
+    await ensureDir(path.dirname(queuePath));
+    await fs.appendFile(queuePath, hourlyRetractions.join("\n") + "\n");
+  }
+
+  // (3) Reset the inflated project codex/every-code accumulator buckets, but
+  // do NOT append zero rows to project.queue.jsonl. Deleting the in-memory
+  // bucket is what prevents the double-count: the same-run re-parse of a file
+  // still on disk starts that project bucket fresh from zero and appends a
+  // corrected row, which the keep-last project reader (local-api.js
+  // readProjectQueueData, per project_key|source|hour_start) picks over the old
+  // inflated row. A bucket whose file has since been deleted or whose repo
+  // moved is NOT re-parsed; leaving its prior queue row in place keeps that
+  // (possibly fork-inflated) historical value visible rather than zeroing data
+  // we can no longer recompute. Unlike the hourly path, project aggregates were
+  // never retracted by the earlier delta migration, so a zero here would be a
+  // brand-new, unrecoverable loss for orphaned files — hence the conservative
+  // reset-accumulator-only approach.
+  let projectReset = 0;
+  const projectBuckets = cursors.projectHourly?.buckets;
+  if (projectQueuePath && projectBuckets && typeof projectBuckets === "object") {
+    for (const key of Object.keys(projectBuckets)) {
+      const source = projectBuckets[key]?.source;
+      if (source !== "codex" && source !== "every-code") continue;
+      delete projectBuckets[key];
+      projectReset += 1;
+    }
+  }
+
+  if (process.env.TOKENTRACKER_DEBUG) {
+    process.stderr.write(
+      `[codex-fork] #75 rebuild: reset ${rolloutPaths.size} codex/every-code file ` +
+        `cursors, retracted ${hourlyRetractions.length} hourly bucket(s), reset ` +
+        `${projectReset} project accumulator bucket(s) (no project rows zeroed); ` +
+        `this sync re-parses files still on disk with the corrected accounting\n`,
+    );
+  }
+
+  cursors.migrations[CODEX_FORK_OVERCOUNT_MIGRATION_KEY] = new Date().toISOString();
 }
 
 // One-time repair migration: rebuild source=claude rows in queue.jsonl from
