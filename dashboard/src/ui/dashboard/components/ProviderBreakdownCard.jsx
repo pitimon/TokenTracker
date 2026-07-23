@@ -7,6 +7,7 @@ import { copy } from "../../../lib/copy";
 import { getCurrencySymbol } from "../../../lib/currency";
 import { ProviderIcon } from "./ProviderIcon.jsx";
 import { ContextBreakdownPanel } from "./ContextBreakdownPanel.jsx";
+import { LimitChips } from "./limitDisplay.jsx";
 import {
   formatTokens,
   formatCost,
@@ -20,7 +21,7 @@ import {
   getHiddenModelCount,
 } from "./usageFormat.js";
 
-export function ProviderBreakdownCard({ fleetData = [], from, to, showInlineContext = true }) {
+export function ProviderBreakdownCard({ fleetData = [], from, to, showInlineContext = true, usageLimits = null, limitDisplayMode }) {
   const shouldReduceMotion = useReducedMotion();
   const [expandedProvider, setExpandedProvider] = useState(null);
   const { currency, rate } = useCurrency();
@@ -108,6 +109,11 @@ export function ProviderBreakdownCard({ fleetData = [], from, to, showInlineCont
                     <div className="mt-0.5 text-[11px] text-oai-gray-400 dark:text-oai-gray-400 tabular-nums">
                       {copy("usage.overview.model_count", { count: provider.models.length })}
                     </div>
+                    <LimitChips
+                      label={provider.label}
+                      usageLimits={usageLimits}
+                      mode={limitDisplayMode}
+                    />
                     <div className="mt-2 space-y-1.5">
                       {visibleModels.map((model) => {
                         const isTopCost = isSameModel(model, provider.topCostModel);

@@ -4,6 +4,7 @@ import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
 import { useTrendData } from "../hooks/use-trend-data.js";
 import { useUsageData } from "../hooks/use-usage-data.js";
 import { useUsageLimits } from "../hooks/use-usage-limits.js";
+import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
 import { usePulse } from "../hooks/use-pulse";
 import { copy } from "../lib/copy";
@@ -410,6 +411,7 @@ export function DashboardPage({
     data: usageLimits,
     refresh: refreshUsageLimits,
   } = useUsageLimits();
+  const { displayMode: limitDisplayMode } = useLimitsDisplayPrefs();
 
   useEffect(() => {
     if (usageLimits && typeof usageLimits === "object") {
@@ -1142,6 +1144,8 @@ export function DashboardPage({
       timeZoneRangeLabel={timeZoneRangeLabel}
       usageSourceLabel={usageSourceLabel}
       fleetData={fleetData}
+      usageLimits={usageLimits}
+      limitDisplayMode={limitDisplayMode}
       hasDetailsActual={hasDetailsActual}
       dailyEmptyPrefix={dailyEmptyPrefix}
       installSyncCmd={installSyncCmd}

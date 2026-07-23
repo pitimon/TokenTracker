@@ -3,19 +3,7 @@ import { Card } from "../../components";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { copy } from "../../../lib/copy";
 import { LIMIT_DISPLAY_MODES } from "../../../hooks/use-limits-display-prefs.js";
-
-function formatReset(isoOrUnix) {
-  if (!isoOrUnix) return null;
-  const ts = typeof isoOrUnix === "number" ? isoOrUnix * 1000 : Date.parse(isoOrUnix);
-  if (!Number.isFinite(ts)) return null;
-  const diff = ts - Date.now();
-  if (diff <= 0) return copy("shared.time.now");
-  const m = Math.floor(diff / 60000);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
-}
+import { formatReset } from "./limitDisplay.jsx";
 
 /**
  * In "used" mode a high percentage is bad (lots of quota burned).
