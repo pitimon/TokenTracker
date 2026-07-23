@@ -36,6 +36,12 @@ describe("getCardTierClasses", () => {
     expect(getCardTierClasses(90, USED).dot).toBe("bg-red-500");
   });
 
+  it("uses the raw (unrounded) percentage for tier boundaries", () => {
+    // 74.6 must stay amber, not round up into the 75 orange band; 89.6 stays orange
+    expect(getCardTierClasses(74.6, USED).dot).toBe("bg-amber-500");
+    expect(getCardTierClasses(89.6, USED).dot).toBe("bg-orange-500");
+  });
+
   it("mirrors the scale in remaining mode (low remaining = critical)", () => {
     // 8% remaining => 92% used-equivalent => red
     expect(getCardTierClasses(8, REMAINING).dot).toBe("bg-red-500");
@@ -71,6 +77,11 @@ describe("getCardLimitWindows", () => {
   it("flips percentages in remaining mode", () => {
     const data = { configured: true, five_hour: { utilization: 82 } };
     expect(getCardLimitWindows("claude", data, REMAINING)[0].displayPct).toBe(18);
+  });
+
+  it("keeps the raw percentage (rounding is display-only)", () => {
+    const data = { configured: true, five_hour: { utilization: 74.6 } };
+    expect(getCardLimitWindows("claude", data, USED)[0].displayPct).toBeCloseTo(74.6);
   });
 
   it("skips absent windows and unknown providers", () => {

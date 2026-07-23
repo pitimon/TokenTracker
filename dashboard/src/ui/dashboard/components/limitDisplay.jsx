@@ -40,6 +40,10 @@ export function limitIdForLabel(label) {
 // Which two windows each provider surfaces on the card (primary + secondary),
 // mirroring the labels the Limits page uses. Any 3rd window stays on that page.
 // Claude reports `{ utilization, resets_at }`; everyone else `{ used_percent, reset_at }`.
+// NOTE: short technical labels (5h/7d/Pro/Flash/Claude/G Pro) are kept as literals to
+// match the Limits page (UsageLimitsPanel.renderProviderGroup) verbatim; the copy-key'd
+// labels (cursor/kimi/zai/kiro/copilot) are keyed there too. A full i18n pass over these
+// belongs to both surfaces at once, not this card — tracked as a follow-up.
 const WINDOW_MAP = {
   claude: [
     { field: "five_hour", label: "5h", pctField: "utilization", resetField: "resets_at" },
@@ -81,7 +85,9 @@ const WINDOW_MAP = {
 
 /**
  * The provider's card windows as `{ label, displayPct, reset }`, up to two.
- * `displayPct` is already flipped for Remaining mode and rounded for display.
+ * `displayPct` is flipped for Remaining mode but kept at full precision — the
+ * tier color must be computed from the raw value (rounding it first would push
+ * e.g. 74.6% up to the 75% orange band), and the chip rounds only for the label.
  */
 export function getCardLimitWindows(id, data, mode) {
   const spec = WINDOW_MAP[id];
@@ -96,7 +102,7 @@ export function getCardLimitWindows(id, data, mode) {
     const displayPct = mode === LIMIT_DISPLAY_MODES.REMAINING ? 100 - clamped : clamped;
     out.push({
       label: w.labelKey ? copy(w.labelKey) : w.label,
-      displayPct: Math.round(displayPct),
+      displayPct,
       reset: formatReset(win[w.resetField || "reset_at"]),
     });
   }
@@ -121,11 +127,12 @@ export function getCardTierClasses(displayPct, mode) {
 }
 
 function LimitChip({ label, displayPct, reset, mode }) {
-  const tier = getCardTierClasses(displayPct, mode);
-  const pctLabel = copy("usage.overview.model_percent", { percent: displayPct });
+  const tier = getCardTierClasses(displayPct, mode); // raw % → correct tier at boundaries
+  const shown = Math.round(displayPct); // round only for the visible label
+  const pctLabel = copy("usage.overview.model_percent", { percent: shown });
   const title = reset
-    ? copy("usage.overview.provider_limit_reset", { label, percent: displayPct, reset })
-    : copy("usage.overview.provider_limit", { label, percent: displayPct });
+    ? copy("usage.overview.provider_limit_reset", { label, percent: shown, reset })
+    : copy("usage.overview.provider_limit", { label, percent: shown });
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] leading-none ${tier.chip}`}
