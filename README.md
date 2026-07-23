@@ -54,7 +54,7 @@ tokentracker doctor     # health check
 - 🚀 **Zero config.** Hooks auto-install on the first run. Zero to dashboard in about 30 seconds.
 - 🔌 **22 tools out of the box.** Claude Code, Codex, Cursor, Gemini, Copilot, Antigravity, OpenCode, Kiro, Zed, Goose, and more — auto-detected.
 - 💰 **Accurate cost.** 2,200+ models priced from [LiteLLM](https://github.com/BerriAI/litellm) (refreshed daily) with a bundled offline snapshot, so USD totals are right even without a network. Cross-provider records are de-duplicated so your numbers match each provider's own billing.
-- 📈 **Rate-limit tracking.** Live quota windows with reset countdowns for Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity.
+- 📈 **Rate-limit tracking.** Live quota windows with reset countdowns for Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity — on the dedicated Limits page and inline as quota chips on each provider's dashboard card.
 - 🧩 **Skills tab.** Syncs 250+ public skills across your tools.
 
 ---
@@ -70,7 +70,7 @@ A calm, single-screen readout — a hero total paired with a usage-trend chart, 
 **On one screen:**
 - **Total tokens + cost** for the selected window (24h / day / 7d / 30d / total / custom), with a browser-timezone "Updated" stamp.
 - **Usage Trend** — token volume over time, right beside the total.
-- **Provider breakdown** — every tool's share and top models, with a click-to-expand per-model drill-down.
+- **Provider breakdown** — every tool's share and top models, with each provider's live quota chips (used %, e.g. 5h + weekly) on its card and a click-to-expand per-model drill-down.
 - **Context breakdown** — where Claude's and Codex's tokens actually go (input / output / cache / reasoning), shown side by side.
 - **Activity heatmap** — daily usage at a glance.
 - **Project & daily tables** — per-project totals and a day-by-day breakdown with cost and $/MTok.

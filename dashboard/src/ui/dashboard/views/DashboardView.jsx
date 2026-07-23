@@ -63,6 +63,8 @@ export function DashboardView(props) {
     usageLoadingState,
     dataHealthMessage,
     fleetData,
+    usageLimits,
+    limitDisplayMode,
     hasDetailsActual,
     dailyEmptyPrefix,
     installSyncCmd,
@@ -160,6 +162,8 @@ export function DashboardView(props) {
                   fleetData={fleetData}
                   from={usageFrom}
                   to={usageTo}
+                  usageLimits={usageLimits}
+                  limitDisplayMode={limitDisplayMode}
                 />
               </div>
             </div>
@@ -249,6 +253,8 @@ export function DashboardView(props) {
                     from={usageFrom}
                     to={usageTo}
                     showInlineContext={false}
+                    usageLimits={usageLimits}
+                    limitDisplayMode={limitDisplayMode}
                   />
                 </FadeIn>
               </div>

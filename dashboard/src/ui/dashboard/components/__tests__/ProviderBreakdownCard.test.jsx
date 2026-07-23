@@ -89,6 +89,77 @@ describe("ProviderBreakdownCard", () => {
     expect(screen.getByText("Top cost: fable-5")).toBeInTheDocument();
   });
 
+  const claudeFleet = [
+    {
+      source: "claude",
+      label: "CLAUDE",
+      totalPercent: "62.0",
+      usage: 31_000_000,
+      usd: 28.38,
+      models: [{ id: "claude-opus-4-8", name: "claude-opus-4-8", share: 100, usage: 31_000_000, cost: 28 }],
+    },
+  ];
+
+  it("renders limit chips for a provider that has live quota data", () => {
+    render(
+      <ProviderBreakdownCard
+        fleetData={claudeFleet}
+        usageLimits={{
+          claude: {
+            configured: true,
+            five_hour: { utilization: 82, resets_at: "2999-01-01T00:00:00Z" },
+            seven_day: { utilization: 95, resets_at: "2999-01-01T00:00:00Z" },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getByText("7d")).toBeInTheDocument();
+    expect(screen.getByText("82%")).toBeInTheDocument();
+    expect(screen.getByText("95%")).toBeInTheDocument();
+  });
+
+  it("colors chips by the used-equivalent in remaining mode", () => {
+    const { container } = render(
+      <ProviderBreakdownCard
+        fleetData={claudeFleet}
+        limitDisplayMode="remaining"
+        usageLimits={{ claude: { configured: true, five_hour: { utilization: 82 } } }}
+      />,
+    );
+    // used 82% => remaining 18% is shown, but severity still reflects usage → orange, not neutral
+    expect(screen.getByText("18%")).toBeInTheDocument();
+    expect(container.querySelector(".bg-orange-500")).toBeInTheDocument();
+  });
+
+  it("hides the limit block when the provider has no quota data", () => {
+    render(
+      <ProviderBreakdownCard
+        fleetData={claudeFleet}
+        usageLimits={{ claude: { configured: false } }}
+      />,
+    );
+    expect(screen.queryByText("5h")).not.toBeInTheDocument();
+    expect(screen.queryByText("7d")).not.toBeInTheDocument();
+  });
+
+  it("renders nothing extra when usageLimits is absent (default)", () => {
+    render(<ProviderBreakdownCard fleetData={claudeFleet} />);
+    expect(screen.queryByText("5h")).not.toBeInTheDocument();
+  });
+
+  it("shows an error line when the provider is configured but errored", () => {
+    render(
+      <ProviderBreakdownCard
+        fleetData={claudeFleet}
+        usageLimits={{ claude: { configured: true, error: "token expired" } }}
+      />,
+    );
+    expect(screen.getByText(/token expired/)).toBeInTheDocument();
+    expect(screen.queryByText("5h")).not.toBeInTheDocument();
+  });
+
   it("leaves gpt-* model names unchanged in the collapsed provider chip", () => {
     render(
       <ProviderBreakdownCard
