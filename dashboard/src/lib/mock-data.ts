@@ -573,6 +573,37 @@ export function getMockUsageModelBreakdown({ from, to, seed }: AnyRecord = {}) {
   };
 }
 
+export function getMockUsageLimits() {
+  // Screenshot/mock fixture for the per-provider usage-limit chips on the
+  // dashboard cards. The mock model-breakdown renders claude + codex cards
+  // (every-code has no limits provider), so give those two windows that span
+  // all four chip tiers: neutral <50 / amber 50-74 / orange 75-89 / red >=90.
+  // resets_at is intentionally omitted — the chip shows only label + %, the
+  // reset lives in the tooltip and never appears in a static screenshot.
+  return {
+    fetched_at: "2025-12-31T12:00:00Z",
+    claude: {
+      configured: true,
+      plan_label: "Max",
+      five_hour: { utilization: 92 }, // red
+      seven_day: { utilization: 68 }, // amber
+    },
+    codex: {
+      configured: true,
+      plan_label: "Pro",
+      primary_window: { used_percent: 34 }, // neutral
+      secondary_window: { used_percent: 78 }, // orange
+    },
+    cursor: { configured: false },
+    gemini: { configured: false },
+    kimi: { configured: false },
+    zai: { configured: false },
+    kiro: { configured: false },
+    copilot: { configured: false },
+    antigravity: { configured: false },
+  };
+}
+
 export function getMockUsageCategoryBreakdown({ from, to, source = "claude" }: AnyRecord = {}) {
   if (source === "codex") {
     const totals = {

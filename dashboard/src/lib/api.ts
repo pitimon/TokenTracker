@@ -7,6 +7,7 @@ import {
   getMockUsageCategoryBreakdown,
   getMockUsageSummary,
   getMockProjectUsageSummary,
+  getMockUsageLimits,
   isMockEnabled,
 } from "./mock-data";
 import { getLocalApiAuthHeaders } from "./local-api-auth";
@@ -228,6 +229,9 @@ export async function getUsageMonthly({
 }
 
 export async function getUsageLimits(opts: { refresh?: boolean } = {}) {
+  if (isMockEnabled()) {
+    return getMockUsageLimits();
+  }
   const params = opts?.refresh ? { refresh: "1" } : undefined;
   return fetchLocalJson(PATHS.usageLimits, params);
 }
