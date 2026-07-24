@@ -4,7 +4,7 @@ const path = require("node:path");
 const fssync = require("node:fs");
 
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
-const { createLocalApiHandler, resolveQueuePath } = require("../lib/local-api");
+const { createLocalApiHandler, resolveQueuePath, isLoopbackHostname } = require("../lib/local-api");
 const {
   buildServeDataPreflightMessage,
   summarizeQueueData,
@@ -17,6 +17,78 @@ const DEFAULT_PORT = 7680;
 const DEFAULT_MAX_PORT_ATTEMPTS = 20;
 const NPM_PACKAGE_NAME = "@ipv9/tokentracker-cli";
 const LOCAL_BIND_HOST = "127.0.0.1";
+
+// Anti-DNS-rebinding guard. Binding the socket to loopback does not make the
+// Host header trustworthy: under DNS rebinding a browser sends
+// `Host: attacker.example:<port>` to 127.0.0.1 and treats the response as
+// same-origin, so CORS never applies. Mutations are already gated on a loopback
+// Origin; without this check every GET /functions/* endpoint — full spend
+// history, model mix, project names — is readable by any page the victim
+// happens to have open. Issue #88.
+//
+// Only the hostname matters: the port is chosen at runtime by
+// listenOnAvailablePort, so pinning it here would be fragile without adding any
+// protection. An absent Host (HTTP/1.0, some local probes) is allowed — the
+// socket is already loopback-bound, and there is no rebinding vector without a
+// browser sending a name.
+function isAllowedHostHeader(hostHeader) {
+  if (hostHeader == null || hostHeader === "") return true;
+  try {
+    return isLoopbackHostname(new URL(`http://${hostHeader}`).hostname);
+  } catch (_e) {
+    return false;
+  }
+}
+
+// Extracted from cmdServe so the wiring — not just the predicate — is testable:
+// a guard that exists but is never reached is the failure mode this is guarding
+// against in the first place.
+function createRequestHandler({ handleApi, dashboardDir }) {
+  return async function handleRequest(req, res) {
+    try {
+      // Reject rebound hostnames before anything reads the request. Issue #88.
+      if (!isAllowedHostHeader(req.headers.host)) {
+        res.writeHead(403, { "Content-Type": "text/plain" });
+        res.end("Forbidden: TokenTracker only serves loopback hosts.\n");
+        return;
+      }
+
+      const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+      // CORS preflight
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, {
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        });
+        res.end();
+        return;
+      }
+
+      // API routes
+      if (
+        url.pathname.startsWith("/functions/")
+        || url.pathname.startsWith("/api/")
+        || url.pathname.startsWith("/proxy/")
+      ) {
+        const handled = await handleApi(req, res, url);
+        if (handled) return;
+      }
+
+      // Static files
+      const served = await serveStaticFile(dashboardDir, url.pathname, res);
+      if (served) return;
+
+      // SPA fallback
+      await serveStaticFile(dashboardDir, "/index.html", res);
+    } catch (e) {
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Internal Server Error");
+      }
+    }
+  };
+}
 
 function buildPortInUseHint(port) {
   return `Port ${port} is unavailable. Try: npx ${NPM_PACKAGE_NAME} serve --port ${port + 1}\n`;
@@ -110,43 +182,7 @@ async function cmdServe(argv) {
   // 3. Create handler
   const handleApi = createLocalApiHandler({ queuePath });
 
-  const server = http.createServer(async (req, res) => {
-    try {
-      const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-
-      // CORS preflight
-      if (req.method === "OPTIONS") {
-        res.writeHead(204, {
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        });
-        res.end();
-        return;
-      }
-
-      // API routes
-      if (
-        url.pathname.startsWith("/functions/")
-        || url.pathname.startsWith("/api/")
-        || url.pathname.startsWith("/proxy/")
-      ) {
-        const handled = await handleApi(req, res, url);
-        if (handled) return;
-      }
-
-      // Static files
-      const served = await serveStaticFile(dashboardDir, url.pathname, res);
-      if (served) return;
-
-      // SPA fallback
-      await serveStaticFile(dashboardDir, "/index.html", res);
-    } catch (e) {
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "text/plain" });
-        res.end("Internal Server Error");
-      }
-    }
-  });
+  const server = http.createServer(createRequestHandler({ handleApi, dashboardDir }));
 
   // 4. Listen. Default startup follows README behavior and picks the next
   // available port; an explicit --port/PORT remains strict.
@@ -316,6 +352,8 @@ module.exports = {
   NPM_PACKAGE_NAME,
   LOCAL_BIND_HOST,
   isPortUnavailableError,
+  isAllowedHostHeader,
+  createRequestHandler,
   listenOnAvailablePort,
   getLocalServerUrl,
   parseArgs,
