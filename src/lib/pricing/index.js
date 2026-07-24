@@ -51,6 +51,20 @@ const RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
 // wrong, unlike a $0 one.
 const FUZZY_SOURCES = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip"]);
 
+// This string is served over HTTP to the dashboard, so nothing free-form may
+// reach it. `e.code` is normally a short symbol like ENOENT, but a thrown
+// non-Error can carry anything (`{code: "/Users/alice/private/..."}`) and a
+// custom error's `name` is equally unconstrained. Accept only symbol-shaped
+// values and fall back to a constant.
+const ERROR_CODE_RE = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
+
+function sanitizeErrorCode(value) {
+  for (const candidate of value) {
+    if (typeof candidate === "string" && ERROR_CODE_RE.test(candidate)) return candidate;
+  }
+  return "unknown";
+}
+
 const state = {
   loaded: false,
   loadingPromise: null,
@@ -85,7 +99,7 @@ async function loadInto(opts, { requireUpstream = false } = {}) {
   const cachePath = opts.cachePath || defaultCachePath();
   const { data, source } = await loadLitellmData({ ...opts, cachePath });
   if (requireUpstream && source !== "upstream") {
-    state.lastReloadError = `refresh-fell-back-to-${source}`;
+    state.lastReloadError = `refresh-fell-back-to-${sanitizeErrorCode([source])}`;
     return;
   }
   state.litellmRawMap = data || {};
@@ -142,7 +156,7 @@ function scheduleReload(nowMs = Date.now()) {
       // so in the diagnostics rather than failing to refresh in silence. Only
       // the error CODE is kept: messages from fs/fetch carry absolute paths and
       // this string is served over HTTP to the dashboard.
-      state.lastReloadError = `refresh-failed:${e?.code || e?.name || "unknown"}`;
+      state.lastReloadError = `refresh-failed:${sanitizeErrorCode([e?.code, e?.name])}`;
     } finally {
       state.reloadPromise = null;
     }
@@ -291,4 +305,5 @@ module.exports = {
   ZERO_PRICING,
   // Internal hooks for tests.
   __getStateForTests: () => state,
+  __sanitizeErrorCodeForTests: sanitizeErrorCode,
 };

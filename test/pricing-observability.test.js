@@ -257,3 +257,65 @@ test("lookups still work before ensurePricingLoaded, and report no reload state"
   assert.equal(diagnostics.loaded_at, null);
   assert.equal(diagnostics.refreshing, false);
 });
+
+test("the reported error code is sanitized, not interpolated", () => {
+  // Unit-tested directly: loadLitellmData recovers from a failed fetch on its
+  // own, so driving this through the reload only ever exercises the
+  // "fell-back" branch — a test that asserts "no slash" there would pass
+  // without touching the sanitizer at all.
+  const sanitize = pricing.__sanitizeErrorCodeForTests;
+
+  // A rejected promise can carry any object; nothing guarantees a short symbol.
+  assert.equal(sanitize(["/Users/alice/private/pricing.json"]), "unknown");
+  assert.equal(sanitize([undefined, "/etc/passwd"]), "unknown");
+  assert.equal(sanitize(["ENOENT: no such file, open '/Users/alice/x'"]), "unknown");
+  assert.equal(sanitize([{ toString: () => "/tmp/x" }]), "unknown");
+  assert.equal(sanitize([]), "unknown");
+
+  // Real codes and source labels still come through unchanged.
+  assert.equal(sanitize(["ENOENT"]), "ENOENT");
+  assert.equal(sanitize([undefined, "AbortError"]), "AbortError");
+  assert.equal(sanitize(["seed-snapshot"]), "seed-snapshot");
+  assert.equal(sanitize([null, "disk-cache"]), "disk-cache");
+});
+
+test("no failure path puts a path into the HTTP-exposed error field", async () => {
+  const cachePath = tmpCachePath("nonerror");
+  let fail = false;
+  await pricing.ensurePricingLoaded({
+    cachePath,
+    fetchImpl: async () => {
+      if (fail) throw { code: "/Users/alice/private/pricing.json", name: "/etc/passwd" };
+      return { "acme-1": entry(1e-6, 2e-6) };
+    },
+  });
+
+  fs.rmSync(cachePath, { force: true });
+  fail = true;
+  pricing.getModelPricing("unknown-model");
+  await pricing.__getStateForTests().reloadPromise;
+
+  const reported = pricing.getPricingDiagnostics().last_refresh_error;
+  assert.ok(reported, "a refresh that did not reach upstream must be reported");
+  assert.equal(reported.includes("/"), false, `must not leak a path: ${reported}`);
+  assert.equal(reported.includes("alice"), false);
+});
+
+test("one provider's exact hit cannot hide another provider's miss", async () => {
+  // Antigravity normalises model names before the lookup, so the same id can
+  // resolve differently per source. Keyed by model alone, the last write wins
+  // and one of the two verdicts disappears from the diagnostics.
+  const payload = { current: { "shared-name": entry(1e-6, 2e-6) } };
+  await loadWith(payload, tmpCachePath("two-source"));
+
+  assert.equal(pricing.getModelPricingMeta("shared-name", { source: "claude" }).tier, "litellm:exact");
+  assert.equal(
+    pricing.getModelPricingMeta("unknown-only-here", { source: "antigravity" }).tier,
+    "miss",
+  );
+  // Same id, two sources: the exact hit must not erase the miss.
+  pricing.getModelPricingMeta("shared-name", { source: "antigravity" });
+
+  const diagnostics = pricing.getPricingDiagnostics();
+  assert.deepEqual(diagnostics.unpriced_models, ["unknown-only-here"]);
+});
