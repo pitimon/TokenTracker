@@ -50,11 +50,11 @@ tokentracker doctor     # health check
 
 ## ✨ What you get
 
-- 🏠 **100% local.** Token counts and timestamps only — never prompts, responses, or file contents. No account, no required API keys, no phone-home.
-- 🚀 **Zero config.** Hooks auto-install on the first run. Zero to dashboard in about 30 seconds.
-- 🔌 **22 tools out of the box.** Claude Code, Codex, Cursor, Gemini, Copilot, Antigravity, OpenCode, Kiro, Zed, Goose, and more — auto-detected.
-- 💰 **Accurate cost.** 2,200+ models priced from [LiteLLM](https://github.com/BerriAI/litellm) (refreshed daily) with a bundled offline snapshot, so USD totals are right even without a network. Cross-provider records are de-duplicated so your numbers match each provider's own billing.
-- 📈 **Rate-limit tracking.** Live quota windows with reset countdowns for Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity — on the dedicated Limits page and inline as quota chips on each provider's dashboard card.
+- 🔒 **Private by design.** Runs entirely on your machine — token counts and timestamps only, never prompts, responses, or file contents. No account, no required API keys, no telemetry, no phone-home. Nothing ever leaves your laptop.
+- 📊 **One calm web dashboard.** Your whole picture in the browser at a local URL (no login): total spend, usage trend, per-provider breakdown, context breakdown, and a GitHub-style activity heatmap — light or dark, auto-refreshing while the tab is open.
+- 📈 **Quota at a glance, on every card.** Live plan-quota usage (used %, e.g. 5h + weekly) as color-coded chips right on each provider's card — see how close you are to your limits without leaving the overview. Full windows + reset countdowns on the Limits page. Covers Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity.
+- 💰 **Cost you can trust.** 2,200+ models priced from [LiteLLM](https://github.com/BerriAI/litellm) (refreshed daily) with a bundled offline snapshot, so USD totals are right even without a network. Cross-provider records are de-duplicated to match each provider's own billing.
+- 🔌 **22 tools, zero config.** Claude Code, Codex, Cursor, Gemini, Copilot, Antigravity, OpenCode, Kiro, Zed, Goose, and more — auto-detected, hooks auto-install on first run. Zero to dashboard in ~30 seconds.
 - 🧩 **Skills tab.** Syncs 250+ public skills across your tools.
 
 ---
