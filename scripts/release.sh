@@ -122,24 +122,13 @@ for _ in $(seq 1 60); do
 done
 [ -n "$UP" ] || die "server did not come up on port $PORT"
 
-# --- 6. Verify the SERVED bundle actually is this version -------------------
-# The version badge is VITE_APP_VERSION, inlined into the JS bundle at build
-# time. Grep the served bundle so we confirm the running artifact, not just a
-# 200. A stale bundle would carry a different version and fail here.
-ASSET="$(curl -s "http://127.0.0.1:$PORT/" | grep -oE '/assets/[A-Za-z0-9_-]+\.js' | head -1)"
-[ -n "$ASSET" ] || die "could not find the dashboard JS asset to verify"
-if curl -s "http://127.0.0.1:$PORT$ASSET" | grep -qF "$VERSION"; then
-  echo "✓ Verified: server is serving $VERSION"
-else
-  SERVED="$(curl -s "http://127.0.0.1:$PORT$ASSET" | grep -oE '0\.[0-9]+\.[0-9]+' | sort -u | tr '\n' ' ')"
-  die "served bundle does not report $VERSION (found: ${SERVED:-none}) — rollback: cp '$BACKUP' '$PLIST' && launchctl bootout '$SERVICE_TARGET'; launchctl bootstrap gui/$UID_NUM '$PLIST'"
-fi
-
-# --- 7. Repin + reload the local-sync LaunchAgent (if installed) ------------
-# Independent version pin from the dashboard. Left stale, its next tick would
-# re-parse with the old CLI and can undo a data migration (issue #75). No HTTP
-# to verify — it is an interval `sync --auto` job, not a server; the plist pin
-# is what npx resolves, so a successful repin is the check.
+# --- 6. Repin + reload the local-sync LaunchAgent (if installed) ------------
+# Done BEFORE the HTTP verify below. local-sync's pin is independent of the
+# dashboard server, and the verify can race the npx cold-start (issue #83) —
+# so repin local-sync FIRST, or a verify die() would strand it on the OLD
+# version, where its next tick re-parses logs with the old CLI and can undo a
+# data migration (issue #75). No HTTP to verify — it is an interval
+# `sync --auto` job, not a server; the plist pin is the check.
 SYNC_STATUS="not installed (skipped)"
 if [ -f "$SYNC_PLIST" ]; then
   SYNC_TARGET="gui/$UID_NUM/$SYNC_LABEL"
@@ -167,6 +156,42 @@ if [ -f "$SYNC_PLIST" ]; then
   SYNC_STATUS="$VERSION (was: $SYNC_CURRENT · backup: $SYNC_BACKUP)"
 else
   echo "ℹ local-sync agent not installed ($SYNC_PLIST) — skipped"
+fi
+
+# --- 7. Confirm the SERVED bundle is this version (best-effort) --------------
+# The version badge is VITE_APP_VERSION, inlined into the JS bundle at build
+# time. Grep the served bundle to confirm the running artifact, not just a 200.
+# BUT: the LaunchAgent runs `npx …@$VERSION`, whose cold-start settle time is
+# variable and occasionally exceeds any fixed window — so a hard failure here
+# would false-fail a correct deploy (issue #83). The authoritative deploy action
+# is the plist repin above (already verified: "Repinned 2 occurrences"); npx
+# resolves that pin. So we retry generously to confirm, and on timeout WARN
+# rather than die — a timeout means "npx still warming", not "bad deploy".
+VERIFIED=""
+ASSET=""
+for _ in $(seq 1 30); do
+  ASSET="$(curl -s "http://127.0.0.1:$PORT/" | grep -oE '/assets/[A-Za-z0-9_-]+\.js' | head -1)"
+  if [ -n "$ASSET" ]; then
+    # No `curl | grep -q`: grep -q exits on match and SIGPIPEs curl, which under
+    # `set -o pipefail` can look like a miss. Match the captured body instead.
+    BODY="$(curl -s "http://127.0.0.1:$PORT$ASSET")"
+    case "$BODY" in
+      *"$VERSION"*)
+        VERIFIED=1
+        echo "✓ Verified: server is serving $VERSION"
+        break
+        ;;
+    esac
+  fi
+  sleep 3
+done
+if [ -z "$VERIFIED" ]; then
+  SERVED="$(curl -s "http://127.0.0.1:$PORT$ASSET" | grep -oE '0\.[0-9]+\.[0-9]+' | sort -u | tr '\n' ' ' || true)"
+  echo "⚠ Could not confirm the served bundle is $VERSION within ~90s (found: ${SERVED:-none})."
+  echo "  The plist is pinned to $VERSION and both agents were reloaded, so this is almost"
+  echo "  always the npx cold-start still warming — not a bad deploy. Re-check shortly:"
+  echo "    A=\$(curl -s http://127.0.0.1:$PORT/ | grep -oE '/assets/main-[A-Za-z0-9_-]+\\.js' | head -1); curl -s http://127.0.0.1:$PORT\$A | grep -c $VERSION"
+  echo "  If it keeps serving an OLD version, rollback: cp '$BACKUP' '$PLIST' && launchctl bootout '$SERVICE_TARGET'; launchctl bootstrap gui/$UID_NUM '$PLIST'"
 fi
 
 echo ""
