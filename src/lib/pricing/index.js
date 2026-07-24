@@ -51,16 +51,27 @@ const RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
 // wrong, unlike a $0 one.
 const FUZZY_SOURCES = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip"]);
 
-// This string is served over HTTP to the dashboard, so nothing free-form may
-// reach it. `e.code` is normally a short symbol like ENOENT, but a thrown
-// non-Error can carry anything (`{code: "/Users/alice/private/..."}`) and a
-// custom error's `name` is equally unconstrained. Accept only symbol-shaped
-// values and fall back to a constant.
-const ERROR_CODE_RE = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
+// `last_refresh_error` is served over HTTP to the dashboard, so it is built
+// from CLOSED sets, never from an arbitrary value. A previous version accepted
+// anything symbol-shaped, which a QA pass broke immediately: a 32-character
+// token like `sk_live_AAAA…` is symbol-shaped. There is no pattern that
+// separates "a short error symbol" from "a short secret" — only an allowlist.
+const KNOWN_ERROR_CODES = new Set([
+  // fs
+  "ENOENT", "EACCES", "EPERM", "EEXIST", "ENOSPC", "EROFS", "EISDIR", "ENOTDIR", "EMFILE", "EBUSY",
+  // network
+  "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "EPIPE",
+  "EHOSTUNREACH", "ENETUNREACH", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT",
+  // error classes
+  "AbortError", "TypeError", "SyntaxError", "RangeError", "FetchError", "Error",
+]);
 
-function sanitizeErrorCode(value) {
-  for (const candidate of value) {
-    if (typeof candidate === "string" && ERROR_CODE_RE.test(candidate)) return candidate;
+// Whatever loadLitellmData can report as the origin of the data it returned.
+const KNOWN_SOURCES = new Set(["upstream", "disk-cache", "stale-cache", "seed-snapshot"]);
+
+function labelFrom(allowed, candidates) {
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && allowed.has(candidate)) return candidate;
   }
   return "unknown";
 }
@@ -99,7 +110,7 @@ async function loadInto(opts, { requireUpstream = false } = {}) {
   const cachePath = opts.cachePath || defaultCachePath();
   const { data, source } = await loadLitellmData({ ...opts, cachePath });
   if (requireUpstream && source !== "upstream") {
-    state.lastReloadError = `refresh-fell-back-to-${sanitizeErrorCode([source])}`;
+    state.lastReloadError = `refresh-fell-back-to-${labelFrom(KNOWN_SOURCES, [source])}`;
     return;
   }
   state.litellmRawMap = data || {};
@@ -152,11 +163,11 @@ function scheduleReload(nowMs = Date.now()) {
       // re-read the same stale snapshot we already hold.
       await loadInto({ ...state.reloadOptions, forceRefresh: true }, { requireUpstream: true });
     } catch (e) {
-      // Offline or upstream down — keep serving the snapshot we have, but say
-      // so in the diagnostics rather than failing to refresh in silence. Only
+      // Rarely reached: loadLitellmData recovers internally rather than
+      // throwing, so this is belt-and-braces. Kept allowlisted anyway. Only
       // the error CODE is kept: messages from fs/fetch carry absolute paths and
       // this string is served over HTTP to the dashboard.
-      state.lastReloadError = `refresh-failed:${sanitizeErrorCode([e?.code, e?.name])}`;
+      state.lastReloadError = `refresh-failed:${labelFrom(KNOWN_ERROR_CODES, [e?.code, e?.name])}`;
     } finally {
       state.reloadPromise = null;
     }
@@ -305,5 +316,6 @@ module.exports = {
   ZERO_PRICING,
   // Internal hooks for tests.
   __getStateForTests: () => state,
-  __sanitizeErrorCodeForTests: sanitizeErrorCode,
+  __labelFromForTests: labelFrom,
+  __KNOWN_ERROR_CODES: KNOWN_ERROR_CODES,
 };

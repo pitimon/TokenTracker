@@ -258,34 +258,50 @@ test("lookups still work before ensurePricingLoaded, and report no reload state"
   assert.equal(diagnostics.refreshing, false);
 });
 
-test("the reported error code is sanitized, not interpolated", () => {
-  // Unit-tested directly: loadLitellmData recovers from a failed fetch on its
-  // own, so driving this through the reload only ever exercises the
-  // "fell-back" branch — a test that asserts "no slash" there would pass
-  // without touching the sanitizer at all.
-  const sanitize = pricing.__sanitizeErrorCodeForTests;
+test("the reported error label comes from a closed set, not a pattern", () => {
+  // The first attempt used a regex for "symbol-shaped". A QA pass broke it in
+  // one line: a payment-provider key prefix plus 24 characters is symbol-shaped
+  // too. No pattern separates a short error symbol from a short secret — only
+  // an allowlist does.
+  //
+  // The look-alikes are assembled at runtime rather than written as literals:
+  // a realistic-looking key in a source file trips GitHub push protection (it
+  // did) and, more to the point, a repo should not carry strings that a scanner
+  // has to be told to ignore.
+  const fakeStripeKey = ["sk", "live", "A".repeat(24)].join("_");
+  const fakeGithubToken = `ghp_${"0123456789abcdefghij"}`;
+  const label = pricing.__labelFromForTests;
+  const codes = pricing.__KNOWN_ERROR_CODES;
 
-  // A rejected promise can carry any object; nothing guarantees a short symbol.
-  assert.equal(sanitize(["/Users/alice/private/pricing.json"]), "unknown");
-  assert.equal(sanitize([undefined, "/etc/passwd"]), "unknown");
-  assert.equal(sanitize(["ENOENT: no such file, open '/Users/alice/x'"]), "unknown");
-  assert.equal(sanitize([{ toString: () => "/tmp/x" }]), "unknown");
-  assert.equal(sanitize([]), "unknown");
+  assert.equal(label(codes, [fakeStripeKey]), "unknown");
+  assert.equal(label(codes, ["/Users/alice/private/pricing.json"]), "unknown");
+  assert.equal(label(codes, [undefined, fakeGithubToken]), "unknown");
+  assert.equal(label(codes, [{ toString: () => "ENOENT" }]), "unknown");
+  assert.equal(label(codes, []), "unknown");
 
-  // Real codes and source labels still come through unchanged.
-  assert.equal(sanitize(["ENOENT"]), "ENOENT");
-  assert.equal(sanitize([undefined, "AbortError"]), "AbortError");
-  assert.equal(sanitize(["seed-snapshot"]), "seed-snapshot");
-  assert.equal(sanitize([null, "disk-cache"]), "disk-cache");
+  assert.equal(label(codes, ["ENOENT"]), "ENOENT");
+  assert.equal(label(codes, [undefined, "AbortError"]), "AbortError");
 });
 
-test("no failure path puts a path into the HTTP-exposed error field", async () => {
+// Every value this field can take, so a call site that stopped going through
+// the allowlist would produce something outside this set.
+const ALLOWED_REFRESH_ERRORS = new Set([
+  ...["upstream", "disk-cache", "stale-cache", "seed-snapshot", "unknown"].map(
+    (s) => `refresh-fell-back-to-${s}`,
+  ),
+  ...[...pricing.__KNOWN_ERROR_CODES, "unknown"].map((c) => `refresh-failed:${c}`),
+]);
+
+test("the fallback branch reports only an allowlisted label", async () => {
   const cachePath = tmpCachePath("nonerror");
   let fail = false;
   await pricing.ensurePricingLoaded({
     cachePath,
     fetchImpl: async () => {
-      if (fail) throw { code: "/Users/alice/private/pricing.json", name: "/etc/passwd" };
+      if (fail) {
+        // Same reasoning as above: built at runtime, not written as a literal.
+        throw { code: "/Users/alice/private/pricing.json", name: ["sk", "live", "A".repeat(24)].join("_") };
+      }
       return { "acme-1": entry(1e-6, 2e-6) };
     },
   });
@@ -296,10 +312,19 @@ test("no failure path puts a path into the HTTP-exposed error field", async () =
   await pricing.__getStateForTests().reloadPromise;
 
   const reported = pricing.getPricingDiagnostics().last_refresh_error;
-  assert.ok(reported, "a refresh that did not reach upstream must be reported");
-  assert.equal(reported.includes("/"), false, `must not leak a path: ${reported}`);
-  assert.equal(reported.includes("alice"), false);
+  assert.ok(
+    ALLOWED_REFRESH_ERRORS.has(reported),
+    `reported value must come from the allowlist, got ${JSON.stringify(reported)}`,
+  );
 });
+
+// NOT TESTED end to end, deliberately: scheduleReload's catch is a
+// belt-and-braces path that loadLitellmData makes practically unreachable — it
+// recovers internally (upstream → stale cache → bundled seed) and only throws
+// when cachePath is falsy, which loadInto substitutes away. An earlier attempt
+// to force it ended up making a real network call and asserting nothing. The
+// allowlist that branch uses is covered by the unit test above; this comment
+// records the gap rather than papering over it with a test that cannot fail.
 
 test("one provider's exact hit cannot hide another provider's miss", async () => {
   // Antigravity normalises model names before the lookup, so the same id can
