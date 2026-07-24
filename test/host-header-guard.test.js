@@ -172,3 +172,22 @@ test("isAllowedRequestTarget accepts only origin-form and asterisk-form", () => 
     assert.equal(isAllowedRequestTarget(target), false, `${JSON.stringify(target)} should be refused`);
   }
 });
+
+test("an empty userinfo is still userinfo", () => {
+  // These parse to a falsy url.username, so a check on the parsed fields alone
+  // would wave them through while rejecting the fully-spelled form.
+  for (const host of ["@localhost", ":@localhost", "@127.0.0.1", "@evil.example"]) {
+    assert.equal(isAllowedHostHeader(host), false, `${host} should be refused`);
+  }
+});
+
+test("network-path and backslash targets are refused like absolute-form", () => {
+  // new URL("/\\evil/x", "http://localhost").hostname === "evil"
+  for (const target of ["//evil.example/x", "/\\evil.example/x", "//x", "/\\x"]) {
+    assert.equal(isAllowedRequestTarget(target), false, `${JSON.stringify(target)} should be refused`);
+  }
+  // A single slash followed by a normal path is still fine.
+  for (const target of ["/", "/a//b", "/a/\\b"]) {
+    assert.equal(isAllowedRequestTarget(target), true, `${JSON.stringify(target)} should be allowed`);
+  }
+});

@@ -33,12 +33,13 @@ const LOCAL_BIND_HOST = "127.0.0.1";
 // browser sending a name.
 function isAllowedHostHeader(hostHeader) {
   if (hostHeader == null || hostHeader === "") return true;
+  // Userinfo has no meaning in a Host header, so anything carrying it is
+  // malformed. Tested on the RAW value: an EMPTY userinfo ("@localhost",
+  // ":@localhost") parses to a falsy url.username, so checking the parsed
+  // fields alone lets exactly the malformed forms through.
+  if (hostHeader.includes("@")) return false;
   try {
     const url = new URL(`http://${hostHeader}`);
-    // Userinfo has no meaning in a Host header. Rejecting it outright removes a
-    // parser-differential class rather than relying on every parser agreeing on
-    // where the authority ends.
-    if (url.username || url.password) return false;
     // `localhost.` is the valid fully-qualified spelling of localhost. WHATWG
     // URL canonicalises the trailing dot away for IPv4 literals but not for
     // names, so strip it here or the FQDN form gets a spurious 403.
@@ -54,8 +55,17 @@ function isAllowedHostHeader(hostHeader) {
 // parsed for routing — so the Host allowlist and the routing would disagree
 // about which site this request is for. Refuse instead of picking a winner.
 function isAllowedRequestTarget(target) {
-  if (target == null || target === "") return false;
-  return target === "*" || target.startsWith("/");
+  if (typeof target !== "string" || target === "") return false;
+  if (target === "*") return true;
+  if (!target.startsWith("/")) return false;
+  // "//evil/x" is a network-path reference, and WHATWG URL treats a backslash
+  // like a slash, so "/\evil/x" behaves the same way: both make the parsed URL
+  // adopt a foreign authority even though the Host header said loopback.
+  // Routing only reads url.pathname today, but leaving the parsed URL pointing
+  // at someone else's origin is the same guard-vs-parser disagreement that
+  // absolute-form creates.
+  if (target.startsWith("//") || target.startsWith("/\\")) return false;
+  return true;
 }
 
 // Extracted from cmdServe so the wiring — not just the predicate — is testable:
