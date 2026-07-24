@@ -191,3 +191,18 @@ test("network-path and backslash targets are refused like absolute-form", () => 
     assert.equal(isAllowedRequestTarget(target), true, `${JSON.stringify(target)} should be allowed`);
   }
 });
+
+test("control characters cannot smuggle an authority past the prefix checks", () => {
+  // new URL() strips tab/LF/CR before parsing, so "/<tab>//evil/x" resolves to
+  // authority "evil". Node returns 400 for these bytes in a request-target
+  // before the handler runs (verified over a socket), so this is defence in
+  // depth — but the guard should not depend on another layer being strict.
+  for (const target of ["/\t//evil.example/x", "/\t/evil.example/x", "/\n//evil/x", "/\r//evil/x"]) {
+    assert.equal(isAllowedRequestTarget(target), false, `${JSON.stringify(target)} should be refused`);
+    // Documents WHY: the parsed authority is not loopback.
+    assert.notEqual(new URL(target, "http://localhost").hostname, "localhost");
+  }
+  for (const host of ["local\thost", "localhost\n", "loc\rallhost"]) {
+    assert.equal(isAllowedHostHeader(host), false, `${JSON.stringify(host)} should be refused`);
+  }
+});

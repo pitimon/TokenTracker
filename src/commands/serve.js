@@ -38,6 +38,9 @@ function isAllowedHostHeader(hostHeader) {
   // ":@localhost") parses to a falsy url.username, so checking the parsed
   // fields alone lets exactly the malformed forms through.
   if (hostHeader.includes("@")) return false;
+  // Same reason as the request target: URL parsing strips these bytes, so they
+  // can smuggle a different authority past a check on the raw string.
+  if (/[\u0000-\u0020\u007f]/.test(hostHeader)) return false;
   try {
     const url = new URL(`http://${hostHeader}`);
     // `localhost.` is the valid fully-qualified spelling of localhost. WHATWG
@@ -65,6 +68,13 @@ function isAllowedRequestTarget(target) {
   // at someone else's origin is the same guard-vs-parser disagreement that
   // absolute-form creates.
   if (target.startsWith("//") || target.startsWith("/\\")) return false;
+  // WHATWG URL strips tab, LF and CR from its input BEFORE parsing, so
+  // "/<tab>//evil/x" becomes "//evil/x" and adopts a foreign authority after
+  // passing the prefix checks above. Node's own parser rejects these bytes in a
+  // request-target with a 400 before the handler runs, so this is not reachable
+  // over the wire today — but a guard that only holds because a different layer
+  // is strict is the disagreement this function exists to prevent.
+  if (/[\u0000-\u0020\u007f]/.test(target)) return false;
   return true;
 }
 
