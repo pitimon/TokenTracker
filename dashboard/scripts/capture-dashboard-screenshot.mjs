@@ -30,6 +30,11 @@ const height = toNumber(readArg("--height", "997"), 997);
 const dpr = toNumber(readArg("--dpr", "2"), 2);
 const waitMs = toNumber(readArg("--wait", "1200"), 1200);
 const fullPage = !hasFlag("--no-full-page");
+// Theme drives both the FOUC pre-paint script (index.html) and getSystemTheme()
+// via prefers-color-scheme; the app has no ?theme= param. Default dark to
+// preserve prior behavior; pass --theme light for the light capture.
+const theme = readArg("--theme", "dark") === "light" ? "light" : "dark";
+const pageBackground = theme === "light" ? "#ffffff" : "#050505";
 
 const resolvedOut = path.isAbsolute(out) ? out : path.resolve(out);
 
@@ -43,11 +48,11 @@ async function run() {
   });
 
   try {
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.emulateMedia({ reducedMotion: "reduce", colorScheme: theme });
     await page.goto(url, { waitUntil: "domcontentloaded" });
     await page.addStyleTag({
       content: `
-        html, body { background: #050505 !important; }
+        html, body { background: ${pageBackground} !important; }
         [data-screenshot-exclude="true"] { display: none !important; }
       `,
     });
