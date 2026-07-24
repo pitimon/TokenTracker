@@ -20,6 +20,11 @@ function resolveModelName(model: any, fallback: any) {
   return fallback;
 }
 
+// Server-side resolution tiers that mean the price was guessed from a partial
+// match rather than an exact model id (src/lib/pricing/index.js). A guessed
+// price is plausible and therefore never looks wrong — worth flagging.
+const FUZZY_PRICING_TIERS = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip"]);
+
 function isKnownZeroCostModel(name: any) {
   const lower = String(name || "").toLowerCase();
   return lower.includes("free") || lower.includes("hy3-preview") || /^glm-[\d.]+-flash(?![a-z])/.test(lower);
@@ -81,17 +86,32 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
               : entry.totalCost > 0 && entry.totalTokens > 0
                 ? (modelTokens / entry.totalTokens) * entry.totalCost
                 : null;
-          const pricingMissing =
-            modelTokens > 0 &&
-            (modelCost == null || modelCost <= 0) &&
-            !isKnownZeroCostModel(name);
-          return { id, name, share, usage: modelTokens, cost: modelCost, pricingMissing };
+          // Prefer the server's own account of how the price resolved. The
+          // cost<=0 heuristic below cannot tell an unpriced model from a
+          // genuinely free one, which is why isKnownZeroCostModel exists; it
+          // stays as the fallback for responses from an older server.
+          const pricingTier = typeof model?.pricing_tier === "string" ? model.pricing_tier : null;
+          const pricingMissing = pricingTier
+            ? pricingTier === "miss" && modelTokens > 0
+            : modelTokens > 0 && (modelCost == null || modelCost <= 0) && !isKnownZeroCostModel(name);
+          const pricingFuzzy = Boolean(pricingTier && FUZZY_PRICING_TIERS.has(pricingTier));
+          return {
+            id,
+            name,
+            share,
+            usage: modelTokens,
+            cost: modelCost,
+            pricingTier,
+            pricingMissing,
+            pricingFuzzy,
+          };
         })
         .filter(Boolean);
       const topCostModel = models
         .filter((model: any) => Number.isFinite(Number(model?.cost)) && Number(model.cost) > 0)
         .sort((a: any, b: any) => Number(b.cost) - Number(a.cost))[0] || null;
       const missingPricingModels = models.filter((model: any) => model?.pricingMissing);
+      const fuzzyPricingModels = models.filter((model: any) => model?.pricingFuzzy);
       return {
         source: entry.source,
         label,
@@ -100,6 +120,7 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
         usage: entry.totalTokens,
         topCostModel,
         missingPricingModels,
+        fuzzyPricingModels,
         models,
       };
     });
@@ -125,7 +146,9 @@ export function buildUsageInsights(modelBreakdown: any, { copyFn }: AnyRecord = 
       .filter((model: any) => Number.isFinite(Number(model?.usage)) && Number(model.usage) > 0)
       .sort((a: any, b: any) => Number(b.usage) - Number(a.usage))[0] || null;
   const missingPricingModels = allModels.filter((model: any) => model?.pricingMissing);
+  const fuzzyPricingModels = allModels.filter((model: any) => model?.pricingFuzzy);
   return {
+    fuzzyPricingModels,
     totalTokens,
     totalCost,
     costPerMillionTokens: totalTokens > 0 ? totalCost / (totalTokens / 1_000_000) : null,

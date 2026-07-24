@@ -34,34 +34,70 @@ function loadSeedSync() {
 
 const seedRaw = loadSeedSync();
 
+// How long a loaded snapshot is trusted before a lookup is allowed to trigger a
+// background refresh. Mirrors the fetcher's disk-cache TTL: before this change
+// that TTL only chose which snapshot to load *at startup*, so a dashboard that
+// stayed up (the LaunchAgent stays up for days) never saw a new model or a
+// price change — claude-opus-5 billed $0 for 21 hours that way. Issue #90.
+const RELOAD_AFTER_MS = 24 * 60 * 60 * 1000;
+
+// Floor between background refreshes, so a permanently-unknown model cannot
+// turn every request into an upstream fetch.
+const RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
+
+// Resolution tiers that mean "we guessed": the model matched a substring or a
+// curated fuzzy rule rather than an exact id, so the price is plausible but may
+// belong to a different model. Worth surfacing — a wrong price never looks
+// wrong, unlike a $0 one.
+const FUZZY_SOURCES = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip"]);
+
 const state = {
   loaded: false,
   loadingPromise: null,
+  loadedAt: 0,
+  reloadPromise: null,
+  lastReloadAt: 0,
+  lastReloadError: null,
   litellmRawMap: seedRaw, // raw per-token; field shape from LiteLLM JSON
   litellmPerMillionMap: buildLitellmPerMillionMap(seedRaw), // USD/MTok
   source: Object.keys(seedRaw).length ? "seed-snapshot:sync" : null,
   // negativeCache prevents re-walking the LiteLLM map for models we've already
   // determined are unknown. Cleared on every reload.
   negativeCache: new Set(),
+  // model -> resolution tier, for the diagnostics surface. Cleared on reload.
+  tiers: new Map(),
+  // Models already warned about, so a hot path logs once, not once per row.
+  warned: new Set(),
+  reloadOptions: {},
 };
 
 function defaultCachePath() {
   return path.join(os.homedir(), ".tokentracker", "cache", "pricing.json");
 }
 
+async function loadInto(opts) {
+  const cachePath = opts.cachePath || defaultCachePath();
+  const { data, source } = await loadLitellmData({ ...opts, cachePath });
+  state.litellmRawMap = data || {};
+  state.litellmPerMillionMap = buildLitellmPerMillionMap(state.litellmRawMap);
+  state.source = source;
+  state.loaded = true;
+  state.loadedAt = Date.now();
+  state.negativeCache.clear();
+  state.tiers.clear();
+}
+
 async function ensurePricingLoaded(opts = {}) {
   if (state.loaded) return state;
   if (state.loadingPromise) return state.loadingPromise;
 
+  // Remembered so a later background reload can reach the same cache path and
+  // fetch options without the caller having to plumb them through again.
+  state.reloadOptions = opts;
+
   state.loadingPromise = (async () => {
     try {
-      const cachePath = opts.cachePath || defaultCachePath();
-      const { data, source } = await loadLitellmData({ ...opts, cachePath });
-      state.litellmRawMap = data || {};
-      state.litellmPerMillionMap = buildLitellmPerMillionMap(state.litellmRawMap);
-      state.source = source;
-      state.loaded = true;
-      state.negativeCache.clear();
+      await loadInto(opts);
       return state;
     } finally {
       state.loadingPromise = null;
@@ -71,37 +107,132 @@ async function ensurePricingLoaded(opts = {}) {
   return state.loadingPromise;
 }
 
+// Fire-and-forget refresh. Single-flight, never awaited by a lookup: the caller
+// keeps whatever price it already has for this request and the next request
+// benefits. A failed reload leaves the existing snapshot in place.
+//
+// The cooldown matters because a model that is genuinely absent upstream (a
+// local or unlisted model) misses on every row it appears in. Without it, each
+// of those rows would queue another upstream fetch the moment the previous one
+// finished.
+function scheduleReload(nowMs = Date.now()) {
+  if (!state.loaded || state.reloadPromise) return state.reloadPromise;
+  if (nowMs - state.lastReloadAt < RELOAD_COOLDOWN_MS) return null;
+  state.lastReloadAt = nowMs;
+  state.reloadPromise = (async () => {
+    try {
+      // forceRefresh skips the disk cache; without it a reload would just
+      // re-read the same stale snapshot we already hold.
+      await loadInto({ ...state.reloadOptions, forceRefresh: true });
+      state.lastReloadError = null;
+    } catch (e) {
+      // Offline or upstream down — keep serving the snapshot we have, but say
+      // so in the diagnostics rather than failing to refresh in silence.
+      state.lastReloadError = e?.message || String(e);
+    } finally {
+      state.reloadPromise = null;
+    }
+  })();
+  return state.reloadPromise;
+}
+
+function isSnapshotStale(nowMs = Date.now()) {
+  return state.loaded && nowMs - state.loadedAt > RELOAD_AFTER_MS;
+}
+
 // For tests: drop loaded state so a fresh call can re-load. Seeds with the
 // bundled snapshot so getModelPricing() still works without ensurePricingLoaded.
 function resetPricingForTests() {
   state.loaded = false;
   state.loadingPromise = null;
+  state.loadedAt = 0;
+  state.reloadPromise = null;
+  state.lastReloadAt = 0;
+  state.lastReloadError = null;
   state.litellmRawMap = seedRaw;
   state.litellmPerMillionMap = buildLitellmPerMillionMap(seedRaw);
   state.source = Object.keys(seedRaw).length ? "seed-snapshot:sync" : null;
   state.negativeCache.clear();
+  state.tiers.clear();
+  state.warned.clear();
+  state.reloadOptions = {};
 }
 
-function getModelPricing(model, opts = {}) {
-  if (!model) return ZERO_PRICING;
-  let lookupSource = null;
-  if (typeof opts === "string") {
-    lookupSource = opts.toLowerCase();
-  } else if (typeof opts.source === "string") {
-    lookupSource = opts.source.toLowerCase();
-  }
+function resolveLookupSource(opts) {
+  if (typeof opts === "string") return opts.toLowerCase();
+  if (opts && typeof opts.source === "string") return opts.source.toLowerCase();
+  return null;
+}
+
+// Returns the price AND how it was resolved. getModelPricing keeps the old
+// bare-numbers contract for the many existing callers; anything that wants to
+// show the user how much to trust the number uses this.
+function getModelPricingMeta(model, opts = {}) {
+  if (!model) return { pricing: ZERO_PRICING, tier: "empty" };
+
+  const lookupSource = resolveLookupSource(opts);
   const cacheKey = lookupSource ? `${lookupSource}\0${model}` : model;
-  if (state.negativeCache.has(cacheKey)) return ZERO_PRICING;
+
+  if (state.negativeCache.has(cacheKey)) {
+    // Still unknown as of the current snapshot. If that snapshot has aged out,
+    // a new model may have appeared upstream — refresh for the next caller.
+    if (isSnapshotStale()) scheduleReload();
+    return { pricing: ZERO_PRICING, tier: "miss" };
+  }
 
   const result = lookupPricing(model, {
     curated: curatedOverrides,
     litellm: state.litellmPerMillionMap,
     source: lookupSource,
   });
-  if (result.hit) return result.value;
+
+  if (result.hit) {
+    state.tiers.set(model, result.source);
+    return { pricing: result.value, tier: result.source };
+  }
 
   state.negativeCache.add(cacheKey);
-  return ZERO_PRICING;
+  state.tiers.set(model, "miss");
+
+  // A miss is the strongest signal that our snapshot predates a model launch —
+  // exactly the claude-opus-5 case. Refresh in the background so the next
+  // request prices it, instead of waiting for a process restart.
+  scheduleReload();
+
+  if (!state.warned.has(cacheKey)) {
+    state.warned.add(cacheKey);
+    console.warn(
+      `[pricing] no price for model "${model}"${lookupSource ? ` (source: ${lookupSource})` : ""}`
+        + " — its cost is being counted as $0. Refreshing pricing data in the background;"
+        + " if it stays unpriced, add it to src/lib/pricing/curated-overrides.json.",
+    );
+  }
+
+  return { pricing: ZERO_PRICING, tier: "miss" };
+}
+
+function getModelPricing(model, opts = {}) {
+  return getModelPricingMeta(model, opts).pricing;
+}
+
+// Snapshot of what the pricing layer knows it got wrong or guessed at, for the
+// API to hand to the dashboard.
+function getPricingDiagnostics() {
+  const unpriced = [];
+  const fuzzy = [];
+  for (const [model, tier] of state.tiers) {
+    if (tier === "miss") unpriced.push(model);
+    else if (FUZZY_SOURCES.has(tier)) fuzzy.push({ model, tier });
+  }
+  return {
+    source: state.source,
+    loaded_at: state.loadedAt ? new Date(state.loadedAt).toISOString() : null,
+    stale: isSnapshotStale(),
+    refreshing: Boolean(state.reloadPromise),
+    last_refresh_error: state.lastReloadError,
+    unpriced_models: unpriced.sort(),
+    fuzzy_priced_models: fuzzy.sort((a, b) => a.model.localeCompare(b.model)),
+  };
 }
 
 // Same formula and Codex/every-code reasoning-folding rule as the previous
@@ -134,6 +265,8 @@ const MODEL_PRICING = curatedOverrides.exact;
 module.exports = {
   ensurePricingLoaded,
   getModelPricing,
+  getModelPricingMeta,
+  getPricingDiagnostics,
   computeRowCost,
   resetPricingForTests,
   MODEL_PRICING,
