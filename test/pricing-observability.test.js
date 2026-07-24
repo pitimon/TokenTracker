@@ -156,30 +156,87 @@ test("a permanently unknown model cannot refetch on every lookup", async () => {
   assert.equal(fetches - afterLoad, 1, "the cooldown must suppress repeat refreshes");
 });
 
-test("a failed reload keeps serving the snapshot already in memory", async () => {
+test("a failed reload cannot downgrade the prices already loaded", async () => {
+  // The earlier version of this test left the disk cache in place, so the
+  // fetcher's own fallback re-read the same data and the test passed without
+  // proving anything. Delete the cache first: now the only fallback left is the
+  // OLDER bundled seed, which does not know this model — exactly the shape that
+  // re-introduced $0 for a newly published model.
   const cachePath = tmpCachePath("offline");
   let shouldFail = false;
   await pricing.ensurePricingLoaded({
     cachePath,
     fetchImpl: async () => {
       if (shouldFail) throw new Error("offline");
+      return { "brand-new-model": entry(5e-6, 25e-6) };
+    },
+  });
+  assert.equal(pricing.getModelPricing("brand-new-model").input, 5);
+
+  fs.rmSync(cachePath, { force: true });
+  shouldFail = true;
+  pricing.getModelPricing("some-other-unknown");
+  await pricing.__getStateForTests().reloadPromise;
+
+  assert.equal(
+    pricing.getModelPricing("brand-new-model").input,
+    5,
+    "a failed refresh must not replace good data with the older seed",
+  );
+
+  const diagnostics = pricing.getPricingDiagnostics();
+  assert.match(diagnostics.last_refresh_error, /^refresh-/);
+  assert.equal(diagnostics.source, "upstream", "the snapshot in memory is still the upstream one");
+});
+
+test("a refresh that only reaches the bundled seed is reported, not applied", async () => {
+  const cachePath = tmpCachePath("fallback");
+  let serveUpstream = true;
+  await pricing.ensurePricingLoaded({
+    cachePath,
+    fetchImpl: async () => {
+      if (!serveUpstream) throw new Error("offline");
+      return { "brand-new-model": entry(5e-6, 25e-6) };
+    },
+  });
+
+  fs.rmSync(cachePath, { force: true });
+  serveUpstream = false;
+  pricing.getModelPricing("still-unknown");
+  await pricing.__getStateForTests().reloadPromise;
+
+  const diagnostics = pricing.getPricingDiagnostics();
+  assert.match(
+    diagnostics.last_refresh_error,
+    /^refresh-(failed|fell-back)/,
+    "the dashboard must be able to see that the refresh did not reach upstream",
+  );
+});
+
+test("a refresh error never carries a filesystem path into the HTTP response", async () => {
+  const cachePath = tmpCachePath("nopath");
+  let fail = false;
+  await pricing.ensurePricingLoaded({
+    cachePath,
+    fetchImpl: async () => {
+      if (fail) {
+        const e = new Error(`ENOENT: no such file or directory, open '${cachePath}'`);
+        e.code = "ENOENT";
+        throw e;
+      }
       return { "acme-1": entry(1e-6, 2e-6) };
     },
   });
 
-  shouldFail = true;
+  fs.rmSync(cachePath, { force: true });
+  fail = true;
   pricing.getModelPricing("unknown-model");
   await pricing.__getStateForTests().reloadPromise;
 
-  assert.equal(pricing.getModelPricing("acme-1").input, 1, "known prices must survive a failed reload");
-
-  // The fetcher recovers on its own (upstream → stale disk cache → seed), so
-  // nothing throws and last_refresh_error stays null. What the diagnostics DO
-  // show is that the data no longer came from upstream — that is the signal
-  // for "we tried to refresh and are still on older data".
-  const diagnostics = pricing.getPricingDiagnostics();
-  assert.equal(diagnostics.last_refresh_error, null);
-  assert.notEqual(diagnostics.source, "upstream");
+  const reported = pricing.getPricingDiagnostics().last_refresh_error;
+  assert.ok(reported, "a failed refresh must still be reported");
+  assert.equal(reported.includes("/"), false, `error must not leak a path: ${reported}`);
+  assert.equal(reported.includes(os.tmpdir()), false);
 });
 
 test("diagnostics report the snapshot's age and source", async () => {

@@ -75,9 +75,19 @@ function defaultCachePath() {
   return path.join(os.homedir(), ".tokentracker", "cache", "pricing.json");
 }
 
-async function loadInto(opts) {
+// `requireUpstream` guards the background path. loadLitellmData falls back on
+// its own (upstream → stale disk cache → bundled seed), so a refresh that fails
+// to reach upstream would otherwise REPLACE good in-memory data with the older
+// seed — re-introducing exactly the "new model bills $0" bug this reload exists
+// to fix. Verified: with the disk cache deleted and upstream down, a model
+// priced at $5/$25 dropped to $0 after a failed refresh.
+async function loadInto(opts, { requireUpstream = false } = {}) {
   const cachePath = opts.cachePath || defaultCachePath();
   const { data, source } = await loadLitellmData({ ...opts, cachePath });
+  if (requireUpstream && source !== "upstream") {
+    state.lastReloadError = `refresh-fell-back-to-${source}`;
+    return;
+  }
   state.litellmRawMap = data || {};
   state.litellmPerMillionMap = buildLitellmPerMillionMap(state.litellmRawMap);
   state.source = source;
@@ -123,12 +133,16 @@ function scheduleReload(nowMs = Date.now()) {
     try {
       // forceRefresh skips the disk cache; without it a reload would just
       // re-read the same stale snapshot we already hold.
-      await loadInto({ ...state.reloadOptions, forceRefresh: true });
       state.lastReloadError = null;
+      // forceRefresh skips the disk cache; without it a reload would just
+      // re-read the same stale snapshot we already hold.
+      await loadInto({ ...state.reloadOptions, forceRefresh: true }, { requireUpstream: true });
     } catch (e) {
       // Offline or upstream down — keep serving the snapshot we have, but say
-      // so in the diagnostics rather than failing to refresh in silence.
-      state.lastReloadError = e?.message || String(e);
+      // so in the diagnostics rather than failing to refresh in silence. Only
+      // the error CODE is kept: messages from fs/fetch carry absolute paths and
+      // this string is served over HTTP to the dashboard.
+      state.lastReloadError = `refresh-failed:${e?.code || e?.name || "unknown"}`;
     } finally {
       state.reloadPromise = null;
     }
@@ -187,12 +201,12 @@ function getModelPricingMeta(model, opts = {}) {
   });
 
   if (result.hit) {
-    state.tiers.set(model, result.source);
+    state.tiers.set(cacheKey, { model, source: lookupSource, tier: result.source });
     return { pricing: result.value, tier: result.source };
   }
 
   state.negativeCache.add(cacheKey);
-  state.tiers.set(model, "miss");
+  state.tiers.set(cacheKey, { model, source: lookupSource, tier: "miss" });
 
   // A miss is the strongest signal that our snapshot predates a model launch —
   // exactly the claude-opus-5 case. Refresh in the background so the next
@@ -218,11 +232,15 @@ function getModelPricing(model, opts = {}) {
 // Snapshot of what the pricing layer knows it got wrong or guessed at, for the
 // API to hand to the dashboard.
 function getPricingDiagnostics() {
-  const unpriced = [];
+  // Keyed by source+model, matching the lookup itself: the same model id can
+  // resolve differently per provider (Antigravity normalises names before the
+  // lookup), so a model-only key would let one provider's exact hit hide
+  // another's miss.
+  const unpriced = new Set();
   const fuzzy = [];
-  for (const [model, tier] of state.tiers) {
-    if (tier === "miss") unpriced.push(model);
-    else if (FUZZY_SOURCES.has(tier)) fuzzy.push({ model, tier });
+  for (const entry of state.tiers.values()) {
+    if (entry.tier === "miss") unpriced.add(entry.model);
+    else if (FUZZY_SOURCES.has(entry.tier)) fuzzy.push({ model: entry.model, tier: entry.tier });
   }
   return {
     source: state.source,
@@ -230,7 +248,7 @@ function getPricingDiagnostics() {
     stale: isSnapshotStale(),
     refreshing: Boolean(state.reloadPromise),
     last_refresh_error: state.lastReloadError,
-    unpriced_models: unpriced.sort(),
+    unpriced_models: Array.from(unpriced).sort(),
     fuzzy_priced_models: fuzzy.sort((a, b) => a.model.localeCompare(b.model)),
   };
 }
