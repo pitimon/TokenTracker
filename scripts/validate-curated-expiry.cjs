@@ -17,6 +17,8 @@ const ROOT = path.resolve(__dirname, "..");
 const OVERRIDES_PATH = path.join(ROOT, "src", "lib", "pricing", "curated-overrides.json");
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Any YYYY-MM-DD appearing anywhere inside a free-text note.
+const DATE_IN_TEXT_RE = /\d{4}-\d{2}-\d{2}/;
 const REQUIRED_FIELDS = ["id", "expires_at", "what", "action"];
 
 // An expiry is due at UTC midnight on its date, so an entry dated 2026-08-31
@@ -28,6 +30,14 @@ function parseExpiryMs(value) {
   // Reject dates that round-trip differently (e.g. 2026-02-31 → Mar 3).
   if (new Date(ms).toISOString().slice(0, 10) !== value) return null;
   return ms;
+}
+
+// Walks a _meta value of any shape so a date cannot hide one level down.
+function collectStrings(value, out = []) {
+  if (typeof value === "string") out.push(value);
+  else if (Array.isArray(value)) value.forEach((v) => collectStrings(v, out));
+  else if (value && typeof value === "object") Object.values(value).forEach((v) => collectStrings(v, out));
+  return out;
 }
 
 function isNonEmptyString(value) {
@@ -43,13 +53,22 @@ function checkExpiries(meta, nowMs) {
     return { errors: ["_meta is missing or not an object"], checked: 0 };
   }
 
-  // Guard against regressing to the pattern this check replaced.
-  for (const key of Object.keys(meta)) {
-    if (/_expiry$/.test(key)) {
-      errors.push(
-        `_meta.${key}: free-text expiry keys are not checked by anything. `
-          + "Move it into the _meta.expiries array so it is enforced.",
-      );
+  // Guard against regressing to the pattern this check replaced. Matching on
+  // the key name alone was too weak — `promo_cutover: "2026-08-31 — update the
+  // price"` would sail straight past a `*_expiry` name check and expire in
+  // silence, which is the exact failure being designed out. So scan the VALUES:
+  // any date-looking string parked in _meta is a time-boxed fact that belongs
+  // in `expiries`, whatever its key is called.
+  for (const [key, value] of Object.entries(meta)) {
+    if (key === "expiries") continue;
+    for (const text of collectStrings(value)) {
+      if (DATE_IN_TEXT_RE.test(text)) {
+        errors.push(
+          `_meta.${key}: contains a date ("${text.slice(0, 60).trim()}…") but nothing enforces it. `
+            + "Move the fact into the _meta.expiries array, or drop the date from the note.",
+        );
+        break;
+      }
     }
   }
 

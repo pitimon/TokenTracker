@@ -65,17 +65,34 @@ test("rejects duplicate ids", () => {
   assert.ok(errors.some((e) => e.includes("duplicate id 'sample'")));
 });
 
-test("rejects a regression to free-text *_expiry keys", () => {
+test("rejects a date parked in free text, whatever the key is called", () => {
+  // Key-name matching alone was too weak: `promo_cutover` would have sailed
+  // past a `*_expiry` check and then expired in silence — the exact failure
+  // this validator exists to prevent.
+  for (const key of ["some_promo_expiry", "promo_cutover", "note", "todo"]) {
+    const { errors } = checkExpiries(
+      { [key]: "2026-05-31 — remember to update this", expiries: [] },
+      AT("2026-01-01"),
+    );
+    assert.strictEqual(errors.length, 1, `expected ${key} to be flagged`);
+    assert.match(errors[0], /nothing enforces it/);
+  }
+});
+
+test("finds a date nested inside an object or array in _meta", () => {
   const { errors } = checkExpiries(
-    { some_promo_expiry: "2026-05-31 — remember to update this", expiries: [] },
+    { notes: { deep: ["all fine", "revisit 2026-09-01"] }, expiries: [] },
     AT("2026-01-01"),
   );
   assert.strictEqual(errors.length, 1);
-  assert.match(errors[0], /free-text expiry keys are not checked/);
+  assert.match(errors[0], /_meta.notes/);
 });
 
-test("expiries_note is allowed even though it ends in a checked-looking word", () => {
-  const { errors } = checkExpiries({ expiries_note: "how this works", expiries: [] }, AT("2026-01-01"));
+test("prose without a date is left alone", () => {
+  const { errors } = checkExpiries(
+    { expiries_note: "how this works", units: "usd_per_million_tokens", expiries: [] },
+    AT("2026-01-01"),
+  );
   assert.deepStrictEqual(errors, []);
 });
 

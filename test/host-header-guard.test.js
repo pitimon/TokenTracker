@@ -4,7 +4,11 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { isAllowedHostHeader, createRequestHandler } = require("../src/commands/serve");
+const {
+  isAllowedHostHeader,
+  isAllowedRequestTarget,
+  createRequestHandler,
+} = require("../src/commands/serve");
 
 // Boots a real server with a stub API handler so the assertions cover the
 // wiring, not just the predicate: a guard that is never reached would pass a
@@ -27,6 +31,21 @@ async function withServer(run) {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+}
+
+// Raw socket write, so the request-target can be absolute-form — http.request
+// always sends origin-form and cannot express it.
+function rawRequest(port, requestLine, extraHeaders = "") {
+  const net = require("node:net");
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(port, "127.0.0.1", () => {
+      socket.write(`${requestLine}\r\n${extraHeaders}Connection: close\r\n\r\n`);
+    });
+    let body = "";
+    socket.on("data", (chunk) => { body += chunk; });
+    socket.on("end", () => resolve(body));
+    socket.on("error", reject);
+  });
 }
 
 function request({ port, hostHeader, method = "GET", pathname = "/functions/tokentracker-usage-summary" }) {
@@ -109,5 +128,47 @@ test("an absent or empty Host header is allowed (HTTP/1.0 clients, local probes)
 test("a malformed Host header is rejected rather than throwing", () => {
   for (const host of ["::::", "[unclosed", "%%%"]) {
     assert.equal(isAllowedHostHeader(host), false, `${host} should be rejected`);
+  }
+});
+
+test("an absolute-form request target is refused rather than routed by its own authority", async () => {
+  // Host says loopback, the target says otherwise. Routing would parse the
+  // absolute URL and take evil.example as the authority, disagreeing with the
+  // allowlist that just passed the request.
+  await withServer(async ({ port, seen }) => {
+    const response = await rawRequest(
+      port,
+      "GET http://evil.example/functions/tokentracker-usage-summary HTTP/1.1",
+      "Host: localhost\r\n",
+    );
+    assert.match(response.split("\r\n")[0], /400/);
+    assert.equal(response.includes("spend history"), false);
+    assert.deepEqual(seen, [], "the API handler must never be reached");
+  });
+});
+
+test("the fully-qualified loopback spelling is allowed", () => {
+  for (const host of ["localhost.", "localhost.:17680", "127.0.0.1.", "127.0.0.1.:7680"]) {
+    assert.equal(isAllowedHostHeader(host), true, `${host} should be allowed`);
+  }
+  // Stripping the dot must not turn a foreign name into a loopback one.
+  assert.equal(isAllowedHostHeader("evil.example."), false);
+  assert.equal(isAllowedHostHeader("localhost.evil.example."), false);
+});
+
+test("userinfo in a Host header is refused even when the host itself is loopback", () => {
+  // Not a rebinding bypass on its own — the origin really is 127.0.0.1 — but
+  // Host has no userinfo component, so anything carrying one is malformed and
+  // only creates room for two parsers to disagree.
+  assert.equal(isAllowedHostHeader("evil.example@127.0.0.1"), false);
+  assert.equal(isAllowedHostHeader("user:pass@localhost"), false);
+});
+
+test("isAllowedRequestTarget accepts only origin-form and asterisk-form", () => {
+  for (const target of ["/", "/functions/x", "/api/y?z=1", "*"]) {
+    assert.equal(isAllowedRequestTarget(target), true, `${target} should be allowed`);
+  }
+  for (const target of ["http://evil.example/x", "https://evil.example/x", "evil.example:443", "", null]) {
+    assert.equal(isAllowedRequestTarget(target), false, `${JSON.stringify(target)} should be refused`);
   }
 });

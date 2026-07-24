@@ -34,10 +34,28 @@ const LOCAL_BIND_HOST = "127.0.0.1";
 function isAllowedHostHeader(hostHeader) {
   if (hostHeader == null || hostHeader === "") return true;
   try {
-    return isLoopbackHostname(new URL(`http://${hostHeader}`).hostname);
+    const url = new URL(`http://${hostHeader}`);
+    // Userinfo has no meaning in a Host header. Rejecting it outright removes a
+    // parser-differential class rather than relying on every parser agreeing on
+    // where the authority ends.
+    if (url.username || url.password) return false;
+    // `localhost.` is the valid fully-qualified spelling of localhost. WHATWG
+    // URL canonicalises the trailing dot away for IPv4 literals but not for
+    // names, so strip it here or the FQDN form gets a spurious 403.
+    return isLoopbackHostname(url.hostname.replace(/\.$/, ""));
   } catch (_e) {
     return false;
   }
+}
+
+// An origin server is not a proxy: a request-target must be origin-form
+// ("/path") or asterisk-form ("*"). Absolute-form ("GET http://evil/x") carries
+// its own authority, which WOULD win over the Host header when the URL is
+// parsed for routing — so the Host allowlist and the routing would disagree
+// about which site this request is for. Refuse instead of picking a winner.
+function isAllowedRequestTarget(target) {
+  if (target == null || target === "") return false;
+  return target === "*" || target.startsWith("/");
 }
 
 // Extracted from cmdServe so the wiring — not just the predicate — is testable:
@@ -50,6 +68,12 @@ function createRequestHandler({ handleApi, dashboardDir }) {
       if (!isAllowedHostHeader(req.headers.host)) {
         res.writeHead(403, { "Content-Type": "text/plain" });
         res.end("Forbidden: TokenTracker only serves loopback hosts.\n");
+        return;
+      }
+
+      if (!isAllowedRequestTarget(req.url)) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Bad Request: absolute-form request targets are not served.\n");
         return;
       }
 
@@ -353,6 +377,7 @@ module.exports = {
   LOCAL_BIND_HOST,
   isPortUnavailableError,
   isAllowedHostHeader,
+  isAllowedRequestTarget,
   createRequestHandler,
   listenOnAvailablePort,
   getLocalServerUrl,
