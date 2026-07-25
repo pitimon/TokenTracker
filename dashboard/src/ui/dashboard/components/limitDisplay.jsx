@@ -7,8 +7,10 @@ import { LIMIT_DISPLAY_MODES } from "../../../hooks/use-limits-display-prefs.js"
  * The Limits page (UsageLimitsPanel) renders the full set of windows as bars.
  * The dashboard card only has room for a glance, so it surfaces the provider's
  * first two windows ("5h + week") as tinted chips — a colored severity spot +
- * label + %. All the underlying data is the same `useUsageLimits()` payload;
- * this module just picks and formats it. See ProviderBreakdownCard.
+ * label + a reading: the count ("158/300") where the provider reports countable
+ * units, otherwise the percentage. All the underlying data is the same
+ * `useUsageLimits()` payload; this module just picks and formats it.
+ * See ProviderBreakdownCard.
  */
 
 // Shared with UsageLimitsPanel — kept here so both surfaces format resets identically.

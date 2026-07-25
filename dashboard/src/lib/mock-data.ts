@@ -578,8 +578,9 @@ export function getMockUsageLimits() {
   // dashboard cards. The mock model-breakdown renders claude + codex cards
   // (every-code has no limits provider), so give those two windows that span
   // all four chip tiers: neutral <50 / amber 50-74 / orange 75-89 / red >=90.
-  // resets_at is intentionally omitted — the chip shows only label + %, the
-  // reset lives in the tooltip and never appears in a static screenshot.
+  // resets_at is intentionally omitted — the chip shows label + a reading
+  // (count where the provider has one, else %), and the reset lives in the
+  // tooltip, which never appears in a static screenshot.
   return {
     fetched_at: "2025-12-31T12:00:00Z",
     claude: {
