@@ -125,7 +125,76 @@ function resolveHost(rawAuthority) {
 }
 
 const MENTION_CALL_RE = /\.(replace|split|startsWith|endsWith|includes|slice|indexOf|lastIndexOf)\s*\(\s*$/;
-const COMMENT_LINE_RE = /^\s*(\/\/|\*|\/\*)/;
+// Only the JSDoc continuation line, which is the one shape commentRanges cannot
+// see: it carries no block state across lines by design. `//` and `/*` are now
+// handled positionally instead — this regex used to match them too, and a line
+// beginning `/* note */ fetch("https://…")` was exempted whole, comment and live
+// call alike.
+const COMMENT_LINE_RE = /^\s*\*/;
+
+// Where the comments are on this line, as [start, end) ranges.
+//
+// A leading-comment regex was not enough: it matched only a comment that starts
+// the line, so
+//
+//   const x = 5; // see https://github.com/nodejs/node/issues/123
+//
+// classified as a request. Reference links in trailing comments are ordinary
+// code, and a check that flags ordinary code is a check someone switches off —
+// which would take the rest of this control with it.
+//
+// This scans rather than matches, because the token we are looking for — `//` —
+// is the one every URL contains. `fetch("https://x")` must not read as a
+// comment, so string state has to be tracked to tell the two apart.
+//
+// Deliberately line-local: no block-comment state is carried across lines. A
+// regex literal like /[/*]/ opens a block comment as far as this scanner is
+// concerned, and carrying that state forward would silence the REST OF THE FILE
+// — a miss, the one direction this check must never fail in. Confined to one
+// line, the same mistake costs at most one false finding, which is visible and
+// fixable. Multi-line comments stay covered by COMMENT_LINE_RE's `*` arm, which
+// is the JSDoc style used throughout this repo.
+function commentRanges(line) {
+  const ranges = [];
+  let quote = null;
+  let blockStart = -1;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (blockStart >= 0) {
+      if (char === "*" && next === "/") {
+        ranges.push([blockStart, i + 2]);
+        blockStart = -1;
+        i += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (char === "\\") i += 1;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      ranges.push([i, line.length]);
+      return ranges;
+    }
+    if (char === "/" && next === "*") {
+      blockStart = i;
+      i += 1;
+    }
+  }
+  // An unterminated `/*` comments out the rest of THIS line and no further.
+  if (blockStart >= 0) ranges.push([blockStart, line.length]);
+  return ranges;
+}
+
+function isInComment(ranges, index) {
+  return ranges.some(([start, end]) => index >= start && index < end);
+}
 
 // A URL is a REQUEST unless one of three things is true at the URL's own
 // position: the line is a comment, the URL is the direct argument of a string
@@ -139,6 +208,7 @@ const COMMENT_LINE_RE = /^\s*(\/\/|\*|\/\*)/;
 // diff a reviewer has to approve, which is the same weight as `request_from`.
 function isMentionOnly(line, matchIndex) {
   if (COMMENT_LINE_RE.test(line)) return true;
+  if (isInComment(commentRanges(line), matchIndex)) return true;
   // Also strip a regex-literal opener. `repoInput.replace(/^https:\/\/github\.com\//, "")`
   // is string surgery on user input, but the `/^` between `replace(` and the URL
   // hid that from a test that only looked past quotes and braces.
@@ -196,8 +266,16 @@ function collectHosts({ root = ROOT } = {}) {
           if (isMentionOnly(line, match.index)) continue;
           if (!mentions.has(host)) mentions.set(host, new Set());
           mentions.get(host).add(relative);
-          if (!requests.has(host)) requests.set(host, new Map());
-          requests.get(host).set(relative, index + 1);
+          // Every occurrence, not one per file. This was a Map keyed by file, so
+          // a second request to the same host from the same file overwrote the
+          // first and only the LAST line was ever reported — and with waivers now
+          // pinned to the URL text, each occurrence has to be matched on its own.
+          if (!requests.has(host)) requests.set(host, []);
+          requests.get(host).push({
+            file: relative,
+            line: index + 1,
+            text: match[0].replace(/^["'`{\s]+/, ""),
+          });
         }
       });
     }
@@ -279,6 +357,89 @@ function isIgnored(host, inventory) {
   return ignored.includes(host);
 }
 
+// A declared host may only be REQUESTED from where the inventory says. `seen_in`
+// records every file that names the host, which is inventory; the three lists
+// below record what may actually reach it, which is the security constraint.
+// Conflating them is what let the original issue-100 call be re-added to a file
+// that legitimately mentions github.com.
+//
+// `request_from` = this file calls the host, and is a whole-file permission
+// because the file is declared to be a caller. `link_from` = the user clicks it.
+// `data_from` = the host is a value this codebase stores or renders and never
+// fetches — a mock fixture's `project_ref`, for instance.
+//
+// The last two are PINNED TO THE URL TEXT, not to the file. A file-wide waiver
+// was an unconditional one: once a file was listed, any future request to that
+// host from it passed forever. The concrete scenario is the shape of #100 —
+// adding an owner-avatar `<img src>` to SkillDetailPanel.jsx, a plausible "show
+// skill authors" change, to a file that already holds a github.com link waiver
+// and already interpolates owner names.
+//
+// Pinned to the literal rather than to a line number because line numbers move
+// under every edit above them, and a waiver that churns is a waiver people
+// rubber-stamp. A NEW url string in a waived file is a diff in the inventory
+// that a reviewer has to approve.
+function checkRequestPermission(entry, records) {
+  const findings = [];
+  const allowed = new Set(entry.request_from || []);
+  const waived = [...(entry.link_from || []), ...(entry.data_from || [])];
+
+  // A bare string here used to mean "waive this whole file". Reject the old
+  // shape outright rather than letting it read as an unmatched pin: the point of
+  // the change is that a file-wide waiver cannot be written any more.
+  for (const pin of waived) {
+    if (pin && typeof pin.file === "string" && typeof pin.url === "string") continue;
+    findings.push(
+      `outbound-hosts.json has a link_from/data_from entry for '${entry.host}' that is not` +
+        ` {"file": ..., "url": ...}: ${JSON.stringify(pin)} — a bare filename is a file-wide` +
+        ` waiver, which is what the pinned form replaced`,
+    );
+  }
+
+  const used = new Set();
+  for (const record of records) {
+    if (allowed.has(record.file)) continue;
+    const pin = waived.findIndex((w) => w && w.file === record.file && w.url === record.text);
+    if (pin >= 0) {
+      used.add(pin);
+      continue;
+    }
+    findings.push(
+      `${record.file}:${record.line} requests '${entry.host}' as ${JSON.stringify(record.text)},` +
+        ` which no request_from, link_from or data_from entry covers — if this call belongs,` +
+        ` add it to outbound-hosts.json and re-read the purpose field first; if it does not,` +
+        ` this is the defect the check exists for`,
+    );
+  }
+
+  // A pin that matches nothing is a stale waiver: a live exemption waiting for a
+  // URL to drift back onto it.
+  waived.forEach((pin, index) => {
+    if (used.has(index) || !pin) return;
+    findings.push(
+      `outbound-hosts.json pins ${JSON.stringify(pin.url)} in ${pin.file} for '${entry.host}',` +
+        ` but no such URL is there — remove the stale waiver`,
+    );
+  });
+
+  return findings;
+}
+
+// Every host that discloses something about the user must be in the README
+// table. The table is the promise; this is what keeps it true.
+function checkReadmeTable(root, inventory) {
+  const readmePath = path.join(root, "README.md");
+  if (!fs.existsSync(readmePath)) return [];
+  const readme = fs.readFileSync(readmePath, "utf8");
+  return (inventory.hosts || [])
+    .filter((entry) => entry.readme && !readme.includes(entry.host))
+    .map(
+      (entry) =>
+        `README.md does not mention '${entry.host}', which outbound-hosts.json marks as` +
+        (entry.user_data ? " carrying user data" : " user-visible"),
+    );
+}
+
 function checkOutbound({ root = ROOT } = {}) {
   const inventory = loadInventory(root);
   if (!inventory) return ["outbound-hosts.json is missing"];
@@ -308,44 +469,13 @@ function checkOutbound({ root = ROOT } = {}) {
     }
   }
 
-  // 3. A declared host may only be REQUESTED from the files listed in
-  //    request_from. `seen_in` records every file that names the host, which is
-  //    inventory; `request_from` records the files allowed to actually reach it,
-  //    which is the security constraint. Conflating them is what let the original
-  //    issue-100 call be re-added to a file that legitimately mentions github.com.
+  // 3.
   for (const entry of inventory.hosts || []) {
-    const allowed = new Set(entry.request_from || []);
-    // `link_from` = the user clicks it. `data_from` = the host appears only as a
-    // value this codebase stores or renders and never fetches — a mock fixture's
-    // `project_ref`, for instance. Without the second category such a file ends up
-    // on the link list, which is an UNCONDITIONAL waiver: once there, any future
-    // request to that host from that file passes forever, including an <img src>.
-    const linkOnly = new Set([...(entry.link_from || []), ...(entry.data_from || [])]);
-    for (const [file, line] of found.requests.get(entry.host) || []) {
-      if (allowed.has(file) || linkOnly.has(file)) continue;
-      findings.push(
-        `${file}:${line} requests '${entry.host}', which is not in its request_from list` +
-          ` — if this call belongs, add the file to outbound-hosts.json and re-read the` +
-          ` purpose field first; if it does not, this is the defect the check exists for`,
-      );
-    }
+    findings.push(...checkRequestPermission(entry, found.requests.get(entry.host) || []));
   }
 
-  // 4. Every host that discloses something about the user must be in the
-  //    README table. The table is the promise; this is what keeps it true.
-  const readmePath = path.join(root, "README.md");
-  if (fs.existsSync(readmePath)) {
-    const readme = fs.readFileSync(readmePath, "utf8");
-    for (const entry of inventory.hosts || []) {
-      if (!entry.readme) continue;
-      if (!readme.includes(entry.host)) {
-        findings.push(
-          `README.md does not mention '${entry.host}', which outbound-hosts.json marks as` +
-            (entry.user_data ? " carrying user data" : " user-visible"),
-        );
-      }
-    }
-  }
+  // 4.
+  findings.push(...checkReadmeTable(root, inventory));
 
   findings.push(...checkDynamicFetches(root, inventory));
 

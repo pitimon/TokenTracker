@@ -160,7 +160,11 @@ test("request_from is enforced, so it cannot drift into decoration", () => {
     files: { "src/a.js": 'const u = "https://x.example/1";\n' },
     hosts: [declared("x.example", { request_from: [] })],
   });
-  assert.ok(checkOutbound({ root }).some((f) => f.includes("not in its request_from list")));
+  assert.ok(
+    checkOutbound({ root }).some((f) =>
+      f.includes("no request_from, link_from or data_from entry covers"),
+    ),
+  );
 });
 
 // --- Half B ------------------------------------------------------------------
@@ -244,11 +248,153 @@ test("a comment is a mention; a clickable link needs link_from", () => {
       declared("docs.example", {
         seen_in: ["dashboard/src/Doc.jsx"],
         request_from: [],
-        link_from: ["dashboard/src/Doc.jsx"],
+        link_from: [{ file: "dashboard/src/Doc.jsx", url: "https://docs.example/guide" }],
       }),
     ],
   });
   assert.deepEqual(checkOutbound({ root }), []);
+});
+
+// --- Comments and waivers -----------------------------------------------------
+// Two ways this control gets switched off: it cries wolf on ordinary code, or it
+// hands out a permission wider than the one written down.
+
+test("a URL in a TRAILING comment is a mention, not a request", () => {
+  // Only line-LEADING comments were recognised, so a reference link after code
+  // read as a request. That shape is common enough to be the likeliest source of
+  // pressure to disable the whole check.
+  const root = fixture({
+    files: {
+      "src/a.js": 'const x = 5; // see https://docs.example/issues/123\nmodule.exports = x;\n',
+    },
+  });
+  assert.deepEqual(checkOutbound({ root }), []);
+});
+
+test("`//` inside a string is not a comment", () => {
+  // The token the comment scanner looks for is the one every URL contains, so
+  // string state has to be tracked. Get this wrong and the check exempts
+  // everything it exists to catch.
+  const findings = attack('const x = fetch("https://shared.example/x");');
+  assert.ok(
+    findings.some((f) => f.includes("shared.example")),
+    `a plain fetch must still be a request: ${JSON.stringify(findings)}`,
+  );
+});
+
+test("code after a CLOSED block comment on the same line is still a request", () => {
+  // Comments are ranges, not a single start index. Treating the first `/*` as
+  // "comment from here on" would exempt the live call that follows it.
+  const findings = attack('/* note */ fetch("https://shared.example/x");');
+  assert.ok(
+    findings.some((f) => f.includes("shared.example")),
+    `the call after the comment must survive: ${JSON.stringify(findings)}`,
+  );
+});
+
+test("an unterminated /* comments out its own line and no more", () => {
+  // A regex literal like /[/*]/ opens a block comment as far as this scanner is
+  // concerned. Carrying that state across lines would silence the rest of the
+  // file — a miss, the one direction this check must never fail in.
+  const root = fixture({
+    files: {
+      "dashboard/src/a.jsx": [
+        "const re = /[/*]/;",
+        'const img = <img src="https://tracker.example/p.gif" />;',
+        "",
+      ].join("\n"),
+    },
+  });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("tracker.example")),
+    "the next line must still be scanned",
+  );
+});
+
+test("a waiver covers the URL it names, not the file it sits in", () => {
+  // The #100 shape: SkillDetailPanel.jsx holds a github.com link waiver and
+  // already interpolates owner names, so "show skill-author avatars" — an <img
+  // src> added beside the link — passed under a file-wide waiver. Pinning to the
+  // literal makes the new string a diff in the inventory instead.
+  const root = fixture({
+    files: {
+      "dashboard/src/Panel.jsx": [
+        'const link = <a href="https://docs.example/guide">docs</a>;',
+        "const avatar = <img src={`https://docs.example/${owner}.png`} />;",
+        "",
+      ].join("\n"),
+    },
+    hosts: [
+      declared("docs.example", {
+        seen_in: ["dashboard/src/Panel.jsx"],
+        request_from: [],
+        link_from: [{ file: "dashboard/src/Panel.jsx", url: "https://docs.example/guide" }],
+      }),
+    ],
+  });
+  const findings = checkOutbound({ root });
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.ok(findings[0].includes("${owner}.png"), findings[0]);
+});
+
+test("every request to a host from one file is reported, not just the last", () => {
+  // The request map was keyed by file, so a second call overwrote the first and
+  // only one line was ever seen. With waivers pinned per URL, each occurrence has
+  // to be matched on its own.
+  const root = fixture({
+    files: {
+      "dashboard/src/Panel.jsx": [
+        'fetch("https://docs.example/one");',
+        'fetch("https://docs.example/two");',
+        "",
+      ].join("\n"),
+    },
+    hosts: [
+      declared("docs.example", { seen_in: ["dashboard/src/Panel.jsx"], request_from: [] }),
+    ],
+  });
+  const findings = checkOutbound({ root });
+  assert.equal(findings.length, 2, JSON.stringify(findings));
+  assert.ok(findings.some((f) => f.includes("/one")) && findings.some((f) => f.includes("/two")));
+});
+
+test("a pin that matches nothing is reported as a stale waiver", () => {
+  // Left in place it is a live exemption waiting for a URL to drift back onto it.
+  const root = fixture({
+    files: { "dashboard/src/Panel.jsx": 'const link = <a href="https://docs.example/guide">d</a>;\n' },
+    hosts: [
+      declared("docs.example", {
+        seen_in: ["dashboard/src/Panel.jsx"],
+        request_from: [],
+        link_from: [
+          { file: "dashboard/src/Panel.jsx", url: "https://docs.example/guide" },
+          { file: "dashboard/src/Panel.jsx", url: "https://docs.example/gone" },
+        ],
+      }),
+    ],
+  });
+  const findings = checkOutbound({ root });
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.ok(findings[0].includes("stale waiver"), findings[0]);
+});
+
+test("a bare filename is rejected as a waiver, not read as an unmatched pin", () => {
+  // The old shape WAS the defect. It has to fail loudly rather than degrade into
+  // a confusing "no such URL" message.
+  const root = fixture({
+    files: { "dashboard/src/Panel.jsx": 'const link = <a href="https://docs.example/guide">d</a>;\n' },
+    hosts: [
+      declared("docs.example", {
+        seen_in: ["dashboard/src/Panel.jsx"],
+        request_from: [],
+        link_from: ["dashboard/src/Panel.jsx"],
+      }),
+    ],
+  });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("file-wide waiver")),
+    "the old form must be named as the reason",
+  );
 });
 
 // --- Evasion ------------------------------------------------------------------
@@ -320,7 +466,9 @@ test("a URL that IS the argument of a string operation stays a mention", () => {
 });
 
 test("link_from covers a host the user clicks, and only where declared", () => {
-  const asLink = shared({ link_from: ["dashboard/src/A.jsx"] });
+  const asLink = shared({
+    link_from: [{ file: "dashboard/src/A.jsx", url: "https://shared.example/releases/latest" }],
+  });
   assert.deepEqual(attack('const RELEASES = "https://shared.example/releases/latest";', [asLink]), []);
   // The same file without the declaration is a request.
   assert.ok(attack('const RELEASES = "https://shared.example/releases/latest";').length > 0);
@@ -413,8 +561,11 @@ test("an interpolated suffix pins only a real zone, never a bare TLD", () => {
 test("data_from covers a host stored as a value and never fetched", () => {
   // A mock fixture's `project_ref` is neither a link nor a request. Without its
   // own category it lands on `link_from`, which is an UNCONDITIONAL waiver: once
-  // a file is there, any future request to that host from it passes forever.
-  const asData = shared({ data_from: ["dashboard/src/A.jsx"] });
+  // a file is there, any future request to that host from it passed forever —
+  // which is why both categories are now pinned to the URL rather than the file.
+  const asData = shared({
+    data_from: [{ file: "dashboard/src/A.jsx", url: "https://shared.example/${repo}" }],
+  });
   assert.deepEqual(attack('const row = { project_ref: `https://shared.example/${repo}` };', [asData]), []);
 });
 
