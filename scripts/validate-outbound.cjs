@@ -15,8 +15,13 @@
 // srcSet disclose exactly as much as a fetch does. Matching on call sites would
 // have reproduced the original blind spot in code.
 //
-// What it cannot see: a host assembled at runtime from parts. That hole is
-// closed by convention rather than by grep — dashboard network calls go through
+// A host assembled at runtime from parts still cannot be RESOLVED here, but it
+// is no longer silently dropped: every unresolvable authority is reported unless
+// it is declared in outbound-hosts.json with a reason (see checkUnresolved).
+// What remains genuinely invisible is a URL that never exists as one literal —
+// concatenation, an imported base, a join at the call site. That is #110 item 5,
+// and closing it means following expressions rather than scanning literals.
+// Until then it is held by convention: dashboard network calls go through
 // dashboard/src/lib/api.ts, and validate:guardrails rejects a raw fetch( to a
 // non-local host elsewhere. Ship both halves or neither.
 
@@ -24,8 +29,36 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
-const SCAN_DIRS = ["src", "dashboard/src"];
-const SCAN_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".cjs", ".mjs"]);
+// The walker used to see two directories and one extension set, which left
+// named places a host could live and be missed (#110 item 2):
+//
+//   dashboard/*.html          the served SPA shell — a <link rel=preconnect>,
+//                             font CDN or <script src> here is a browser request
+//   dashboard/src/styles.css  inside a scanned directory, skipped by extension.
+//                             CSS url() is a request
+//   .../i18n/*.json           strings that flow into href/src props
+//   dashboard/vite.config.js  dev proxy target; a new one was invisible
+//   scripts/                  build-pricing-seed.cjs fetches
+//                             raw.githubusercontent.com outside the scan
+//
+// scripts/ is maintainer-run rather than shipped, but the README's promise is
+// about what this codebase reaches, and "only when the maintainer runs it" is a
+// caveat for the purpose field, not a reason to be invisible.
+const SCAN_DIRS = ["src", "dashboard/src", "scripts"];
+// Individually named because dashboard/ as a whole holds build output and
+// assets; only these three are source.
+const SCAN_FILES = ["dashboard/index.html", "dashboard/pet.html", "dashboard/vite.config.js"];
+const SCAN_EXTENSIONS = new Set([
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".cjs",
+  ".mjs",
+  ".css",
+  ".html",
+  ".json",
+]);
 // Matches the scheme, then the authority up to the first delimiter. Deliberately
 // permissive about what the authority contains, because a host is often built by
 // interpolation — `http://${token}-${i}.d.ip.net.coffee/pixel.gif` is a real
@@ -236,51 +269,70 @@ function isTestFile(filePath) {
   return /\.test\.[jt]sx?$/.test(filePath) || /(^|[\\/])__tests__[\\/]/.test(filePath);
 }
 
-// Returns two views of the same scan: every file that NAMES each host, and every
-// file that REQUESTS it. The second is the one with security meaning.
+// One line of one file, folded into the three views the caller is building.
+function scanLine({ line, index, relative, mentions, requests, unresolved }) {
+  for (const match of [...line.matchAll(URL_RE), ...line.matchAll(PROTOCOL_RELATIVE_RE)]) {
+    // String surgery and comments are filtered from EVERY view. A prefix being
+    // stripped off user input is not a destination this code can reach, so it
+    // does not belong in the inventory either — and a regex literal like
+    // `/^https:\/\/github\.com\//` otherwise resolves to a bare `github`,
+    // demanding a declaration for a host that does not exist.
+    if (isMentionOnly(line, match.index)) continue;
+
+    const { host } = resolveHost(match[1]);
+    // An authority that cannot be reduced to a host used to be DROPPED, so a
+    // real destination the scanner could not model went unmentioned. Reporting
+    // it is right in principle and was tried as a flag flip inside #109; it
+    // fired on ordinary code immediately, and a check that flags ordinary code
+    // is a check someone turns off. So each is declared with a reason instead,
+    // and a NEW one fails — see checkUnresolved.
+    if (!host) {
+      unresolved.push({
+        file: relative,
+        line: index + 1,
+        authority: decodeSourceEscapes(match[1]).split(/[/\\?#]/)[0],
+      });
+      continue;
+    }
+
+    if (!mentions.has(host)) mentions.set(host, new Set());
+    mentions.get(host).add(relative);
+    // Every occurrence, not one per file. This was a Map keyed by file, so a
+    // second request to the same host from the same file overwrote the first and
+    // only the LAST line was ever reported — and with waivers now pinned to the
+    // URL text, each occurrence has to be matched on its own.
+    if (!requests.has(host)) requests.set(host, []);
+    requests.get(host).push({
+      file: relative,
+      line: index + 1,
+      text: match[0].replace(/^["'`{\s]+/, ""),
+    });
+  }
+}
+
+// Returns three views of the same scan: every file that NAMES each host, every
+// file that REQUESTS it, and every authority that could not be resolved at all.
+// The second is the one with security meaning; the third is what used to be
+// thrown away.
 function collectHosts({ root = ROOT } = {}) {
   const mentions = new Map();
   const requests = new Map();
-  for (const dir of SCAN_DIRS) {
-    for (const filePath of walk(path.join(root, dir))) {
-      if (isTestFile(filePath)) continue;
-      const relative = path.relative(root, filePath);
-      const lines = fs.readFileSync(filePath, "utf8").split("\n");
-      lines.forEach((line, index) => {
-        const matches = [...line.matchAll(URL_RE), ...line.matchAll(PROTOCOL_RELATIVE_RE)];
-        for (const match of matches) {
-          // NOTE: an authority that cannot be reduced to a host is currently
-          // dropped. Reporting it instead (fail-closed) is right in principle and
-          // was tried here — it fired on eight legitimate patterns immediately
-          // (`${hostHeader}` for the local bind, a log string with an ANSI reset
-          // after the URL, git-remote parsing), and a check that flags ordinary
-          // code is a check someone turns off. Tracked separately so it can be
-          // done with the per-pattern care it needs.
-          const { host } = resolveHost(match[1]);
-          if (!host) continue;
-          // String surgery and comments are filtered from BOTH views. A prefix
-          // being stripped off user input is not a destination this code can
-          // reach, so it does not belong in the inventory either — and a regex
-          // literal like `/^https:\/\/github\.com\//` otherwise resolves to a
-          // bare `github`, demanding a declaration for a host that does not exist.
-          if (isMentionOnly(line, match.index)) continue;
-          if (!mentions.has(host)) mentions.set(host, new Set());
-          mentions.get(host).add(relative);
-          // Every occurrence, not one per file. This was a Map keyed by file, so
-          // a second request to the same host from the same file overwrote the
-          // first and only the LAST line was ever reported — and with waivers now
-          // pinned to the URL text, each occurrence has to be matched on its own.
-          if (!requests.has(host)) requests.set(host, []);
-          requests.get(host).push({
-            file: relative,
-            line: index + 1,
-            text: match[0].replace(/^["'`{\s]+/, ""),
-          });
-        }
+  const unresolved = [];
+  const targets = [
+    ...SCAN_DIRS.flatMap((dir) => walk(path.join(root, dir))),
+    ...SCAN_FILES.map((f) => path.join(root, f)).filter((f) => fs.existsSync(f)),
+  ];
+  for (const filePath of targets) {
+    if (isTestFile(filePath)) continue;
+    const relative = path.relative(root, filePath);
+    fs.readFileSync(filePath, "utf8")
+      .split("\n")
+      .forEach((line, index) => {
+        scanLine({ line, index, relative, mentions, requests, unresolved });
       });
-    }
   }
   mentions.requests = requests;
+  mentions.unresolved = unresolved;
   return mentions;
 }
 
@@ -425,6 +477,96 @@ function checkRequestPermission(entry, records) {
   return findings;
 }
 
+// An authority the scanner cannot reduce to a host is a destination it cannot
+// vouch for, so each one is declared with a reason. The issue's three original
+// examples — bracketed IPv6, a Cyrillic lookalike, a single-label intranet host
+// — all resolve now: they predate deferring to `new URL()`. What is left is
+// interpolation that pins nothing, which is ordinary code, which is exactly why
+// the flag-flip version of this had to be reverted.
+//
+// Matched on file + authority text. A new unresolvable authority anywhere is a
+// finding; a declaration that no longer matches is reported as stale, so this
+// list cannot quietly outlive the code it excuses.
+function checkUnresolved(inventory, unresolved) {
+  const declared = inventory.unresolved_authorities || [];
+  const findings = [];
+  const used = new Set();
+
+  for (const item of unresolved) {
+    const index = declared.findIndex(
+      (d) => d && d.file === item.file && d.authority === item.authority,
+    );
+    if (index >= 0) {
+      used.add(index);
+      continue;
+    }
+    findings.push(
+      `${item.file}:${item.line} builds a URL whose authority cannot be resolved to a host:` +
+        ` ${JSON.stringify(item.authority)} — the scanner cannot say where this goes. Declare it in` +
+        ` outbound-hosts.json under unresolved_authorities with a why, or make the host a literal`,
+    );
+  }
+
+  declared.forEach((entry, index) => {
+    if (used.has(index)) return;
+    findings.push(
+      `outbound-hosts.json declares unresolved authority ${JSON.stringify(entry?.authority)} in` +
+        ` ${entry?.file}, but it is no longer there — remove it`,
+    );
+  });
+
+  return findings;
+}
+
+const VALID_FROM = new Set(["server", "browser", "both"]);
+
+// Which side of the product a file runs on. `dashboard/` is what the user's
+// browser loads; everything else is the local Node process.
+function sideOf(file) {
+  return file.startsWith("dashboard/") && !file.startsWith("dashboard/vite.config")
+    ? "browser"
+    : "server";
+}
+
+// The inventory's prose was unchecked: `user_data: true` with `readme: false`
+// passed, so did a wrong `from` and purpose text describing something the code
+// does not do. Only the readme flag and a substring search were enforced, which
+// left the fields a reader trusts most as the ones nothing verified.
+//
+// `from` is checked against where the host is ACTUALLY reached, not just for
+// being one of three words — a host only ever requested from src/ cannot
+// honestly be `browser`. Entries with nothing observed (npx fetching the package)
+// are exempt, since there is no evidence either way.
+function checkInventoryMetadata(entry, records) {
+  const findings = [];
+  const bad = (message) => findings.push(`outbound-hosts.json entry '${entry.host}': ${message}`);
+
+  if (typeof entry.host !== "string" || !entry.host.trim()) bad("host must be a non-empty string");
+  if (!VALID_FROM.has(entry.from)) {
+    bad(`from must be one of ${[...VALID_FROM].join(", ")}, got ${JSON.stringify(entry.from)}`);
+  }
+  if (typeof entry.user_data !== "boolean") bad("user_data must be a boolean");
+  if (typeof entry.readme !== "boolean") bad("readme must be a boolean");
+  if (typeof entry.purpose !== "string" || entry.purpose.trim().length < 20) {
+    bad("purpose must say something — it is what a reader of the privacy table relies on");
+  }
+  if (entry.user_data === true && entry.readme !== true) {
+    bad("user_data is true, so readme must be true: every host that discloses something about the user belongs in the README table");
+  }
+
+  const sides = new Set(records.map((r) => sideOf(r.file)));
+  if (sides.size > 0 && VALID_FROM.has(entry.from)) {
+    const expected = sides.size === 2 ? "both" : [...sides][0];
+    if (entry.from !== expected) {
+      bad(
+        `from is ${JSON.stringify(entry.from)} but the host is reached only from the ${expected}` +
+          ` side (${[...new Set(records.map((r) => r.file))].sort().join(", ")})`,
+      );
+    }
+  }
+  return findings;
+}
+
 // Every host that discloses something about the user must be in the README
 // table. The table is the promise; this is what keeps it true.
 function checkReadmeTable(root, inventory) {
@@ -471,11 +613,16 @@ function checkOutbound({ root = ROOT } = {}) {
 
   // 3.
   for (const entry of inventory.hosts || []) {
-    findings.push(...checkRequestPermission(entry, found.requests.get(entry.host) || []));
+    const records = found.requests.get(entry.host) || [];
+    findings.push(...checkRequestPermission(entry, records));
+    findings.push(...checkInventoryMetadata(entry, records));
   }
 
   // 4.
   findings.push(...checkReadmeTable(root, inventory));
+
+  // 5. Nothing may be silently dropped for being unparseable.
+  findings.push(...checkUnresolved(inventory, found.unresolved || []));
 
   findings.push(...checkDynamicFetches(root, inventory));
 
