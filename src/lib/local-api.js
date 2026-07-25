@@ -25,6 +25,40 @@ const avatarProxyCache = new Map();
 const AVATAR_REDIRECT_BLOCKED = Symbol("avatar-redirect-blocked");
 const AVATAR_MAX_REDIRECTS = 3;
 
+// Reads at most `maxBytes`, and STOPS READING at the limit. Returns null when the
+// response is over it.
+//
+// `AVATAR_PROXY_MAX_BYTES` read like a download cap and was not one: the whole
+// upstream body was buffered with `arrayBuffer()` first, and the constant then
+// only decided whether the result entered the cache. An oversized response was
+// still read into memory in full and still written to the client, so an
+// allowlisted host serving a very large image/* drove loopback-server memory
+// with no ceiling.
+//
+// Two gates, because either alone is soft: `content-length` is a claim the peer
+// makes and can lie about or omit, and counting bytes without it means the
+// transfer has already started. Check the claim, then count anyway.
+async function readCappedAvatarBody(response, maxBytes) {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  // A HEAD response, or a stub without a stream. `arrayBuffer()` is bounded here
+  // by the content-length check above and by the length check below.
+  if (!response.body) {
+    const buffered = Buffer.from(await response.arrayBuffer());
+    return buffered.length > maxBytes ? null : buffered;
+  }
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of response.body) {
+    total += chunk.length;
+    // Returning from a for-await calls the iterator's return(), which cancels
+    // the stream — the download stops here rather than running to completion.
+    if (total > maxBytes) return null;
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
 // One check for the URL the caller asked for AND for every redirect hop, so the
 // two can't drift apart. Port is part of the address: `https://gravatar.com:8443/`
 // shares the hostname but is a different service, so leaving the port free turns
@@ -920,15 +954,21 @@ function createLocalApiHandler({ queuePath }) {
           json(res, { error: "Not an image" }, 415);
           return true;
         }
-        const body = Buffer.from(await upstream.arrayBuffer());
-        if (body.length <= AVATAR_PROXY_MAX_BYTES) {
-          // Simple LRU: drop oldest if over capacity.
-          if (avatarProxyCache.size >= AVATAR_PROXY_MAX_ENTRIES) {
-            const oldestKey = avatarProxyCache.keys().next().value;
-            if (oldestKey) avatarProxyCache.delete(oldestKey);
-          }
-          avatarProxyCache.set(cacheKey, { body, contentType, fetchedAt: now });
+        const body = await readCappedAvatarBody(upstream, AVATAR_PROXY_MAX_BYTES);
+        if (body === null) {
+          // Refused rather than served-but-not-cached, which is what the old
+          // length check amounted to. An avatar this size is not an avatar, and
+          // the dashboard falls back to its local icon on a failed image load.
+          json(res, { error: "Avatar too large" }, 413);
+          return true;
         }
+        // Within the cap by construction, so caching is unconditional.
+        // Simple LRU: drop oldest if over capacity.
+        if (avatarProxyCache.size >= AVATAR_PROXY_MAX_ENTRIES) {
+          const oldestKey = avatarProxyCache.keys().next().value;
+          if (oldestKey) avatarProxyCache.delete(oldestKey);
+        }
+        avatarProxyCache.set(cacheKey, { body, contentType, fetchedAt: now });
         res.writeHead(200, {
           "Content-Type": contentType,
           "Cache-Control": "public, max-age=3600",
@@ -1586,6 +1626,7 @@ module.exports = {
   // closes is only observable across a redirect hop, which no handler-level
   // test reaches.
   fetchAvatarFollowingAllowlist,
+  readCappedAvatarBody,
   isAllowedAvatarTarget,
   AVATAR_REDIRECT_BLOCKED,
   resolveQueuePath,
