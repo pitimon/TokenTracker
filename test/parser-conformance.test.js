@@ -34,6 +34,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 
 const rollout = require("../src/lib/rollout");
+const { expectedTotal } = require("../src/lib/queue-compact");
 
 const FIXTURE_DIR = path.join(__dirname, "fixtures", "parser-conformance");
 const ALLOWLIST = require("./fixtures/parser-conformance/allowlist.json");
@@ -86,11 +87,15 @@ function assertRowConforms(row, label) {
   }
   // CLAUDE.md's "Token normalization" block, which lived in prose and nothing
   // enforced. A miswritten row was aggregated and rendered, not flagged.
-  const sum = COLUMNS.reduce((acc, column) => acc + Number(row[column] || 0), 0);
+  // Not a plain sum: codex and every-code fold reasoning into output_tokens, so
+  // adding the column again would double-count. expectedTotal() is the single
+  // rule, shared with doctor's queue.row_invariant check, and it mirrors
+  // computeRowCost (pricing/index.js:309). Running the plain sum against a real
+  // 34,922-row queue reported 8,236 false violations, all source=codex.
   assert.equal(
     Number(row.total_tokens || 0),
-    sum,
-    `${label}: total_tokens must equal the sum of the columns`,
+    expectedTotal(row),
+    `${label}: total_tokens must equal the expected total for its source`,
   );
 
   assert.ok(

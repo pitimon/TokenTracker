@@ -57,7 +57,14 @@ input_tokens                  = non-cached input only (no cache reads/writes)
 cached_input_tokens           = cache reads
 cache_creation_input_tokens   = cache writes
 reasoning_output_tokens       = reasoning tokens (Codex/every-code fold them into output_tokens for cost)
-total_tokens                  = input + output + cache_creation + cache_read + reasoning_output (sum of all columns; Gemini-style rows that omit reasoning still pass invariants if you set the column to 0)
+total_tokens                  = input + output + cache_creation + cache_read + reasoning_output
+                                EXCEPT codex / every-code, where reasoning_output is ALREADY
+                                counted inside output_tokens, so their total_tokens correctly
+                                omits it. `computeRowCost` (pricing/index.js:309) makes the same
+                                distinction and charges their reasoning at zero. Gemini-style rows
+                                that omit reasoning pass with the column set to 0.
+                                Enforced by `doctor` (queue.row_invariant) via
+                                expectedTotal() in src/lib/queue-compact.js.
 ```
 
 **Cost is computed from `input_tokens + output_tokens + cached_input_tokens + cache_creation_input_tokens + reasoning_output_tokens` only — never `total_tokens`** (`computeRowCost` in `src/lib/pricing/index.js`). If a new provider only fills `total_tokens` with input=0/output=0, the dashboard renders **$0 cost** regardless of pricing entries. Distribute the total across columns or extend `computeRowCost`.
