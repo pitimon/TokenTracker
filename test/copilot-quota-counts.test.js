@@ -89,6 +89,49 @@ describe("Copilot quota counts", () => {
     assert.equal(result.primary_window.used_percent, 100);
   });
 
+  it("derives the percentage from the counts when GitHub sends both", async () => {
+    // Codex QA on PR #98 found these disagreeing. `percent_remaining: 30` says
+    // 70% used; the counts say 228/300 = 76%. The caption is the number the
+    // user reads, so the bar has to be a drawing of the same number.
+    const home = copilotHome();
+    const result = await fetchCopilotLimits({
+      home,
+      env: { HOME: home },
+      fetchImpl: respondWith({
+        quota_snapshots: {
+          premium_interactions: { percent_remaining: 30, entitlement: 300, remaining: 72 },
+        },
+      }),
+    });
+
+    assert.equal(result.primary_window.used, 228);
+    assert.equal(result.primary_window.limit, 300);
+    assert.ok(
+      Math.abs(result.primary_window.used_percent - 76) < 1e-9,
+      `percentage must match the counts, got ${result.primary_window.used_percent}`,
+    );
+  });
+
+  it("does not read a null count as zero remaining", async () => {
+    // `Number(null)` is 0, so a missing `remaining` reported the whole
+    // allowance consumed: "300/300" while the percentage said 10% used. That
+    // tells someone their quota is gone when they have barely touched it.
+    const home = copilotHome();
+    const result = await fetchCopilotLimits({
+      home,
+      env: { HOME: home },
+      fetchImpl: respondWith({
+        quota_snapshots: {
+          premium_interactions: { entitlement: 300, remaining: null, percent_remaining: 90 },
+        },
+      }),
+    });
+
+    assert.equal("used" in result.primary_window, false, "no count without a real remaining");
+    assert.equal("limit" in result.primary_window, false);
+    assert.equal(result.primary_window.used_percent, 10, "falls back to the percentage");
+  });
+
   it("reports no window at all when the snapshot is entirely zero", async () => {
     // Pre-existing guard in buildCopilotWindow that had no coverage: an
     // all-zero snapshot means "no quota of this kind", not "0% used".

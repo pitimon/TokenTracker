@@ -94,10 +94,14 @@ export function getWindowCounts(win, mode) {
   const used = Number(win?.used);
   const limit = Number(win?.limit);
   if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
-  const shown = mode === LIMIT_DISPLAY_MODES.REMAINING ? limit - used : used;
-  // The server already clamps `used` into [0, limit], so the flip cannot go
-  // negative; Math.max is belt-and-braces against an older server's payload.
-  return { used: Math.max(0, Math.round(shown)), limit: Math.round(limit) };
+  // Clamp into [0, limit] BEFORE the flip, not after. The current server
+  // already clamps, but a newer dashboard talks to whatever server is installed:
+  // an unclamped `used: 312` renders "312/300" in Used mode, and `used: -12`
+  // renders "312/300" in Remaining mode — an impossible count either way.
+  // Clamping only the low end catches neither.
+  const safeUsed = Math.max(0, Math.min(limit, used));
+  const shown = mode === LIMIT_DISPLAY_MODES.REMAINING ? limit - safeUsed : safeUsed;
+  return { used: Math.round(shown), limit: Math.round(limit) };
 }
 
 /**

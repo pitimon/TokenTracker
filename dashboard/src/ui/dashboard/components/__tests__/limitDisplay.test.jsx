@@ -111,10 +111,15 @@ describe("getWindowCounts", () => {
     expect(getWindowCounts(null, USED)).toBeNull();
   });
 
-  it("never renders a negative remaining count", () => {
-    // The server clamps, but an older server's payload reaching a newer
-    // dashboard must not print "-12".
+  it("never renders an impossible count from an unclamped payload", () => {
+    // The current server clamps, but a newer dashboard talks to whatever server
+    // is installed. Codex QA on PR #98 found that clamping only the low end
+    // lets BOTH directions overflow: over-quota renders "312/300" in Used mode,
+    // and a negative `used` renders "312/300" in Remaining mode.
+    expect(getWindowCounts({ used: 312, limit: 300 }, USED)).toEqual({ used: 300, limit: 300 });
     expect(getWindowCounts({ used: 312, limit: 300 }, REMAINING)).toEqual({ used: 0, limit: 300 });
+    expect(getWindowCounts({ used: -12, limit: 300 }, REMAINING)).toEqual({ used: 300, limit: 300 });
+    expect(getWindowCounts({ used: -12, limit: 300 }, USED)).toEqual({ used: 0, limit: 300 });
   });
 });
 

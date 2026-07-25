@@ -1170,26 +1170,41 @@ function copilotResetIso(value) {
   return new Date(ts).toISOString();
 }
 
+// `Number(null)` is 0 and `Number("")` is 0, so coercing a missing field reads
+// as "none left" — a snapshot with `remaining: null` reported the entire
+// allowance consumed. Require an actual finite number.
+function copilotCount(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function buildCopilotWindow(snapshot, resetIso) {
   if (!snapshot || typeof snapshot !== "object") return null;
-  const entitlement = Number(snapshot.entitlement);
-  const remaining = Number(snapshot.remaining);
-  const percentRemaining = Number(snapshot.percent_remaining);
+  const entitlement = copilotCount(snapshot.entitlement);
+  const remaining = copilotCount(snapshot.remaining);
+  const percentRemaining = copilotCount(snapshot.percent_remaining);
   const allZero = (!entitlement || entitlement <= 0) && (!remaining || remaining <= 0) && (!percentRemaining || percentRemaining <= 0);
   if (allZero) return null;
+  // The counts are what the user actually asked about ("how many premium
+  // requests do I have left"), and they were being read, divided once, and
+  // thrown away.
+  const hasCounts = entitlement !== null && entitlement > 0 && remaining !== null;
+
+  // When GitHub sends BOTH a percentage and counts, derive the percentage from
+  // the counts rather than trusting `percent_remaining`. The two can disagree —
+  // `percent_remaining: 30` alongside `entitlement: 300, remaining: 72` means a
+  // 70%-wide bar captioned "228/300", which is 76%. The caption is the number
+  // the user reads, so the bar has to be a drawing of it, not of a separately
+  // rounded field. `percent_remaining` stays the fallback for the case it was
+  // added for: a percentage with no denominator to count against.
   let usedPercent;
-  if (Number.isFinite(percentRemaining)) {
-    usedPercent = 100 - percentRemaining;
-  } else if (Number.isFinite(entitlement) && entitlement > 0 && Number.isFinite(remaining)) {
+  if (hasCounts) {
     usedPercent = ((entitlement - remaining) / entitlement) * 100;
+  } else if (percentRemaining !== null) {
+    usedPercent = 100 - percentRemaining;
   } else {
     return null;
   }
-  // The counts are what the user actually asked about ("how many premium
-  // requests do I have left"). They were being read, divided once, and thrown
-  // away — carry them through. Only when GitHub sent both: `percent_remaining`
-  // alone is enough for the percentage but names no denominator to count against.
-  const hasCounts = Number.isFinite(entitlement) && entitlement > 0 && Number.isFinite(remaining);
+
   return buildWindow({
     usedPercent,
     resetAt: resetIso,

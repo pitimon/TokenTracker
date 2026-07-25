@@ -96,7 +96,7 @@ Both bundle their own Node runtime, so there is nothing else to install. They sh
 **On one screen:**
 - **Total tokens + cost** for the selected window (24h / day / 7d / 30d / total / custom), with a browser-timezone "Updated" stamp.
 - **Usage Trend** — token volume over time, right beside the total.
-- **Provider breakdown** — every tool's share and top models, with each provider's live quota chips (used %, e.g. 5h + weekly) on its card and a click-to-expand per-model drill-down.
+- **Provider breakdown** — every tool's share and top models, with each provider's live quota chips (e.g. 5h + weekly — a count like `158/300` where the provider reports one, otherwise a percentage) on its card and a click-to-expand per-model drill-down.
 - **Context breakdown** — where Claude's and Codex's tokens actually go (input / output / cache / reasoning), shown side by side.
 - **Activity heatmap** — daily usage at a glance.
 - **Project & daily tables** — per-project totals and a day-by-day breakdown with cost and $/MTok.
