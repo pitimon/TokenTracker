@@ -181,3 +181,115 @@ test("an empty window returns no entries rather than falling back to everything"
   const result = run(paths, { from: "2026-07-01", to: "2026-07-02", timeZone: "UTC" });
   assert.deepEqual(result.entries, []);
 });
+
+// --- Mixed-era rows (#102's stated risk) --------------------------------------
+// Legacy `project|source|hour` and new `project|source|model|hour` describe the
+// same bucket at different granularity. Summing both double-counts; dropping
+// either loses real usage. This is the part of the change that can be wrong in a
+// way nobody notices, so it gets the most tests.
+
+const legacyRow = (over = {}) => {
+  const row = projectRow(over);
+  delete row.model;
+  return row;
+};
+
+const modelRow = (over = {}) => projectRow({ model: "claude-sonnet-5", ...over });
+
+test("a legacy row and a model row for the same bucket both count, exactly once", () => {
+  // The pre-upgrade total is frozen in the legacy row; new usage in that same
+  // hour accumulates under the model key. They are different slots on purpose,
+  // and the sum is the true total.
+  const paths = fixture({
+    projectRows: [legacyRow({ total_tokens: 700 }), modelRow({ total_tokens: 300 })],
+  });
+  const entries = run(paths, {}).entries;
+  assert.equal(entries.length, 1, "one repo, one row");
+  assert.equal(entries[0].total_tokens, "1000", "700 pre-upgrade + 300 after");
+});
+
+test("repeated appends of the SAME key still collapse to the last one", () => {
+  // The append-only store writes cumulative totals per bucket, so several rows
+  // with one key are normal and only the last is real. Adding model to the key
+  // must not break that.
+  const paths = fixture({
+    projectRows: [
+      modelRow({ total_tokens: 100 }),
+      modelRow({ total_tokens: 250 }),
+      modelRow({ total_tokens: 400 }),
+    ],
+  });
+  assert.equal(run(paths, {}).entries[0].total_tokens, "400");
+});
+
+test("two models in one hour are two slots, not one overwriting the other", () => {
+  const paths = fixture({
+    projectRows: [
+      modelRow({ model: "claude-sonnet-5", total_tokens: 100 }),
+      modelRow({ model: "claude-opus-5", total_tokens: 40 }),
+    ],
+  });
+  assert.equal(run(paths, {}).entries[0].total_tokens, "140");
+});
+
+test("legacy rows repeat-append too, and still collapse", () => {
+  // A user who has not synced since the upgrade has only legacy rows, several
+  // per bucket. They must not sum.
+  const paths = fixture({
+    projectRows: [legacyRow({ total_tokens: 100 }), legacyRow({ total_tokens: 900 })],
+  });
+  assert.equal(run(paths, {}).entries[0].total_tokens, "900");
+});
+
+// --- Per-repo cost -------------------------------------------------------------
+
+test("cost is computed per repo, from the model on the row", () => {
+  const paths = fixture({
+    projectRows: [
+      modelRow({
+        model: "claude-sonnet-5",
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 1_000_000,
+      }),
+    ],
+  });
+  const entry = run(paths, {}).entries[0];
+  assert.ok(Number(entry.total_cost_usd) > 0, `expected a priced cost, got ${entry.total_cost_usd}`);
+  assert.equal(entry.unattributed_tokens, "0");
+});
+
+test("a legacy row is UNATTRIBUTED, not a confident $0", () => {
+  // The #94 tier doing what it was added for. Pricing a model-less row at zero
+  // and folding it into the total would render "recorded before we recorded
+  // models" as "this cost nothing".
+  const paths = fixture({ projectRows: [legacyRow({ total_tokens: 5000 })] });
+  const entry = run(paths, {}).entries[0];
+  assert.equal(entry.total_cost_usd, "0.000000");
+  assert.equal(entry.unattributed_tokens, "5000", "the tokens must be named as unpriced");
+  assert.equal(entry.total_tokens, "5000", "and still counted in the token total");
+});
+
+test("a mixed repo reports the priced part and names the rest", () => {
+  const paths = fixture({
+    projectRows: [
+      legacyRow({ total_tokens: 700 }),
+      modelRow({
+        model: "claude-sonnet-5",
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 1_000_000,
+      }),
+    ],
+  });
+  const entry = run(paths, {}).entries[0];
+  assert.equal(entry.unattributed_tokens, "700");
+  assert.ok(Number(entry.total_cost_usd) > 0);
+  assert.equal(entry.total_tokens, "1000700");
+});

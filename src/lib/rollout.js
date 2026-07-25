@@ -937,11 +937,12 @@ async function parseRolloutFile({
         projectState,
         currentProjectKey,
         source,
+        model,
         bucketStart,
         currentProjectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(currentProjectKey, source, bucketStart));
+      projectTouchedBuckets.add(projectBucketKey(currentProjectKey, source, model, bucketStart));
     }
     eventsAggregated += 1;
   }
@@ -1061,11 +1062,12 @@ async function parseClaudeFile({
         projectState,
         projectKey,
         source,
+        model,
         bucketStart,
         projectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
+      projectTouchedBuckets.add(projectBucketKey(projectKey, source, model, bucketStart));
     }
     eventsAggregated += 1;
   }
@@ -1145,11 +1147,12 @@ async function parseGeminiFile({
         projectState,
         projectKey,
         source,
+        model,
         bucketStart,
         projectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
+      projectTouchedBuckets.add(projectBucketKey(projectKey, source, model, bucketStart));
     }
     eventsAggregated += 1;
     totals = currentTotals;
@@ -1256,11 +1259,12 @@ async function parseOpencodeMessageFile({
       projectState,
       projectKey,
       source,
+      model,
       bucketStart,
       projectRef,
     );
     addTotals(projectBucket.totals, delta);
-    projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
+    projectTouchedBuckets.add(projectBucketKey(projectKey, source, model, bucketStart));
   }
   return { messageKey, lastTotals: currentTotals, eventsAggregated: 1, shouldUpdate: true };
 }
@@ -1598,6 +1602,7 @@ async function enqueueTouchedProjectBuckets({
         project_ref: projectRef,
         project_key: projectKey,
         source: bucket.source,
+        model: bucket.model || PROJECT_MODEL_UNATTRIBUTED,
         hour_start: bucket.hour_start,
         input_tokens: totals.input_tokens,
         cached_input_tokens: totals.cached_input_tokens,
@@ -1767,12 +1772,16 @@ function normalizeProjectState(raw) {
     projects[key] = { ...value };
   }
 
-  return {
-    version: 2,
+  const normalized = {
+    version: 3,
     buckets,
     projects,
     updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
   };
+  // Every parser reaches project state through here, so one call covers all of
+  // them. Idempotent: a v3 key already has four segments and is skipped.
+  migrateProjectBucketsToModelKey(normalized);
+  return normalized;
 }
 
 function normalizeOpencodeState(raw) {
@@ -1819,10 +1828,11 @@ function getHourlyBucket(state, source, model, hourStart) {
   return bucket;
 }
 
-function getProjectBucket(state, projectKey, source, hourStart, projectRef) {
+function getProjectBucket(state, projectKey, source, model, hourStart, projectRef) {
   const buckets = state.buckets;
   const normalizedSource = normalizeSourceInput(source) || DEFAULT_SOURCE;
-  const key = projectBucketKey(projectKey, normalizedSource, hourStart);
+  const normalizedModel = normalizeModelInput(model) || PROJECT_MODEL_UNATTRIBUTED;
+  const key = projectBucketKey(projectKey, normalizedSource, normalizedModel, hourStart);
   let bucket = buckets[key];
   if (!bucket || typeof bucket !== "object") {
     bucket = {
@@ -1831,6 +1841,7 @@ function getProjectBucket(state, projectKey, source, hourStart, projectRef) {
       project_key: projectKey,
       project_ref: projectRef,
       source: normalizedSource,
+      model: normalizedModel,
       hour_start: hourStart,
     };
     buckets[key] = bucket;
@@ -1921,9 +1932,53 @@ function bucketKey(source, model, hourStart) {
   return `${safeSource}${BUCKET_SEPARATOR}${safeModel}${BUCKET_SEPARATOR}${hourStart}`;
 }
 
-function projectBucketKey(projectKey, source, hourStart) {
+// Per-repo COST is per-model, and the key had no model in it, so the repo x model
+// join this product's README promises ("which repo, which model, and which
+// hour") had never existed. Adding model is what makes computeRowCost usable
+// per project.
+//
+// The transition hazard is the whole job. A legacy row keyed
+// project|source|hour and a new row keyed project|source|model|hour describe the
+// SAME bucket at different granularity, so a reader that keeps both
+// double-counts. Rows written before this change are keyed with
+// PROJECT_MODEL_UNATTRIBUTED, so they occupy one slot alongside the model-keyed
+// rows rather than shadowing them — see migrateProjectBucketsToModelKey.
+const PROJECT_MODEL_UNATTRIBUTED = "unknown";
+
+function projectBucketKey(projectKey, source, model, hourStart) {
   const safeSource = normalizeSourceInput(source) || DEFAULT_SOURCE;
-  return `${projectKey}${BUCKET_SEPARATOR}${safeSource}${BUCKET_SEPARATOR}${hourStart}`;
+  const safeModel = normalizeModelInput(model) || PROJECT_MODEL_UNATTRIBUTED;
+  return (
+    `${projectKey}${BUCKET_SEPARATOR}${safeSource}` +
+    `${BUCKET_SEPARATOR}${safeModel}${BUCKET_SEPARATOR}${hourStart}`
+  );
+}
+
+// Re-keys buckets carried in cursors.json from the pre-model key to the new one,
+// tagging them PROJECT_MODEL_UNATTRIBUTED.
+//
+// Without this the old bucket keeps its old key, never matches again, and its
+// running total is stranded: new usage in the same hour starts from zero under
+// the model key while the reader still sees the old row. Sum = double count.
+//
+// After it, the stranded bucket becomes the `unknown` slot for that hour. It
+// stops receiving new usage (that goes to the model-specific bucket), so it is
+// frozen at its pre-upgrade total and the two sum to the right number — no
+// double count, and nothing lost.
+function migrateProjectBucketsToModelKey(projectState) {
+  const buckets = projectState?.buckets;
+  if (!buckets || typeof buckets !== "object") return 0;
+  let migrated = 0;
+  for (const [key, bucket] of Object.entries(buckets)) {
+    if (key.split(BUCKET_SEPARATOR).length !== 3) continue;
+    const [projectKey, source, hourStart] = key.split(BUCKET_SEPARATOR);
+    const nextKey = projectBucketKey(projectKey, source, PROJECT_MODEL_UNATTRIBUTED, hourStart);
+    if (buckets[nextKey]) continue;
+    buckets[nextKey] = { ...bucket, model: PROJECT_MODEL_UNATTRIBUTED };
+    delete buckets[key];
+    migrated += 1;
+  }
+  return migrated;
 }
 
 function groupBucketKey(source, hourStart) {
@@ -2663,11 +2718,14 @@ async function parseOpencodeDbIncremental({
           projectState,
           projectKey,
           defaultSource,
+          model,
           bucketStart,
           projectRef,
         );
         addTotals(projectBucket.totals, delta);
-        projectTouchedBuckets.add(projectBucketKey(projectKey, defaultSource, bucketStart));
+        projectTouchedBuckets.add(
+          projectBucketKey(projectKey, defaultSource, model, bucketStart),
+        );
       }
     }
 
@@ -8608,11 +8666,12 @@ async function parseAntigravityFile({
         projectState,
         projectKey,
         source,
+        model,
         bucketStart,
         projectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
+      projectTouchedBuckets.add(projectBucketKey(projectKey, source, model, bucketStart));
     }
     eventsAggregated += 1;
     // Snapshot the pre-planner context first. The planner's own content+tool_calls
@@ -8707,6 +8766,11 @@ function isCjkCodePoint(code) {
 }
 
 module.exports = {
+  // Exported for tests: the mixed-era rule is the risky part of this change.
+  projectBucketKey,
+  migrateProjectBucketsToModelKey,
+  normalizeProjectState,
+  PROJECT_MODEL_UNATTRIBUTED,
   listRolloutFiles,
   listClaudeProjectFiles,
   listGeminiSessionFiles,

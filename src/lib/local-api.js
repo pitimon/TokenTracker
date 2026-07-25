@@ -144,7 +144,12 @@ function readProjectQueueData(projectQueuePath) {
   for (const line of lines) {
     try {
       const row = JSON.parse(line);
-      const key = `${row.project_key || ""}|${row.source || ""}|${row.hour_start || ""}`;
+      // Model is part of the identity now. A legacy row has no `model` and gets
+      // the same "unknown" slot the state migration gives its stranded bucket,
+      // so the two share one key instead of both surviving and double-counting.
+      const key =
+        `${row.project_key || ""}|${row.source || ""}` +
+        `|${row.model || "unknown"}|${row.hour_start || ""}`;
       seen.set(key, row);
     } catch {
       // skip malformed
@@ -849,6 +854,14 @@ function aggregateBySource(queuePath, inWindow, matchesSource) {
   return bySrc;
 }
 
+// Per-repo cost, which the data model could not express until project rows
+// carried a model. computeRowCost is the same function the rest of the product
+// prices with, so a repo total and a model total cannot disagree.
+//
+// A row with no model prices at 0 and is counted as UNATTRIBUTED rather than
+// folded silently into the total — that is the #94 tier doing exactly what it
+// was added for. "Recorded before we recorded models" renders honestly instead
+// of as a confident $0.
 function aggregateByProject(rows) {
   const byProject = new Map();
   for (const row of rows) {
@@ -859,11 +872,20 @@ function aggregateByProject(rows) {
         project_ref: row.project_ref || key,
         total_tokens: 0,
         billable_total_tokens: 0,
+        total_cost_usd: 0,
+        unattributed_tokens: 0,
       });
     }
     const agg = byProject.get(key);
-    agg.total_tokens += Number(row.total_tokens || 0);
-    agg.billable_total_tokens += Number(row.total_tokens || 0);
+    const tokens = Number(row.total_tokens || 0);
+    agg.total_tokens += tokens;
+    agg.billable_total_tokens += tokens;
+    const model = typeof row.model === "string" ? row.model.trim() : "";
+    if (!model || model === "unknown") {
+      agg.unattributed_tokens += tokens;
+    } else {
+      agg.total_cost_usd += computeRowCost(row);
+    }
     if (!agg.project_ref && row.project_ref) agg.project_ref = row.project_ref;
   }
   return byProject;
@@ -878,6 +900,11 @@ function rankProjectEntries(byKey) {
       ...e,
       total_tokens: String(e.total_tokens),
       billable_total_tokens: String(e.billable_total_tokens),
+      // Strings for the same reason the token counts are: the panel formats
+      // them, and a float in JSON invites a rounding difference between the two
+      // sides of the wire.
+      total_cost_usd: (e.total_cost_usd ?? 0).toFixed(6),
+      unattributed_tokens: String(e.unattributed_tokens ?? 0),
     }));
 }
 
