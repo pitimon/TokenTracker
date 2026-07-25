@@ -325,3 +325,31 @@ test("link_from covers a host the user clicks, and only where declared", () => {
   // The same file without the declaration is a request.
   assert.ok(attack('const RELEASES = "https://shared.example/releases/latest";').length > 0);
 });
+
+test("a backslash ends the authority, so userinfo cannot borrow a permitted name", () => {
+  // WHATWG URL parsing treats `\` as `/`, so `https://evil.example\@github.com/p.png`
+  // reaches evil.example and the rest is decoration. Splitting on "/" alone
+  // resolved it to `github.com` — a DECLARED host. That is worse than a miss:
+  // where the file has permission for github.com, the check reads green while
+  // the request leaves for somewhere else. This repo already made the same
+  // backslash assumption in the Host-header guard (issue 88).
+  const permitted = shared({ request_from: ["dashboard/src/A.jsx"] });
+  const findings = attack('const x = <img src="https://evil.example\\@shared.example/p.png" />;', [permitted]);
+  assert.ok(
+    findings.some((f) => f.includes("evil.example")),
+    `the real host must be reported, got: ${JSON.stringify(findings)}`,
+  );
+  // Scoped to the line under test: the fixture's other file legitimately
+  // produces its own shared.example finding, which says nothing about parsing.
+  assert.ok(
+    !findings.some((f) => f.includes("A.jsx") && f.includes("'shared.example'")),
+    "the borrowed name must not be what this line resolves to",
+  );
+});
+
+test("a trailing dot does not hide a host", () => {
+  // `other.example.` is a valid absolute FQDN that resolves identically. The
+  // hostname shape test rejected the dot and returned null, so the request was
+  // invisible rather than reported.
+  assert.ok(attack('const x = <img src="https://other.example./p.png" />;').some((f) => f.includes("other.example")));
+});

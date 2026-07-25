@@ -47,7 +47,13 @@ function literalHost(authority) {
   // evil.example, and the part that LOOKS like a declared host is attacker-chosen
   // decoration. Taking the text before the '@' would read as permitted; dropping
   // the URL entirely would hide it. Take what the browser takes.
-  const authorityOnly = authority.split("/")[0].split("?")[0];
+  // A backslash ends the authority exactly as a slash does — WHATWG URL parsing
+  // treats them the same, so `https://evil.example\@github.com/p.png` reaches
+  // evil.example while the text after the backslash is decoration. Splitting on
+  // "/" alone reported `github.com`: a plausible, DECLARED host, which reads
+  // green rather than as a miss. This repo already ate the same backslash
+  // assumption in the Host-header guard (issue 88).
+  const authorityOnly = authority.split(/[/\\?#]/)[0];
   const withoutPath = authorityOnly.includes("@")
     ? authorityOnly.slice(authorityOnly.lastIndexOf("@") + 1)
     : authorityOnly;
@@ -63,12 +69,15 @@ function literalHost(authority) {
     .pop()
     .replace(/^[^a-zA-Z0-9]+/, "")
     .replace(/:.*$/, "");
-  if (!stripped) return null;
+  // A single trailing dot is a valid absolute-FQDN form that resolves the same,
+  // so `github.com.` must not slip past the hostname shape test unseen.
+  const normalized = stripped.replace(/\.$/, "");
+  if (!normalized) return null;
   // Must look like a hostname: dotted labels, or a bare IPv4.
-  if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(stripped)) {
+  if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(normalized)) {
     return null;
   }
-  return stripped;
+  return normalized;
 }
 
 // Default-deny. A host literal in source is treated as a REQUEST TARGET unless
