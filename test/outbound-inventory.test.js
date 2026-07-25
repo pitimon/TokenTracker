@@ -9,7 +9,7 @@ const { checkOutbound, collectHosts } = require("../scripts/validate-outbound.cj
 // A throwaway repo shaped like this one. The validator reads the tree it is
 // pointed at, so probing the real tree would mean editing tracked source — the
 // hazard already caught once in test/openwiki-facts.test.js.
-function fixture({ files = {}, hosts = [], ignored = [], readme = "" }) {
+function fixture({ files = {}, hosts = [], ignored = [], readme = "", unresolved = [] }) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tt-outbound-"));
   for (const [relative, content] of Object.entries(files)) {
     const full = path.join(root, relative);
@@ -18,18 +18,21 @@ function fixture({ files = {}, hosts = [], ignored = [], readme = "" }) {
   }
   fs.writeFileSync(
     path.join(root, "outbound-hosts.json"),
-    JSON.stringify({ hosts, ignored_hosts: { hosts: ignored } }),
+    JSON.stringify({ hosts, ignored_hosts: { hosts: ignored }, unresolved_authorities: unresolved }),
   );
   fs.writeFileSync(path.join(root, "README.md"), readme);
   return root;
 }
 
+// A minimally VALID entry. It has to satisfy the metadata check too, which is
+// why `purpose` is a sentence and `from` says which side: those fields stopped
+// being free text in #110 item 6.
 const declared = (host, extra = {}) => ({
   host,
   from: "server",
   user_data: false,
   readme: false,
-  purpose: "test",
+  purpose: "a purpose long enough to be worth reading",
   seen_in: ["src/a.js"],
   request_from: ["src/a.js"],
   ...extra,
@@ -142,6 +145,7 @@ test("a request from a file that only had permission to MENTION the host is caug
     },
     hosts: [
       declared("shared.example", {
+        from: "browser",
         seen_in: ["dashboard/src/Allowed.jsx", "dashboard/src/Mentions.jsx"],
         request_from: ["dashboard/src/Allowed.jsx"],
       }),
@@ -160,7 +164,11 @@ test("request_from is enforced, so it cannot drift into decoration", () => {
     files: { "src/a.js": 'const u = "https://x.example/1";\n' },
     hosts: [declared("x.example", { request_from: [] })],
   });
-  assert.ok(checkOutbound({ root }).some((f) => f.includes("not in its request_from list")));
+  assert.ok(
+    checkOutbound({ root }).some((f) =>
+      f.includes("no request_from, link_from or data_from entry covers"),
+    ),
+  );
 });
 
 // --- Half B ------------------------------------------------------------------
@@ -224,7 +232,14 @@ test("an unresolvable interpolated host is not invented", () => {
   const root = fixture({
     files: { "src/serve.js": 'const u = new URL(p, `http://${req.headers.host || "localhost"}`);\n' },
   });
-  assert.deepEqual(checkOutbound({ root }), []);
+  const findings = checkOutbound({ root });
+  assert.ok(
+    !findings.some((f) => f.includes("undeclared outbound host")),
+    `no host may be invented from the remainder: ${JSON.stringify(findings)}`,
+  );
+  // It is now REPORTED as unresolvable rather than dropped (#110 item 1) — the
+  // scanner saying "I cannot tell where this goes" instead of staying silent.
+  assert.ok(findings.some((f) => f.includes("cannot be resolved to a host")));
 });
 
 test("a comment is a mention; a clickable link needs link_from", () => {
@@ -242,13 +257,163 @@ test("a comment is a mention; a clickable link needs link_from", () => {
     },
     hosts: [
       declared("docs.example", {
+        from: "browser",
         seen_in: ["dashboard/src/Doc.jsx"],
         request_from: [],
-        link_from: ["dashboard/src/Doc.jsx"],
+        link_from: [{ file: "dashboard/src/Doc.jsx", url: "https://docs.example/guide" }],
       }),
     ],
   });
   assert.deepEqual(checkOutbound({ root }), []);
+});
+
+// --- Comments and waivers -----------------------------------------------------
+// Two ways this control gets switched off: it cries wolf on ordinary code, or it
+// hands out a permission wider than the one written down.
+
+test("a URL in a TRAILING comment is a mention, not a request", () => {
+  // Only line-LEADING comments were recognised, so a reference link after code
+  // read as a request. That shape is common enough to be the likeliest source of
+  // pressure to disable the whole check.
+  const root = fixture({
+    files: {
+      "src/a.js": 'const x = 5; // see https://docs.example/issues/123\nmodule.exports = x;\n',
+    },
+  });
+  assert.deepEqual(checkOutbound({ root }), []);
+});
+
+test("`//` inside a string is not a comment", () => {
+  // The token the comment scanner looks for is the one every URL contains, so
+  // string state has to be tracked. Get this wrong and the check exempts
+  // everything it exists to catch.
+  const findings = attack('const x = fetch("https://shared.example/x");');
+  assert.ok(
+    findings.some((f) => f.includes("shared.example")),
+    `a plain fetch must still be a request: ${JSON.stringify(findings)}`,
+  );
+});
+
+test("code after a CLOSED block comment on the same line is still a request", () => {
+  // Comments are ranges, not a single start index. Treating the first `/*` as
+  // "comment from here on" would exempt the live call that follows it.
+  const findings = attack('/* note */ fetch("https://shared.example/x");');
+  assert.ok(
+    findings.some((f) => f.includes("shared.example")),
+    `the call after the comment must survive: ${JSON.stringify(findings)}`,
+  );
+});
+
+test("an unterminated /* comments out its own line and no more", () => {
+  // A regex literal like /[/*]/ opens a block comment as far as this scanner is
+  // concerned. Carrying that state across lines would silence the rest of the
+  // file — a miss, the one direction this check must never fail in.
+  const root = fixture({
+    files: {
+      "dashboard/src/a.jsx": [
+        "const re = /[/*]/;",
+        'const img = <img src="https://tracker.example/p.gif" />;',
+        "",
+      ].join("\n"),
+    },
+  });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("tracker.example")),
+    "the next line must still be scanned",
+  );
+});
+
+test("a waiver covers the URL it names, not the file it sits in", () => {
+  // The #100 shape: SkillDetailPanel.jsx holds a github.com link waiver and
+  // already interpolates owner names, so "show skill-author avatars" — an <img
+  // src> added beside the link — passed under a file-wide waiver. Pinning to the
+  // literal makes the new string a diff in the inventory instead.
+  const root = fixture({
+    files: {
+      "dashboard/src/Panel.jsx": [
+        'const link = <a href="https://docs.example/guide">docs</a>;',
+        "const avatar = <img src={`https://docs.example/${owner}.png`} />;",
+        "",
+      ].join("\n"),
+    },
+    hosts: [
+      declared("docs.example", {
+        from: "browser",
+        seen_in: ["dashboard/src/Panel.jsx"],
+        request_from: [],
+        link_from: [{ file: "dashboard/src/Panel.jsx", url: "https://docs.example/guide" }],
+      }),
+    ],
+  });
+  const findings = checkOutbound({ root });
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.ok(findings[0].includes("${owner}.png"), findings[0]);
+});
+
+test("every request to a host from one file is reported, not just the last", () => {
+  // The request map was keyed by file, so a second call overwrote the first and
+  // only one line was ever seen. With waivers pinned per URL, each occurrence has
+  // to be matched on its own.
+  const root = fixture({
+    files: {
+      "dashboard/src/Panel.jsx": [
+        'fetch("https://docs.example/one");',
+        'fetch("https://docs.example/two");',
+        "",
+      ].join("\n"),
+    },
+    hosts: [
+      declared("docs.example", {
+        from: "browser",
+        seen_in: ["dashboard/src/Panel.jsx"],
+        request_from: [],
+      }),
+    ],
+  });
+  const findings = checkOutbound({ root });
+  assert.equal(findings.length, 2, JSON.stringify(findings));
+  assert.ok(findings.some((f) => f.includes("/one")) && findings.some((f) => f.includes("/two")));
+});
+
+test("a pin that matches nothing is reported as a stale waiver", () => {
+  // Left in place it is a live exemption waiting for a URL to drift back onto it.
+  const root = fixture({
+    files: { "dashboard/src/Panel.jsx": 'const link = <a href="https://docs.example/guide">d</a>;\n' },
+    hosts: [
+      declared("docs.example", {
+        from: "browser",
+        seen_in: ["dashboard/src/Panel.jsx"],
+        request_from: [],
+        link_from: [
+          { file: "dashboard/src/Panel.jsx", url: "https://docs.example/guide" },
+          { file: "dashboard/src/Panel.jsx", url: "https://docs.example/gone" },
+        ],
+      }),
+    ],
+  });
+  const findings = checkOutbound({ root });
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.ok(findings[0].includes("stale waiver"), findings[0]);
+});
+
+test("a bare filename is rejected as a waiver, not read as an unmatched pin", () => {
+  // The old shape WAS the defect. It has to fail loudly rather than degrade into
+  // a confusing "no such URL" message.
+  const root = fixture({
+    files: { "dashboard/src/Panel.jsx": 'const link = <a href="https://docs.example/guide">d</a>;\n' },
+    hosts: [
+      declared("docs.example", {
+        from: "browser",
+        seen_in: ["dashboard/src/Panel.jsx"],
+        request_from: [],
+        link_from: ["dashboard/src/Panel.jsx"],
+      }),
+    ],
+  });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("file-wide waiver")),
+    "the old form must be named as the reason",
+  );
 });
 
 // --- Evasion ------------------------------------------------------------------
@@ -260,7 +425,7 @@ const shared = (extra = {}) => ({
   from: "browser",
   user_data: false,
   readme: true,
-  purpose: "test",
+  purpose: "a purpose long enough to be worth reading",
   seen_in: ["dashboard/src/Ok.jsx", "dashboard/src/A.jsx"],
   request_from: ["dashboard/src/Ok.jsx"],
   link_from: [],
@@ -320,7 +485,9 @@ test("a URL that IS the argument of a string operation stays a mention", () => {
 });
 
 test("link_from covers a host the user clicks, and only where declared", () => {
-  const asLink = shared({ link_from: ["dashboard/src/A.jsx"] });
+  const asLink = shared({
+    link_from: [{ file: "dashboard/src/A.jsx", url: "https://shared.example/releases/latest" }],
+  });
   assert.deepEqual(attack('const RELEASES = "https://shared.example/releases/latest";', [asLink]), []);
   // The same file without the declaration is a request.
   assert.ok(attack('const RELEASES = "https://shared.example/releases/latest";').length > 0);
@@ -400,7 +567,12 @@ test("an interpolated suffix pins only a real zone, never a bare TLD", () => {
   // `${sub}github.com` can resolve to the registrable `evilgithub.com`, so no pin.
   // `${src}.ai` pins nothing either — `ai` is the TLD itself, and a comment
   // illustrating a bad URL should not be reported as a destination.
-  assert.deepEqual(attack('const u = `https://${sub}shared.example/x`;'), []);
+  // No host is pinned — but since #110 item 1 the authority is reported as
+  // unresolvable rather than silently dropped.
+  const suffix = attack('const u = `https://${sub}shared.example/x`;');
+  assert.ok(!suffix.some((f) => f.includes("undeclared outbound host")));
+  assert.ok(suffix.some((f) => f.includes("cannot be resolved to a host")));
+  // A comment is still a mention, so it is not even reported as unresolvable.
   assert.deepEqual(attack("// fabricating `https://${src}.ai` resolves to unrelated domains"), []);
   // A boundary that IS a zone still pins.
   assert.ok(
@@ -413,8 +585,11 @@ test("an interpolated suffix pins only a real zone, never a bare TLD", () => {
 test("data_from covers a host stored as a value and never fetched", () => {
   // A mock fixture's `project_ref` is neither a link nor a request. Without its
   // own category it lands on `link_from`, which is an UNCONDITIONAL waiver: once
-  // a file is there, any future request to that host from it passes forever.
-  const asData = shared({ data_from: ["dashboard/src/A.jsx"] });
+  // a file is there, any future request to that host from it passed forever —
+  // which is why both categories are now pinned to the URL rather than the file.
+  const asData = shared({
+    data_from: [{ file: "dashboard/src/A.jsx", url: "https://shared.example/${repo}" }],
+  });
   assert.deepEqual(attack('const row = { project_ref: `https://shared.example/${repo}` };', [asData]), []);
 });
 
@@ -478,5 +653,147 @@ test("a regex literal stripping a URL prefix is not a destination", () => {
   assert.deepEqual(
     attack('const raw = repoInput.trim().replace(/^https:\\/\\/shared\\.example\\//, "");'),
     [],
+  );
+});
+
+// --- Scan scope (#110 item 2) -------------------------------------------------
+// The walker saw two directories and one extension set. Each place below is one
+// the issue named, where a host could live and never be mentioned.
+
+test("the served HTML shell is scanned", () => {
+  // dashboard/index.html is what the browser loads. A <link rel=preconnect>, a
+  // font CDN or a <script src> here is a browser request, and none of it was
+  // visible to a walker that only knew dashboard/src.
+  const root = fixture({
+    files: { "dashboard/index.html": '<link rel="preconnect" href="https://fonts.example">\n' },
+  });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("fonts.example")),
+    "a preconnect in the shell is a request",
+  );
+});
+
+test("CSS url() is scanned, though it sits in an already-scanned directory", () => {
+  // dashboard/src/styles.css was skipped by EXTENSION, not by directory — the
+  // more embarrassing kind of gap, since the walker was already standing in it.
+  const root = fixture({
+    files: { "dashboard/src/styles.css": "body { background: url(https://tracker.example/bg.png); }\n" },
+  });
+  assert.ok(checkOutbound({ root }).some((f) => f.includes("tracker.example")));
+});
+
+test("scripts/ is scanned", () => {
+  // build-pricing-seed.cjs really does fetch raw.githubusercontent.com and was
+  // outside the scan entirely. Maintainer-run is a caveat for the purpose field,
+  // not a reason to be invisible.
+  const root = fixture({ files: { "scripts/build.cjs": 'fetch("https://seed.example/list.json");\n' } });
+  assert.ok(checkOutbound({ root }).some((f) => f.includes("seed.example")));
+});
+
+test("the dev-server config is scanned, so a new proxy target is visible", () => {
+  const root = fixture({
+    files: { "dashboard/vite.config.js": 'export default { server: { proxy: { "/p": { target: "https://proxy.example" } } } };\n' },
+  });
+  assert.ok(checkOutbound({ root }).some((f) => f.includes("proxy.example")));
+});
+
+// --- Inventory metadata (#110 item 6) -----------------------------------------
+// The fields a reader trusts most were the ones nothing checked.
+
+const metaFixture = (extra) =>
+  fixture({
+    files: { "src/a.js": 'fetch("https://x.example/1");\n' },
+    hosts: [
+      {
+        host: "x.example",
+        from: "server",
+        user_data: false,
+        readme: false,
+        purpose: "a purpose long enough to be worth reading",
+        seen_in: ["src/a.js"],
+        request_from: ["src/a.js"],
+        ...extra,
+      },
+    ],
+  });
+
+test("a valid entry produces no metadata findings", () => {
+  assert.deepEqual(checkOutbound({ root: metaFixture({}) }), []);
+});
+
+test("user_data true with readme false is caught", () => {
+  // The exact combination that lets a disclosing host stay out of the privacy
+  // table while the JSON looks honest.
+  assert.ok(
+    checkOutbound({ root: metaFixture({ user_data: true }) }).some((f) =>
+      f.includes("user_data is true, so readme must be true"),
+    ),
+  );
+});
+
+test("`from` is checked against where the host is actually reached", () => {
+  // A host only ever requested from src/ cannot honestly be `browser`. This is
+  // the half that makes `from` a claim about the code rather than a label.
+  assert.ok(
+    checkOutbound({ root: metaFixture({ from: "browser" }) }).some((f) =>
+      f.includes("reached only from the server side"),
+    ),
+  );
+});
+
+test("a from outside the three known values is caught", () => {
+  assert.ok(
+    checkOutbound({ root: metaFixture({ from: "backend" }) }).some((f) =>
+      f.includes("from must be one of"),
+    ),
+  );
+});
+
+test("a non-boolean flag and an empty purpose are caught", () => {
+  assert.ok(
+    checkOutbound({ root: metaFixture({ user_data: "true" }) }).some((f) =>
+      f.includes("user_data must be a boolean"),
+    ),
+  );
+  assert.ok(
+    checkOutbound({ root: metaFixture({ purpose: "" }) }).some((f) => f.includes("purpose must say something")),
+  );
+});
+
+// --- Unresolvable authorities (#110 item 1) -----------------------------------
+
+test("an authority that cannot be resolved is reported, not dropped", () => {
+  // Dropping it meant a destination the scanner could not model went unmentioned
+  // — green, with no line anywhere saying "I could not tell where this goes".
+  const root = fixture({ files: { "src/a.js": "const u = `https://${host}${suffix}/x`;\n" } });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("cannot be resolved to a host")),
+    "an unpinnable interpolated authority must be reported",
+  );
+});
+
+test("a declared unresolved authority passes", () => {
+  // Failing closed with no list fired on eight legitimate patterns at once and
+  // would have got the check switched off. Each one is declared with a why.
+  const root = fixture({
+    files: { "src/a.js": "const u = `https://${host}${suffix}/x`;\n" },
+    unresolved: [
+      { file: "src/a.js", authority: "${host}${suffix}", why: "the local bind, configured at runtime" },
+    ],
+  });
+  assert.deepEqual(checkOutbound({ root }), []);
+});
+
+test("a declaration that no longer matches the code is reported as stale", () => {
+  // Otherwise the list outlives the code it excuses and quietly covers whatever
+  // drifts onto that authority next.
+  const root = fixture({
+    files: { "src/a.js": 'fetch("https://x.example/1");\n' },
+    hosts: [declared("x.example")],
+    unresolved: [{ file: "src/a.js", authority: "${gone}", why: "removed in a refactor" }],
+  });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("no longer there")),
+    "a stale declaration must not sit there silently",
   );
 });
