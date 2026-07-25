@@ -29,7 +29,7 @@ Auto-collect token usage from **20+ AI coding tools**, aggregate it locally, and
 You can — that is the honest alternative, and for a single tool it is enough. TokenTracker earns its place once you use more than one:
 
 - **One number instead of six tabs.** Claude, Codex, Cursor, Gemini and Copilot each bill in their own dashboard, on their own reset schedule, in their own units. Nobody adds them up for you.
-- **Subscriptions hide the number entirely.** A flat monthly plan shows you a quota bar, not what your usage would have cost. TokenTracker prices every token against public model rates, so you can see whether the plan is a bargain or a subsidy you have outgrown.
+- **Subscriptions hide the number entirely.** A flat monthly plan shows you a quota bar, not what your usage would have cost. TokenTracker prices every token against public model rates, and you can enter what you pay to see the two side by side. The figure is list-price-equivalent for the window on screen, not a bill you would have paid — and when some usage cannot be priced it says so rather than quietly reporting a smaller number.
 - **Per-project and per-model, not just per-account.** Billing pages answer "what do I owe this month". This answers "which repo, which model, and which hour" — the resolution you need to actually change something.
 - **Quota chips before you hit the wall.** Live plan-limit usage sits on each provider's card, so a 5-hour window running out is something you see rather than something you discover.
 

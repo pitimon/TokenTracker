@@ -2,6 +2,7 @@ import React from "react";
 import { Shell } from "../../components";
 import { CostAnalysisModal } from "../components/CostAnalysisModal.jsx";
 import { DataDetails } from "../components/DataDetails.jsx";
+import { PlanValueCard } from "../components/PlanValueCard.jsx";
 import { StatsPanel } from "../components/StatsPanel.jsx";
 import { PulseCard } from "../components/PulseCard.jsx";
 import { HeroSummary } from "../components/HeroSummary.jsx";
@@ -25,6 +26,9 @@ export function DashboardView(props) {
     identitySubscriptions,
     identityScrambleDurationMs,
     projectUsageEntries,
+    planPrices = {},
+    onPlanPriceChange,
+    modelBreakdown = null,
     projectUnattributedSources = [],
     projectUsageLimit,
     setProjectUsageLimit,
@@ -284,6 +288,16 @@ export function DashboardView(props) {
                 </div>
               ) : null}
             </div>
+
+            <FadeIn delay={0.42}>
+              <PlanValueCard
+                sources={modelBreakdown?.sources}
+                planPrices={planPrices}
+                onPlanPriceChange={onPlanPriceChange}
+                copy={copy}
+                className="oai-card p-4"
+              />
+            </FadeIn>
 
             <FadeIn delay={0.43}>
               <DataDetails
