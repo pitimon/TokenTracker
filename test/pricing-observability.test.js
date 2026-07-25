@@ -343,3 +343,91 @@ test("one provider's exact hit cannot hide another provider's miss", async () =>
   const diagnostics = pricing.getPricingDiagnostics();
   assert.deepEqual(diagnostics.unpriced_models, ["unknown-only-here"]);
 });
+
+// --- the "unknown" placeholder is not a model -------------------------------
+// Rows whose model id could not be determined are stored under the literal id
+// "unknown" (src/commands/sync.js:1250,1675,1768) and coalesced to it again at
+// read time (src/lib/local-api.js:210,434,1121,1355). Pricing it turned a
+// missing *attribution* into a missing *price*, which is a different problem
+// with a different fix — the live dashboard reported unpriced_models:
+// ["unknown"] and advised adding it to curated-overrides.json, where it could
+// never match anything.
+
+test("the \"unknown\" placeholder resolves as unattributed, not as an unpriced model", async () => {
+  const payload = { current: { "acme-1": entry(1e-6, 2e-6) } };
+  await loadWith(payload, tmpCachePath("unattributed"));
+
+  const { result: meta, lines } = captureWarnings(() =>
+    pricing.getModelPricingMeta("unknown", { source: "claude" }),
+  );
+
+  assert.equal(meta.tier, "unattributed");
+  assert.deepEqual(meta.pricing, pricing.ZERO_PRICING, "still costs nothing, as before");
+  assert.deepEqual(lines, [], "no advice to add a placeholder to curated-overrides.json");
+
+  const diagnostics = pricing.getPricingDiagnostics();
+  assert.deepEqual(
+    diagnostics.unpriced_models,
+    [],
+    "unpriced_models names models needing a curated price — a placeholder is not one",
+  );
+  assert.deepEqual(diagnostics.fuzzy_priced_models, []);
+  assert.equal(
+    pricing.__getStateForTests().reloadPromise,
+    null,
+    "a placeholder must not burn an upstream refresh looking for a price it can never have",
+  );
+});
+
+test("a model id that is only whitespace is empty, not a placeholder-shaped miss", async () => {
+  const payload = { current: { "acme-1": entry(1e-6, 2e-6) } };
+  await loadWith(payload, tmpCachePath("blank"));
+
+  // `!model` misses this, so before the trim it reached the lookup and leaked
+  // into unpriced_models as "  " — the same defect wearing different characters.
+  assert.equal(pricing.getModelPricingMeta("   ").tier, "empty");
+  assert.deepEqual(pricing.getPricingDiagnostics().unpriced_models, []);
+});
+
+test("case and padding do not smuggle the placeholder past the check", async () => {
+  const payload = { current: { "acme-1": entry(1e-6, 2e-6) } };
+  await loadWith(payload, tmpCachePath("placeholder-variants"));
+
+  for (const variant of ["UNKNOWN", " Unknown ", "unknown\n"]) {
+    assert.equal(
+      pricing.getModelPricingMeta(variant).tier,
+      "unattributed",
+      `${JSON.stringify(variant)} is the same placeholder`,
+    );
+  }
+  assert.deepEqual(pricing.getPricingDiagnostics().unpriced_models, []);
+});
+
+test("a real model that merely contains \"unknown\" is still priced or missed normally", async () => {
+  // The exemption is a closed set, not a substring rule: silently un-pricing a
+  // real model would recreate the $0 bug this whole surface exists to expose.
+  const payload = { current: { "unknown-labs-v2": entry(3e-6, 6e-6) } };
+  await loadWith(payload, tmpCachePath("real-model"));
+
+  assert.equal(pricing.getModelPricingMeta("unknown-labs-v2").tier, "litellm:exact");
+  // Contains the priced key, so it resolves the same way any other model would.
+  assert.equal(pricing.getModelPricingMeta("unknown-labs-v2-preview").tier, "litellm:fuzzy");
+  assert.equal(pricing.getModelPricingMeta("mystery-model").tier, "miss");
+  assert.deepEqual(pricing.getPricingDiagnostics().unpriced_models, ["mystery-model"]);
+});
+
+test("cost for an unattributed row is unchanged by the exemption", async () => {
+  const payload = { current: { "acme-1": entry(1e-6, 2e-6) } };
+  await loadWith(payload, tmpCachePath("unattributed-cost"));
+
+  // The row was already costing $0 (no price to apply). The fix changes how it
+  // is *reported*, and must not quietly change anyone's total.
+  const cost = pricing.computeRowCost({
+    model: "unknown",
+    source: "claude",
+    input_tokens: 1_000_000,
+    output_tokens: 1_000_000,
+  });
+  assert.equal(cost, 0);
+  assert.deepEqual(pricing.getModelPricing("unknown"), pricing.ZERO_PRICING);
+});
