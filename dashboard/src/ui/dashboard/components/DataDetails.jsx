@@ -8,24 +8,15 @@ function splitProjectKey(value) {
   return { owner: owner || "", repo: repo || "" };
 }
 
+// Local icon only. `owner` comes from a repo the user has checked out, so an
+// <img src="https://github.com/${owner}.png"> would disclose that name — a
+// private one included — to a third party straight from the browser. An image
+// load leaks exactly what a fetch does, which is how issue 100 went unnoticed.
 function ProjectAvatar({ projectKey, projectRef }) {
-  const [imageFailed, setImageFailed] = useState(false);
   const normalizedRef =
     typeof projectRef === "string" ? projectRef.replace("https://github.com/", "") : "";
   const { owner, repo } = splitProjectKey(projectKey || normalizedRef);
   const repoId = owner && repo ? `${owner}/${repo}` : projectKey;
-  const avatarUrl = owner && !imageFailed ? `https://github.com/${owner}.png?size=80` : "";
-
-  if (avatarUrl) {
-    return (
-      <img
-        src={avatarUrl}
-        alt=""
-        className="w-8 h-8 rounded-md oai-bg-elevated object-cover"
-        onError={() => setImageFailed(true)}
-      />
-    );
-  }
 
   return (
     <div className="w-8 h-8 rounded-md oai-bg-elevated flex items-center justify-center text-oai-gray-500 dark:text-oai-gray-300">

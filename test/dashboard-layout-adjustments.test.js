@@ -78,17 +78,25 @@ test("ProjectUsagePanel lays out cards in responsive grid", () => {
   );
 });
 
-test("ProjectUsagePanel formats star values compactly", () => {
+test("ProjectUsagePanel reaches no external host (issue 100)", () => {
+  // These rows are keyed by repositories the user has checked out. Fetching a
+  // star count or an owner avatar put that name — a private one included — into
+  // a URL sent to GitHub from the user's browser. The panel had both.
+  // Asserted against the source, not the render, so it also fails if someone
+  // adds an <img src> or a <link> rather than a fetch.
   const src = readFile(projectUsagePath);
+  // The one permitted occurrence is a prefix stripped off a stored project_ref,
+  // never a request target. Remove it, then no absolute URL may remain.
+  const withoutRefPrefix = src.split('"https://github.com/"').join("");
   assert.ok(
-    src.includes("formatCompactNumber(starsRaw"),
-    "expected project usage panel to compact star values",
+    !/https?:\/\//.test(withoutRefPrefix),
+    "no absolute URL may appear in this component",
   );
+  assert.ok(!src.includes("<img"), "must not load a remote image");
 });
 
-test("ProjectUsagePanel renders star and token info", () => {
+test("ProjectUsagePanel renders token info", () => {
   const src = readFile(projectUsagePath);
-  assert.ok(src.includes("starsCompact"), "expected project usage card to show stars");
   assert.ok(src.includes("tokensCompact"), "expected project usage card to show tokens");
 });
 

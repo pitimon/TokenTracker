@@ -30,7 +30,9 @@ describe("ProjectUsagePanel", () => {
     const { container } = render(<ProjectUsagePanel entries={[entry]} />);
 
     expect(screen.getByText("hello")).toBeInTheDocument();
-    expect(screen.getByText(/★/)).toBeInTheDocument();
+    // No star count and no remote avatar: both were fetched from
+    // api.github.com with a checked-out repo name in the URL path (issue 100).
+    expect(screen.queryByText(/★/)).toBeNull();
     expect(container.querySelector("a[href]")).toBeNull();
   });
 

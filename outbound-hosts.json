@@ -1,0 +1,254 @@
+{
+  "_meta": {
+    "purpose": "Every external host this codebase can reach, and why. The README's privacy table is checked against this file by scripts/validate-outbound.cjs, so the table stops being a claim someone has to remember to update.",
+    "why": "TokenTracker's headline claim is that your usage data stays on your machine. That claim was written by grepping src/ and never dashboard/src/, which missed four browser-side disclosures including one that sent private repo names to GitHub (#100). A validator does not forget a directory.",
+    "adding_a_host": "Add an entry here, then add or amend the matching row in README.md's 'Outbound calls, on your behalf only' table. CI fails if code reaches a host absent here, or if a user_data host is missing from the README.",
+    "fields": {
+      "from": "server = the local Node process. browser = the user's browser, i.e. it happens even though we call ourselves local-first.",
+      "user_data": "true when the request itself discloses something about the user or their work \u2014 a repo name in the path, an account token, their IP. false for anonymous public fetches.",
+      "readme": "true when this host must appear in the README outbound table. Every user_data host must."
+    }
+  },
+  "hosts": [
+    {
+      "host": "raw.githubusercontent.com",
+      "from": "server",
+      "user_data": false,
+      "readme": true,
+      "purpose": "Downloads the public LiteLLM price list. Anonymous; nothing is sent. Works offline from the bundled seed snapshot.",
+      "seen_in": [
+        "src/lib/pricing/litellm-fetcher.js",
+        "src/lib/skills-manager.js"
+      ]
+    },
+    {
+      "host": "api.anthropic.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Asks Anthropic about the user's own plan limits, using credentials already on the machine.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "chatgpt.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Codex plan limits for the signed-in account.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "api.openai.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "OpenAI usage/limits for the signed-in account.",
+      "seen_in": [
+        "src/lib/subscriptions.js"
+      ]
+    },
+    {
+      "host": "auth.openai.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Refreshes the OpenAI credential when it expires.",
+      "seen_in": [
+        "src/lib/codex-token-refresh.js"
+      ]
+    },
+    {
+      "host": "cursor.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Cursor plan usage for the signed-in account.",
+      "seen_in": [
+        "src/lib/cursor-config.js"
+      ]
+    },
+    {
+      "host": "www.cursor.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Same as cursor.com; both hosts appear in Cursor's own endpoints.",
+      "seen_in": [
+        "src/lib/cursor-config.js"
+      ]
+    },
+    {
+      "host": "cloudcode-pa.googleapis.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Gemini Code Assist quota for the signed-in account.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "oauth2.googleapis.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Refreshes the Google credential when it expires.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "api.kimi.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Kimi plan usage for the signed-in account.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "auth.kimi.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Refreshes the Kimi credential when it expires.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "api.z.ai",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Z.AI / GLM coding-plan quota, using ZAI_API_KEY or a reused Anthropic-compatible token.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "api.github.com",
+      "from": "both",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Server: GitHub Copilot quota for the signed-in account. Browser: the header star count for THIS repository only \u2014 a fixed public repo that says nothing about the user. The per-project variant, which put a repo you have checked out in the URL path, was removed in #100. Also used server-side by the Skills tab to read public repository metadata.",
+      "seen_in": [
+        "src/lib/usage-limits.js",
+        "dashboard/src/ui/components/HeaderGithubStar.jsx",
+        "src/lib/skills-manager.js"
+      ]
+    },
+    {
+      "host": "github.com",
+      "from": "both",
+      "user_data": false,
+      "readme": false,
+      "purpose": "Outbound links in the dashboard (repository, releases, skill sources) plus server-side reads of public skill repositories. A link is not a request until the user clicks it. No avatar or image is loaded from here any more (#100).",
+      "seen_in": [
+        "dashboard/src/components/LocalOnlyNotice.jsx",
+        "dashboard/src/lib/mock-data.ts",
+        "dashboard/src/pages/SkillDetailPanel.jsx",
+        "dashboard/src/pages/SkillsPage.jsx",
+        "dashboard/src/pages/WidgetsPage.jsx",
+        "dashboard/src/ui/components/HeaderGithubStar.jsx",
+        "dashboard/src/ui/dashboard/components/DataDetails.jsx",
+        "dashboard/src/ui/dashboard/components/ProjectUsagePanel.jsx",
+        "src/commands/init.js",
+        "src/lib/skills-manager.js"
+      ]
+    },
+    {
+      "host": "skills.sh",
+      "from": "server",
+      "user_data": false,
+      "readme": true,
+      "purpose": "Public skills directory used by the Skills tab to search and list available skills. The query is what you typed into that tab; no usage data is attached. Only reached when the Skills tab is opened.",
+      "seen_in": [
+        "src/lib/skills-manager.js"
+      ]
+    },
+    {
+      "host": "open.er-api.com",
+      "from": "browser",
+      "user_data": false,
+      "readme": true,
+      "purpose": "Public USD exchange rates, so costs can be shown in a local currency. Anonymous; the request carries no usage data. Only fires when a non-USD currency is selected.",
+      "seen_in": [
+        "dashboard/src/lib/exchange-rate.ts"
+      ]
+    },
+    {
+      "host": "ip.net.coffee",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Backs the optional IP-check page, proxied through the local server at /proxy/ipcheck. Only reached when that page is opened.",
+      "seen_in": [
+        "src/lib/local-api.js",
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ]
+    },
+    {
+      "host": "1.1.1.1",
+      "from": "browser",
+      "user_data": true,
+      "readme": true,
+      "purpose": "IP-check page only: Cloudflare's trace endpoint, which is how the page learns your public IP. Showing you your own IP is that page's entire purpose.",
+      "seen_in": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ]
+    },
+    {
+      "host": "claude.ai",
+      "from": "browser",
+      "user_data": true,
+      "readme": true,
+      "purpose": "IP-check page only: a reachability probe measuring whether Anthropic is reachable from this network.",
+      "seen_in": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ]
+    },
+    {
+      "host": "www.anthropic.com",
+      "from": "browser",
+      "user_data": true,
+      "readme": true,
+      "purpose": "IP-check page only: the second reachability probe, alongside claude.ai.",
+      "seen_in": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ]
+    },
+    {
+      "host": "registry.npmjs.org",
+      "from": "server",
+      "user_data": false,
+      "readme": true,
+      "purpose": "Not called by our code \u2014 this is npx fetching the package when TokenTracker is started that way. Listed because a user watching their network sees it and deserves an explanation.",
+      "seen_in": []
+    }
+  ],
+  "ignored_hosts": {
+    "_note": "Matched on host exactly. Not prefixes \u2014 a path here would be ignored, exempting the whole host.",
+    "hosts": [
+      "localhost",
+      "127.0.0.1",
+      "local.tokentracker",
+      "www.w3.org",
+      "example.com",
+      "evil",
+      "codex.ai"
+    ],
+    "why": {
+      "localhost / 127.0.0.1": "loopback",
+      "local.tokentracker": "a synthetic project_ref identifier for claude-mem observer sessions (src/lib/rollout.js:19), never requested",
+      "www.w3.org": "the SVG XML namespace",
+      "example.com / evil": "appear only inside comments illustrating attacks and enterprise host shapes",
+      "codex.ai": "named in a comment about provider domains; not a request target"
+    }
+  }
+}
