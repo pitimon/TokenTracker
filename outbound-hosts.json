@@ -190,7 +190,7 @@
       "from": "both",
       "user_data": false,
       "readme": false,
-      "purpose": "Outbound links in the dashboard (repository, releases, skill sources) plus server-side reads of public skill repositories. A link is not a request until the user clicks it. No avatar or image is loaded from here any more (#100).",
+      "purpose": "Server: reads public skill repositories. Browser: link targets only \u2014 the repository, releases and skill sources, which are requests the user makes by clicking. No avatar or image is loaded from here (issue 100).",
       "seen_in": [
         "dashboard/src/components/LocalOnlyNotice.jsx",
         "dashboard/src/lib/mock-data.ts",
@@ -204,11 +204,16 @@
         "src/lib/skills-manager.js"
       ],
       "request_from": [
-        "dashboard/src/lib/mock-data.ts",
-        "dashboard/src/pages/SkillDetailPanel.jsx",
-        "dashboard/src/pages/WidgetsPage.jsx",
-        "src/commands/init.js",
         "src/lib/skills-manager.js"
+      ],
+      "link_from": [
+        "dashboard/src/components/LocalOnlyNotice.jsx",
+        "dashboard/src/pages/SkillsPage.jsx",
+        "dashboard/src/pages/WidgetsPage.jsx",
+        "dashboard/src/ui/components/HeaderGithubStar.jsx",
+        "dashboard/src/pages/SkillDetailPanel.jsx",
+        "dashboard/src/lib/mock-data.ts",
+        "src/commands/init.js"
       ]
     },
     {

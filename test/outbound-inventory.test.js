@@ -227,9 +227,11 @@ test("an unresolvable interpolated host is not invented", () => {
   assert.deepEqual(checkOutbound({ root }), []);
 });
 
-test("a comment or a clickable link is a mention, not a request", () => {
-  // Default-deny would otherwise flag every documented URL and every <a href>,
-  // and a check that flags prose gets switched off.
+test("a comment is a mention; a clickable link needs link_from", () => {
+  // Comments are recognised positionally. Links are NOT guessed at: real ones
+  // appear as <a> split across lines, as named constants used later, and as props
+  // threaded through components, and every heuristic for those is a guess whose
+  // wrong answer exempts a real request. Declaring them is a visible diff.
   const root = fixture({
     files: {
       "dashboard/src/Doc.jsx": [
@@ -238,7 +240,88 @@ test("a comment or a clickable link is a mention, not a request", () => {
         "",
       ].join("\n"),
     },
-    hosts: [declared("docs.example", { seen_in: ["dashboard/src/Doc.jsx"], request_from: [] })],
+    hosts: [
+      declared("docs.example", {
+        seen_in: ["dashboard/src/Doc.jsx"],
+        request_from: [],
+        link_from: ["dashboard/src/Doc.jsx"],
+      }),
+    ],
   });
   assert.deepEqual(checkOutbound({ root }), []);
+});
+
+// --- Evasion ------------------------------------------------------------------
+// Written after adversarially attacking the check rather than only testing that
+// it works. Three of these were live holes in the first cut of the sink model.
+
+const shared = (extra = {}) => ({
+  host: "shared.example",
+  from: "browser",
+  user_data: false,
+  readme: true,
+  purpose: "test",
+  seen_in: ["dashboard/src/Ok.jsx", "dashboard/src/A.jsx"],
+  request_from: ["dashboard/src/Ok.jsx"],
+  link_from: [],
+  ...extra,
+});
+
+function attack(source, hosts = [shared()]) {
+  return checkOutbound({
+    root: fixture({
+      files: {
+        "dashboard/src/Ok.jsx": 'fetch("https://shared.example/ok");\n',
+        "dashboard/src/A.jsx": `${source}\n`,
+      },
+      hosts,
+      readme: "shared.example evil.example",
+    }),
+  });
+}
+
+test("userinfo cannot disguise the real host as a permitted one", () => {
+  // In `https://shared.example@evil.example/p.png` the browser goes to
+  // evil.example; the part that looks permitted is attacker-chosen decoration.
+  // Reading the left side reports a permitted host; refusing to parse hides the
+  // request entirely. Both are wrong.
+  const findings = attack('const x = <img src="https://shared.example@evil.example/p.png" />;');
+  assert.ok(
+    findings.some((f) => f.includes("evil.example")),
+    `expected evil.example to be reported, got: ${JSON.stringify(findings)}`,
+  );
+});
+
+test("a protocol-relative URL is a request", () => {
+  // `//evil.example/p.png` inherits the page scheme and carries no scheme for a
+  // https?:// pattern to match, so it was invisible.
+  assert.ok(attack('const x = <img src="//evil.example/p.png" />;').some((f) => f.includes("evil.example")));
+});
+
+test("string surgery elsewhere on the line does not exempt a request", () => {
+  // The mention test used to apply to the whole LINE, so putting the request
+  // beside an unrelated `.includes(` or `.replace(` silenced it — a one-character
+  // bypass of the check built to stop exactly this request.
+  for (const source of [
+    'if (k.includes("x")) el.innerHTML = `<img src="https://shared.example/${r}.png">`;',
+    'const s = `<img src="https://shared.example/${r}.png">`.replace("a", "b");',
+  ]) {
+    assert.ok(
+      attack(source).some((f) => f.includes("A.jsx") && f.includes("requests")),
+      `not caught: ${source}`,
+    );
+  }
+});
+
+test("a URL that IS the argument of a string operation stays a mention", () => {
+  // The counterpart. `raw.replace("https://shared.example/", "")` strips a prefix
+  // off a stored value; flagging it would train people to ignore the check.
+  assert.deepEqual(attack('const ref = raw.replace("https://shared.example/", "");'), []);
+});
+
+test("link_from covers a host the user clicks, and only where declared", () => {
+  const asLink = shared({ link_from: ["dashboard/src/A.jsx"] });
+  assert.deepEqual(attack('const RELEASES = "https://shared.example/releases/latest";', [asLink]), []);
+  // The same file without the declaration is a request.
+  assert.ok(attack('const RELEASES = "https://shared.example/releases/latest";').length > 0);
 });

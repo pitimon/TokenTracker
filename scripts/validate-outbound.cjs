@@ -33,11 +33,24 @@ const SCAN_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".cjs", ".mjs"]);
 // there, hiding the destination from the very check that most needs to see it.
 const URL_RE = /https?:\/\/([^\s"'`)<>]+)/g;
 
+// Protocol-relative URLs inherit the page's scheme, so `//evil.example/p.png` is
+// as much a request as the https form — and carries no scheme for URL_RE to
+// match. Anchored to a quote or JSX brace so a `//` comment or a path like
+// `a//b` is not mistaken for one.
+const PROTOCOL_RELATIVE_RE = /["'`{]\s*\/\/([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+[^\s"'`)<>]*)/g;
+
 // Reduces an authority to the literal host it can be pinned to. Interpolated
 // segments are unknowable, so they are dropped and what remains is the suffix an
 // operator would actually see in DNS: `${token}-${i}.d.ip.net.coffee` -> `d.ip.net.coffee`.
 function literalHost(authority) {
-  const withoutPath = authority.split("/")[0].split("?")[0];
+  // Userinfo first: in `https://github.com@evil.example/p.png` the real host is
+  // evil.example, and the part that LOOKS like a declared host is attacker-chosen
+  // decoration. Taking the text before the '@' would read as permitted; dropping
+  // the URL entirely would hide it. Take what the browser takes.
+  const authorityOnly = authority.split("/")[0].split("?")[0];
+  const withoutPath = authorityOnly.includes("@")
+    ? authorityOnly.slice(authorityOnly.lastIndexOf("@") + 1)
+    : authorityOnly;
   // Collapse COMPLETE interpolations first, then reject if any interpolation
   // syntax survives: that means the match ended mid-expression and no literal
   // suffix can be pinned. The real case is
@@ -73,16 +86,32 @@ function literalHost(authority) {
 // project_ref. That put github.com in its declared set, so re-adding
 // <img src={`https://github.com/${repo}.png`}> to that exact file — the original
 // defect of issue 100 — passed the check built to prevent it.
-const MENTION_ONLY_RE = [
-  /^\s*(\/\/|\*|\/\*)/,                       // a comment
-  /\.(replace|split|startsWith|endsWith|includes|slice)\s*\(/, // string surgery on a stored value
-  /<a\b[^>]*href/,                              // a link the user must click
-  /\bhref=\{`?https/,                           // JSX anchor href
-  /\b(readmeUrl|sourceHref|RELEASES_URL|repoUrl|docsUrl)\b/,   // named link constants
-];
+// A LINE-level exemption is trivially defeated: put the request on a line that
+// also does unrelated string surgery and the whole line goes quiet. So the test
+// is applied to the text immediately BEFORE the URL, not to the line.
+//
+//   if (k.includes("x")) el.innerHTML = `<img src="https://github.com/${r}.png">`;
+//
+// used to be exempt because `.includes(` appeared somewhere on it. Now only a URL
+// that is itself the argument of a string operation, or sits inside an <a href>,
+// or lives on a comment line, counts as a mention.
+const MENTION_CALL_RE = /\.(replace|split|startsWith|endsWith|includes|slice|indexOf|lastIndexOf)\s*\(\s*$/;
+const COMMENT_LINE_RE = /^\s*(\/\/|\*|\/\*)/;
 
-function isMentionOnly(line) {
-  return MENTION_ONLY_RE.some((re) => re.test(line));
+// A URL is a REQUEST unless one of three things is true at the URL's own
+// position: the line is a comment, the URL is the direct argument of a string
+// operation, or the file is listed in that host's `link_from` — a place where the
+// host is only ever a target the user clicks.
+//
+// `link_from` is deliberately an explicit list rather than anchor detection. Real
+// links appear as `<a>` split across lines, as named constants used later, and as
+// props threaded through components; every heuristic for those is a guess, and a
+// wrong guess here exempts a real request. An entry in the inventory is a visible
+// diff a reviewer has to approve, which is the same weight as `request_from`.
+function isMentionOnly(line, matchIndex) {
+  if (COMMENT_LINE_RE.test(line)) return true;
+  const before = line.slice(0, matchIndex).replace(/["'`{(\s]+$/, "");
+  return MENTION_CALL_RE.test(before + "(") || MENTION_CALL_RE.test(line.slice(0, matchIndex));
 }
 
 function walk(dir, out = []) {
@@ -116,12 +145,13 @@ function collectHosts({ root = ROOT } = {}) {
       const relative = path.relative(root, filePath);
       const lines = fs.readFileSync(filePath, "utf8").split("\n");
       lines.forEach((line, index) => {
-        for (const match of line.matchAll(URL_RE)) {
+        const matches = [...line.matchAll(URL_RE), ...line.matchAll(PROTOCOL_RELATIVE_RE)];
+        for (const match of matches) {
           const host = literalHost(match[1]);
           if (!host) continue;
           if (!mentions.has(host)) mentions.set(host, new Set());
           mentions.get(host).add(relative);
-          if (isMentionOnly(line)) continue;
+          if (isMentionOnly(line, match.index)) continue;
           if (!requests.has(host)) requests.set(host, new Map());
           requests.get(host).set(relative, index + 1);
         }
@@ -241,8 +271,9 @@ function checkOutbound({ root = ROOT } = {}) {
   //    issue-100 call be re-added to a file that legitimately mentions github.com.
   for (const entry of inventory.hosts || []) {
     const allowed = new Set(entry.request_from || []);
+    const linkOnly = new Set(entry.link_from || []);
     for (const [file, line] of found.requests.get(entry.host) || []) {
-      if (allowed.has(file)) continue;
+      if (allowed.has(file) || linkOnly.has(file)) continue;
       findings.push(
         `${file}:${line} requests '${entry.host}', which is not in its request_from list` +
           ` — if this call belongs, add the file to outbound-hosts.json and re-read the` +
