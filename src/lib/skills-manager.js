@@ -287,13 +287,13 @@ function hashDirectory(dir) {
           continue;
         }
         const execBit = process.platform === "win32" ? 0 : stat.mode & 0o111 ? 1 : 0;
-        hash.update(`${rel} ${execBit} `);
+        hash.update(`${rel}\0${execBit}\0`);
         try {
           hash.update(fs.readFileSync(abs));
         } catch (_e) {
           // unreadable file — fold its absence in deterministically
         }
-        hash.update(" ");
+        hash.update("\0");
       }
     }
   };

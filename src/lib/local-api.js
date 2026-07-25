@@ -20,6 +20,49 @@ const AVATAR_PROXY_MAX_BYTES = 512 * 1024; // 512 KiB per image
 const AVATAR_PROXY_MAX_ENTRIES = 64;
 const avatarProxyCache = new Map();
 
+// Sentinel for "a redirect left the allowlist", kept distinct from a network
+// failure so the caller can answer 403 rather than a generic upstream error.
+const AVATAR_REDIRECT_BLOCKED = Symbol("avatar-redirect-blocked");
+const AVATAR_MAX_REDIRECTS = 3;
+
+// One check for the URL the caller asked for AND for every redirect hop, so the
+// two can't drift apart. Port is part of the address: `https://gravatar.com:8443/`
+// shares the hostname but is a different service, so leaving the port free turns
+// this proxy into a port prober against every allowlisted host. An empty `port`
+// is the scheme default (443 / 80) — the only one permitted.
+function isAllowedAvatarTarget(url, allowlist) {
+  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  if (url.port !== "") return false;
+  return allowlist.some(
+    (host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
+  );
+}
+
+// The avatar allowlist is checked once, against the URL the caller asked for.
+// `fetch(..., { redirect: "follow" })` then goes wherever the response points and
+// validates nothing further — so an allowlisted CDN issuing a redirect, or anyone
+// able to place one there, turns this loopback server into a way to reach
+// 169.254.169.254, another service on 127.0.0.1, or any internal address.
+// Follow by hand and re-check the whole address at every hop.
+async function fetchAvatarFollowingAllowlist(url, options, allowlist, fetchImpl = fetch) {
+  let current = url;
+  for (let hop = 0; hop <= AVATAR_MAX_REDIRECTS; hop += 1) {
+    const response = await fetchImpl(current, { ...options, redirect: "manual" });
+    if (response.status < 300 || response.status >= 400) return response;
+    const location = response.headers.get("location");
+    if (!location) return response;
+    let next;
+    try {
+      next = new URL(location, current);
+    } catch {
+      return AVATAR_REDIRECT_BLOCKED;
+    }
+    if (!isAllowedAvatarTarget(next, allowlist)) return AVATAR_REDIRECT_BLOCKED;
+    current = next.toString();
+  }
+  return AVATAR_REDIRECT_BLOCKED;
+}
+
 // ---------------------------------------------------------------------------
 // Per-model pricing — delegated to src/lib/pricing/
 //   - CURATED overrides (kiro-*, hy3-*, composer-*, kimi-for-coding, etc.)
@@ -833,11 +876,8 @@ function createLocalApiHandler({ queuePath }) {
         "abs.twimg.com",
         "api.dicebear.com",
       ];
-      const hostOk = AVATAR_HOST_ALLOWLIST.some(
-        (h) => parsed.hostname === h || parsed.hostname.endsWith(`.${h}`),
-      );
-      if (!hostOk) {
-        json(res, { error: "Host not allowed" }, 403);
+      if (!isAllowedAvatarTarget(parsed, AVATAR_HOST_ALLOWLIST)) {
+        json(res, { error: "Address not allowed" }, 403);
         return true;
       }
 
@@ -855,15 +895,22 @@ function createLocalApiHandler({ queuePath }) {
       }
 
       try {
-        const upstream = await fetch(cacheKey, {
-          method,
-          redirect: "follow",
-          headers: {
-            accept: req.headers["accept"] || "image/*",
-            "accept-language": req.headers["accept-language"] || "en",
-            "user-agent": "TokenTracker/AvatarProxy",
+        const upstream = await fetchAvatarFollowingAllowlist(
+          cacheKey,
+          {
+            method,
+            headers: {
+              accept: req.headers["accept"] || "image/*",
+              "accept-language": req.headers["accept-language"] || "en",
+              "user-agent": "TokenTracker/AvatarProxy",
+            },
           },
-        });
+          AVATAR_HOST_ALLOWLIST,
+        );
+        if (upstream === AVATAR_REDIRECT_BLOCKED) {
+          json(res, { error: "Redirect target not allowed" }, 403);
+          return true;
+        }
         if (!upstream.ok) {
           json(res, { error: `Upstream ${upstream.status}` }, upstream.status);
           return true;
@@ -1535,6 +1582,12 @@ function createLocalApiHandler({ queuePath }) {
 
 module.exports = {
   createLocalApiHandler,
+  // Exported so the redirect allowlist can be tested directly: the SSRF this
+  // closes is only observable across a redirect hop, which no handler-level
+  // test reaches.
+  fetchAvatarFollowingAllowlist,
+  isAllowedAvatarTarget,
+  AVATAR_REDIRECT_BLOCKED,
   resolveQueuePath,
   // Exported for cross-consumer tests (pricing + native contract lock).
   MODEL_PRICING,
