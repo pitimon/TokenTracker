@@ -129,4 +129,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { checkFacts, collectFindings };
+module.exports = { checkFacts, collectFindings, readRootDocs };

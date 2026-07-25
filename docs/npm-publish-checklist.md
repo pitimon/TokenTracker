@@ -34,7 +34,9 @@ Dashboard pricing/UI release gate:
   model ships, which is the failure this gate exists to catch:
 
   ```bash
-  curl -s "http://localhost:7680/functions/tokentracker-usage-model-breakdown?from=$(date -v-7d +%F)&to=$(date +%F)" \
+  FROM=$(python3 -c 'import datetime;print(datetime.date.today()-datetime.timedelta(days=7))')
+  TO=$(python3 -c 'import datetime;print(datetime.date.today())')
+  curl -s "http://localhost:7680/functions/tokentracker-usage-model-breakdown?from=$FROM&to=$TO" \
     | python3 -c 'import json,sys; p=json.load(sys.stdin)["pricing"]; print(p["unpriced_models"], p["fuzzy_priced_models"])'
   ```
 

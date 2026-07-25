@@ -4,7 +4,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 
 const { extractFacts } = require("../scripts/openwiki-extract-facts.cjs");
-const { checkFacts, collectFindings } = require("../scripts/openwiki-check-facts.cjs");
+const { checkFacts, collectFindings, readRootDocs } = require("../scripts/openwiki-check-facts.cjs");
 
 test("OpenWiki facts expose TokenTracker's public command, API, route, and parser contracts", () => {
   const facts = extractFacts();
@@ -28,25 +28,28 @@ test("OpenWiki fact checker rejects unsupported concrete claims", () => {
 });
 
 test("the fact checker reads the front-door docs, not only openwiki/", () => {
-  // README.md told users with a broken install to run
-  // `tokentracker activate-if-needed` — a command that has never been in the
-  // CLI's dispatch. The checker that would have caught it existed the whole
-  // time; it just wasn't looking at the file users actually follow.
-  const findings = checkFacts();
-  assert.deepEqual(findings, [], "repo docs are clean as committed");
+  // README.md told users with a broken install to run a repair command the CLI
+  // has never had. The checker that would have caught it existed the whole time;
+  // it just wasn't looking at the file users actually follow.
+  //
+  // Asserted through readRootDocs rather than by writing a fake command into the
+  // real README: a killed process or a CI timeout would skip the restore, and
+  // the recovery path is `git add README.md` — which would silently re-commit
+  // the exact falsehood this check exists to prevent.
+  const scanned = readRootDocs(process.cwd()).map((file) => path.basename(file.path));
+  assert.deepEqual(scanned.sort(), ["CONTRIBUTING.md", "README.md"]);
+  assert.deepEqual(checkFacts(), [], "repo docs are clean as committed");
 
-  const readme = path.join(process.cwd(), "README.md");
-  const original = fs.readFileSync(readme, "utf8");
-  try {
-    fs.writeFileSync(readme, `${original}\nRun \`tokentracker activate-if-needed\` to fix.\n`);
-    const withFake = checkFacts();
-    assert.ok(
-      withFake.some((f) => f.startsWith("README.md:") && f.includes("activate-if-needed")),
-      `expected README.md to be scanned, got: ${JSON.stringify(withFake)}`,
-    );
-  } finally {
-    fs.writeFileSync(readme, original);
-  }
+  const facts = extractFacts();
+  const findings = collectFindings({
+    facts,
+    root: process.cwd(),
+    files: [{ path: `${process.cwd()}/README.md`, content: "Run `tokentracker activate-if-needed` to fix.\n" }],
+  });
+  assert.ok(
+    findings.some((f) => f.startsWith("README.md:") && f.includes("activate-if-needed")),
+    `expected the fake command to be rejected, got: ${JSON.stringify(findings)}`,
+  );
 });
 
 test("the front-door docs do not owe openwiki's completeness obligation", () => {

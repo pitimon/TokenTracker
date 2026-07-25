@@ -39,16 +39,38 @@ the pricing layer knows it guessed at or missed. Both come from
 `getPricingDiagnostics()` in `src/lib/pricing/index.js`; read that function
 before relying on the exact field set.
 
-The tier vocabulary is a closed set, and the distinctions matter because three
-different situations all produce a `$0` cost:
+The tiers come from the resolution ladder in `src/lib/pricing/matcher.js` — that
+function is the authority; the grouping below is what each rung means for
+trusting the number. The distinctions matter because three different situations
+all produce a `$0` cost, and because a *guessed* price is never `$0` and so
+cannot be spotted by looking for zeros.
 
-| Tier | Means |
+**Resolved exactly** — the id matched, trust the price:
+
+| Tier | Rung |
 | --- | --- |
-| `curated:exact`, `litellm:exact` | Matched a model id outright. Trust the price. |
-| `curated:fuzzy`, `litellm:fuzzy`, `litellm:prefix-strip` | Priced by partial match. Plausible, possibly a different model's price — and never `$0`, so it cannot be spotted by looking for zeros. |
-| `miss` | No price found. Counted as `$0`; needs an entry in `curated-overrides.json`. |
-| `unattributed` | The row had no model id and is stored under the placeholder `unknown`. Also `$0`, but nothing to add a price for. |
-| `empty` | No model id at all. |
+| `curated:exact` | Matched a key in `curated-overrides.json`. Curated always wins over LiteLLM. |
+| `curated:exact-dot`, `litellm:exact-dot` | Matched exactly after rejoining dash-separated numerics (`glm-5-1` → `glm-5.1`), for providers that dash-normalize version numbers. |
+| `litellm:exact` | Matched a LiteLLM key. |
+| `curated:alias` | A deliberate curated mapping, e.g. Cursor's `auto` → `composer-1`. Intentional, not inferred. |
+| `litellm:strip` | Matched the base model after removing a reasoning-effort suffix (`-high`, `-xhigh`, `-fast`, …). Reasoning effort changes how many tokens you spend, not the per-token rate, so the base price is the right one. |
+
+**Guessed** — plausible, possibly another model's price. These are what
+`fuzzy_priced_models` reports:
+
+| Tier | Rung |
+| --- | --- |
+| `curated:fuzzy` | A curated substring rule matched. |
+| `litellm:prefix-strip` | A provider-qualified key ended with the bare model name. Where several providers expose the same model, the lexicographically smallest key wins — deterministic, but the chosen provider's rate may not be yours. |
+| `litellm:fuzzy` | Reverse substring, longest key first: the model id *contains* a known key. |
+
+**Not priced** — all cost `$0`, for three different reasons:
+
+| Tier | Rung |
+| --- | --- |
+| `miss` | Nothing matched. Needs an entry in `curated-overrides.json`; this is what `unpriced_models` lists. |
+| `unattributed` | The row had no model id and is stored under the placeholder `unknown`. Also `$0`, but there is nothing to add a price for — deliberately excluded from `unpriced_models`. |
+| `empty` | No model id passed at all. |
 
 `unpriced_models` lists only `miss` models — it is a work list of ids needing a
 curated price, so placeholders are deliberately excluded from it.
