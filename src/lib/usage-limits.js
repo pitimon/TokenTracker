@@ -218,10 +218,23 @@ async function fetchCodexUsageLimits(
     method: "GET",
     headers,
   });
-  // 401/403/404 from wham means "no usage data available for this auth state" — render
-  // a neutral empty state instead of a red "Fetch failed" error.
+  // 401/403/404 from wham means "no usage data available for this auth state" —
+  // a free or multi-account user, or a token that went stale. #52 asked for a
+  // neutral state here rather than a red "Fetch failed".
+  //
+  // It got NO state. With no error and no windows, LimitChips falls through to
+  // `windows.length === 0 -> return null` and the chip disappears entirely,
+  // which is the outcome #105 calls worse than never having had a chip: the user
+  // has been trained to look there and now reads absence as "plenty left".
+  //
+  // `notice` is the third state the UI was missing. Visible and subtle, so #52's
+  // intent survives without #105's failure mode.
   if (res.status === 401 || res.status === 403 || res.status === 404) {
-    return { primary_window: null, secondary_window: null };
+    return {
+      primary_window: null,
+      secondary_window: null,
+      notice: "No usage data for this sign-in. Run `codex` to sign in again.",
+    };
   }
   if (!res.ok) {
     throw new Error(`Codex API returned ${res.status}`);
@@ -2013,6 +2026,10 @@ async function getUsageLimits({
     codex = {
       configured: true,
       error: null,
+      // A 4xx from wham produces no windows and no error. Carrying its `notice`
+      // through is what keeps the chip on screen instead of falling through to
+      // LimitChips' `windows.length === 0 -> return null`.
+      notice: codexResult.value.notice || null,
       plan_type: codexPlanType || null,
       primary_window: codexResult.value.primary_window,
       secondary_window: codexResult.value.secondary_window,

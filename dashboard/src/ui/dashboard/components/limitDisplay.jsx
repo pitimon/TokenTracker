@@ -188,6 +188,9 @@ function LimitChip({ label, displayPct, counts, reset, mode }) {
  * - usageLimits not loaded yet → omit (no layout jump on arrival).
  * - provider not a limits provider / not configured → hide.
  * - configured but errored → subtle status line.
+ * - configured, no error, no windows, but a notice → the same subtle line. This
+ *   is the "neutral empty state" issue 52 asked for; before it existed the chip just
+ *   disappeared, which issue 105 records as worse than never having had one.
  */
 export function LimitChips({ label, usageLimits, mode = LIMIT_DISPLAY_MODES.USED }) {
   if (!usageLimits || typeof usageLimits !== "object") return null;
@@ -209,6 +212,17 @@ export function LimitChips({ label, usageLimits, mode = LIMIT_DISPLAY_MODES.USED
   }
 
   const windows = getCardLimitWindows(id, data, effectiveMode);
+  // The third state. Without it, "configured, no error, no windows" fell through
+  // to `return null` and the chip vanished — which is how issue 52's intent of "a
+  // neutral empty state instead of a red error" became no state at all, and the
+  // outcome issue 105 calls worse than never having had a chip.
+  if (windows.length === 0 && data.notice) {
+    return (
+      <div className="mt-2.5 pt-2.5 border-t border-dashed border-oai-gray-200 dark:border-oai-gray-700 text-[11px] leading-snug text-oai-gray-500 dark:text-oai-gray-400">
+        {data.notice}
+      </div>
+    );
+  }
   if (windows.length === 0) return null;
 
   return (

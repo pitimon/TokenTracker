@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import React from "react";
 import {
+  LimitChips,
   limitIdForLabel,
   getCardLimitWindows,
   getCardTierClasses,
@@ -143,5 +146,53 @@ describe("getCardLimitWindows with counts", () => {
     const [premium] = getCardLimitWindows("copilot", copilot, REMAINING);
     expect(premium.counts).toEqual({ used: 142, limit: 300 });
     expect(premium.displayPct).toBeCloseTo(47.3);
+  });
+});
+
+
+describe("LimitChips — the three states a provider can be in", () => {
+  function chips(codex) {
+    return render(<LimitChips label="CODEX" usageLimits={{ codex }} />);
+  }
+
+  it("renders nothing when the provider is not configured", () => {
+    // Correct: no credential means no quota to report and nothing broken. A
+    // status line here would put a permanent message under a tool the user does
+    // not even use.
+    const { container } = chips({ configured: false });
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("renders a status line when the fetch failed", () => {
+    chips({ configured: true, error: "Codex API returned 500" });
+    expect(screen.getByText(/Codex API returned 500/)).toBeTruthy();
+  });
+
+  it("renders the NOTICE when there is no error and no windows", () => {
+    // The state that did not exist. issue 52 asked for "a neutral empty state
+    // instead of a red Fetch failed"; with no error and no windows the
+    // component fell through to `return null` and the chip disappeared —
+    // which issue 105 records as worse than never having had a chip.
+    chips({
+      configured: true,
+      error: null,
+      notice: "No usage data for this sign-in. Run `codex` to sign in again.",
+      primary_window: null,
+      secondary_window: null,
+    });
+    expect(screen.getByText(/sign in again/)).toBeTruthy();
+  });
+
+  it("still renders nothing when there is no error, no windows AND no notice", () => {
+    // The old behaviour, kept deliberately: a provider with genuinely nothing to
+    // say should not occupy space. The fix is that a FAILURE now always carries
+    // either an error or a notice, so it never lands here.
+    const { container } = chips({
+      configured: true,
+      error: null,
+      primary_window: null,
+      secondary_window: null,
+    });
+    expect(container.firstChild).toBeNull();
   });
 });
