@@ -29,6 +29,15 @@ async function waitForFile(filePath, { timeoutMs = 1500, intervalMs = 50 } = {})
   return null;
 }
 
+// The notify handler spawns a background sync, and since it now runs with an
+// ISOLATED HOME that sync writes inside this very temp directory. The write can
+// land after execFile's callback has fired, so a plain rm races it and fails
+// with ENOTEMPTY. Retrying is the right answer rather than waiting on a process
+// the handler deliberately detaches.
+async function cleanupTemp(dir) {
+  await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 120 });
+}
+
 function flattenHookEntries(entries) {
   return entries.flatMap((entry) => (Array.isArray(entry?.hooks) ? entry.hooks : [entry]));
 }
@@ -108,7 +117,7 @@ test("notify handler skips SkyComputerUseClient and stale explicit original noti
       notify: [path.join(tmp, "missing-notify"), "turn-ended"],
     });
   } finally {
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -133,7 +142,7 @@ test("notify handler still chains normal original notify commands", async () => 
     assert.ok(marker, "expected chained notify marker to be written");
     assert.ok(marker.includes("turn-ended"), "expected payload args to be forwarded");
   } finally {
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -199,7 +208,7 @@ test("init scrubs cloud credentials and endpoints while preserving local config"
     else process.env.TOKENTRACKER_DEVICE_TOKEN = prevToken;
     if (prevOpencodeConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -255,7 +264,7 @@ test("init then uninstall restores original Codex notify (when pre-existing noti
     else process.env.TOKENTRACKER_DEVICE_TOKEN = prevToken;
     if (prevOpencodeConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -312,7 +321,7 @@ test("init then uninstall removes notify when none existed", async () => {
     else process.env.TOKENTRACKER_DEVICE_TOKEN = prevToken;
     if (prevOpencodeConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -349,7 +358,7 @@ test("init skips Codex notify when config is missing", async () => {
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
     if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
     else process.env.GEMINI_HOME = prevGeminiHome;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -407,7 +416,7 @@ test("init then uninstall restores original Every Code notify (when config exist
     else process.env.TOKENTRACKER_DEVICE_TOKEN = prevToken;
     if (prevOpencodeConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -449,7 +458,7 @@ test("init skips Every Code notify when config is missing", async () => {
     else process.env.TOKENTRACKER_DEVICE_TOKEN = prevToken;
     if (prevOpencodeConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -491,7 +500,7 @@ test("uninstall skips notify restore when no backup and notify not installed", a
     else process.env.CODE_HOME = prevCodeHome;
     if (prevOpencodeConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -538,7 +547,7 @@ test("uninstall removes Grok Build hook and handler", async () => {
     else process.env.HOME = prevHome;
     if (prevGrokHome === undefined) delete process.env.GROK_HOME;
     else process.env.GROK_HOME = prevGrokHome;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -615,7 +624,7 @@ test("init then uninstall manages Claude hooks without removing existing hooks",
     else process.env.TOKENTRACKER_DEVICE_TOKEN = prevToken;
     if (prevOpencodeConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -704,7 +713,7 @@ test("init then uninstall manages Gemini hooks without removing existing hooks",
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
     if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
     else process.env.GEMINI_HOME = prevGeminiHome;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -744,7 +753,7 @@ test("init skips Gemini hooks when config directory is missing", async () => {
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
     if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
     else process.env.GEMINI_HOME = prevGeminiHome;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -794,7 +803,7 @@ test("init creates Gemini settings when directory exists but file is missing", a
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
     if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
     else process.env.GEMINI_HOME = prevGeminiHome;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -844,7 +853,7 @@ test("init then uninstall manages Opencode plugin without removing other plugins
     else process.env.TOKENTRACKER_DEVICE_TOKEN = prevToken;
     if (prevOpencodeConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
@@ -882,7 +891,7 @@ test("init installs Opencode plugin when config dir is missing", async () => {
     else process.env.TOKENTRACKER_DEVICE_TOKEN = prevToken;
     if (prevOpencodeConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
-    await fs.rm(tmp, { recursive: true, force: true });
+    await cleanupTemp(tmp);
   }
 });
 
