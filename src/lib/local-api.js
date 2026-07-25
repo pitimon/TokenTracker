@@ -25,8 +25,17 @@ const avatarProxyCache = new Map();
 const AVATAR_REDIRECT_BLOCKED = Symbol("avatar-redirect-blocked");
 const AVATAR_MAX_REDIRECTS = 3;
 
-function isAllowedAvatarHost(hostname, allowlist) {
-  return allowlist.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+// One check for the URL the caller asked for AND for every redirect hop, so the
+// two can't drift apart. Port is part of the address: `https://gravatar.com:8443/`
+// shares the hostname but is a different service, so leaving the port free turns
+// this proxy into a port prober against every allowlisted host. An empty `port`
+// is the scheme default (443 / 80) — the only one permitted.
+function isAllowedAvatarTarget(url, allowlist) {
+  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  if (url.port !== "") return false;
+  return allowlist.some(
+    (host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
+  );
 }
 
 // The avatar allowlist is checked once, against the URL the caller asked for.
@@ -34,7 +43,7 @@ function isAllowedAvatarHost(hostname, allowlist) {
 // validates nothing further — so an allowlisted CDN issuing a redirect, or anyone
 // able to place one there, turns this loopback server into a way to reach
 // 169.254.169.254, another service on 127.0.0.1, or any internal address.
-// Follow by hand and re-check the host at every hop.
+// Follow by hand and re-check the whole address at every hop.
 async function fetchAvatarFollowingAllowlist(url, options, allowlist, fetchImpl = fetch) {
   let current = url;
   for (let hop = 0; hop <= AVATAR_MAX_REDIRECTS; hop += 1) {
@@ -48,8 +57,7 @@ async function fetchAvatarFollowingAllowlist(url, options, allowlist, fetchImpl 
     } catch {
       return AVATAR_REDIRECT_BLOCKED;
     }
-    if (next.protocol !== "https:" && next.protocol !== "http:") return AVATAR_REDIRECT_BLOCKED;
-    if (!isAllowedAvatarHost(next.hostname, allowlist)) return AVATAR_REDIRECT_BLOCKED;
+    if (!isAllowedAvatarTarget(next, allowlist)) return AVATAR_REDIRECT_BLOCKED;
     current = next.toString();
   }
   return AVATAR_REDIRECT_BLOCKED;
@@ -868,11 +876,8 @@ function createLocalApiHandler({ queuePath }) {
         "abs.twimg.com",
         "api.dicebear.com",
       ];
-      const hostOk = AVATAR_HOST_ALLOWLIST.some(
-        (h) => parsed.hostname === h || parsed.hostname.endsWith(`.${h}`),
-      );
-      if (!hostOk) {
-        json(res, { error: "Host not allowed" }, 403);
+      if (!isAllowedAvatarTarget(parsed, AVATAR_HOST_ALLOWLIST)) {
+        json(res, { error: "Address not allowed" }, 403);
         return true;
       }
 
@@ -1581,6 +1586,7 @@ module.exports = {
   // closes is only observable across a redirect hop, which no handler-level
   // test reaches.
   fetchAvatarFollowingAllowlist,
+  isAllowedAvatarTarget,
   AVATAR_REDIRECT_BLOCKED,
   resolveQueuePath,
   // Exported for cross-consumer tests (pricing + native contract lock).
