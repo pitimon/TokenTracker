@@ -76,53 +76,57 @@ function safeFromCodePoint(code) {
   }
 }
 
-// Reduces an authority to the literal host the RUNTIME would use. Returns
-// { host } when it can be pinned, or { unparseable: true } when a real scheme was
-// matched but no host could be derived — the caller reports that rather than
-// dropping it, because a silent null is how an IPv6 literal, an IDN homograph or
-// a single-label host disappears from a security check.
+// Resolves an authority to the host the RUNTIME would use.
+//
+// Hand-rolled parsing failed here six times, every time the same way: the
+// scanner modelled the URL more narrowly than the runtime does. Userinfo,
+// backslash-as-slash, tab/LF/CR stripping, percent-decoding, a trailing dot,
+// case folding, an ideographic full stop, and a leading Cyrillic character that
+// a `[^a-zA-Z0-9]` strip quietly removed — each was a separate patch, and the
+// last one resolved `https://аapi.github.com` to the declared, permitted
+// `api.github.com` while the runtime went to `xn--api-5cd.github.com`.
+//
+// So the runtime's own parser decides. `new URL()` implements WHATWG, which is
+// what the browser and undici follow; it punycodes IDN, normalises the dot
+// variants, and rejects what is not a URL. Hand-parsing is now reached only when
+// interpolation makes a literal URL impossible to construct.
 function resolveHost(rawAuthority) {
-  // WHATWG removes tab/LF/CR from the input before parsing; so must we, after
-  // decoding the escapes that put them there.
-  // Percent-decoding happens in the host too: `api.github.com%2eevil.example`
-  // resolves to api.github.com.evil.example, because a decoded dot is a valid
-  // host character. The shape test rejected the `%` and returned null, so the
-  // request went unseen — the same source-text-versus-decoded-string root cause
-  // as the escape splice, one encoding layer further out. Verify with
-  //   node -e 'console.log(new URL("https://a.example%2eevil.example/").host)'
-  const authority = percentDecode(decodeSourceEscapes(rawAuthority)).replace(/[\t\n\r]/g, "");
-  const authorityOnly = authority.split(/[/\\?#]/)[0];
-  const afterUserinfo = authorityOnly.includes("@")
-    ? authorityOnly.slice(authorityOnly.lastIndexOf("@") + 1)
-    : authorityOnly;
+  const decoded = decodeSourceEscapes(rawAuthority);
+  // Interpolation in the PATH does not stop the host being a literal:
+  // `https://evil.example/${owner}.png` has a perfectly resolvable authority.
+  // Testing the whole string sent every such URL down the pin path, where it
+  // resolved to nothing.
+  const authorityText = decoded.split(/[/\\?#]/)[0];
 
-  // Bracketed IPv6 keeps its brackets; the port is outside them.
-  const ipv6 = afterUserinfo.match(/^\[([^\]]+)\]/);
-  if (ipv6) return { host: `[${ipv6[1].toLowerCase()}]` };
-
-  const collapsed = afterUserinfo.replace(/\$\{[^}]*\}/g, "\u0000");
-  if (/[${}]/.test(collapsed)) return { host: null };   // match ended mid-expression
-  const parts = collapsed.split("\u0000");
-  const tail = parts.pop();
-  // An interpolation may only be pinned to its suffix when it ends on a label
-  // boundary. `https://${sub}github.com/` can resolve to `evilgithub.com`, which
-  // is registrable; `${token}-${i}.d.ip.net.coffee` cannot escape `.d.ip.net.coffee`.
-  // An interpolation may only be pinned to its suffix when the boundary falls on
-  // a dot AND the suffix is a zone rather than a bare TLD. `${sub}github.com` can
-  // resolve to the registrable `evilgithub.com`; `${src}.ai` pins nothing, since
-  // `ai` is the TLD itself.
-  if (parts.length > 0) {
-    if (!tail.startsWith(".")) return { host: null };
-    if (tail.replace(/^\./, "").split(".").filter(Boolean).length < 2) return { host: null };
+  if (!authorityText.includes("${")) {
+    try {
+      const url = new URL(`https://${authorityText.replace(/^\/+/, "")}`);
+      const host = url.hostname;
+      return host ? { host } : { host: null };
+    } catch {
+      // Not a URL the runtime would accept either — nothing to report.
+      return { host: null };
+    }
   }
 
-  const stripped = tail.replace(/^[^a-zA-Z0-9]+/, "").replace(/:.*$/, "").replace(/\.$/, "");
-  if (!stripped) return { host: null };
-  const host = stripped.toLowerCase();
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(host)) {
+  // Interpolated: the literal suffix is the most that can be pinned, and only
+  // when the boundary falls on a dot AND the suffix is a zone rather than a bare
+  // TLD. `${sub}github.com` can resolve to the registrable `evilgithub.com`;
+  // `${src}.ai` pins nothing, since `ai` is the TLD itself.
+  const parts = authorityText.replace(/\$\{[^}]*\}/g, "\u0000").split("\u0000");
+  if (parts.length === 1) return { host: null };
+  const tail = parts.pop();
+  if (!tail.startsWith(".")) return { host: null };
+  if (tail.replace(/^\./, "").split(".").filter(Boolean).length < 2) return { host: null };
+  try {
+    // The `pinned` label exists only to make a parseable URL; strip it and the
+    // dot it left behind, so the zone is reported as `d.ip.net.coffee` rather
+    // than `.d.ip.net.coffee`.
+    const zone = new URL(`https://pinned${tail}`).hostname.replace(/^pinned\.?/, "");
+    return { host: zone || null };
+  } catch {
     return { host: null };
   }
-  return { host };
 }
 
 const MENTION_CALL_RE = /\.(replace|split|startsWith|endsWith|includes|slice|indexOf|lastIndexOf)\s*\(\s*$/;
@@ -140,7 +144,10 @@ const COMMENT_LINE_RE = /^\s*(\/\/|\*|\/\*)/;
 // diff a reviewer has to approve, which is the same weight as `request_from`.
 function isMentionOnly(line, matchIndex) {
   if (COMMENT_LINE_RE.test(line)) return true;
-  const before = line.slice(0, matchIndex).replace(/["'`{(\s]+$/, "");
+  // Also strip a regex-literal opener. `repoInput.replace(/^https:\/\/github\.com\//, "")`
+  // is string surgery on user input, but the `/^` between `replace(` and the URL
+  // hid that from a test that only looked past quotes and braces.
+  const before = line.slice(0, matchIndex).replace(/[/^"'`{(\s]+$/, "");
   return MENTION_CALL_RE.test(before + "(") || MENTION_CALL_RE.test(line.slice(0, matchIndex));
 }
 
@@ -186,9 +193,14 @@ function collectHosts({ root = ROOT } = {}) {
           // done with the per-pattern care it needs.
           const { host } = resolveHost(match[1]);
           if (!host) continue;
+          // String surgery and comments are filtered from BOTH views. A prefix
+          // being stripped off user input is not a destination this code can
+          // reach, so it does not belong in the inventory either — and a regex
+          // literal like `/^https:\/\/github\.com\//` otherwise resolves to a
+          // bare `github`, demanding a declaration for a host that does not exist.
+          if (isMentionOnly(line, match.index)) continue;
           if (!mentions.has(host)) mentions.set(host, new Set());
           mentions.get(host).add(relative);
-          if (isMentionOnly(line, match.index)) continue;
           if (!requests.has(host)) requests.set(host, new Map());
           requests.get(host).set(relative, index + 1);
         }

@@ -432,3 +432,51 @@ test("percent-encoding in the authority cannot borrow a permitted host", () => {
     `percent-decoded host not resolved: ${JSON.stringify(findings)}`,
   );
 });
+
+test("a lookalike character cannot be stripped into a permitted host", () => {
+  // `https://аapi.github.com` — the first `а` is Cyrillic. The runtime punycodes
+  // it to xn--api-5cd.github.com; a `[^a-zA-Z0-9]` strip quietly removed it and
+  // resolved to `api.github.com`, declared AND permitted. Green while it leaks.
+  //
+  // Six hand-rolled parsing rounds failed the same way, so host resolution now
+  // defers to `new URL()` — the parser the runtime itself uses.
+  const permitted = shared({ request_from: ["dashboard/src/A.jsx"] });
+  const findings = attack('fetch("https://аshared.example/x");', [permitted]);
+  assert.ok(
+    findings.some((f) => f.includes("xn--")),
+    `punycode host not reported: ${JSON.stringify(findings)}`,
+  );
+});
+
+test("an ideographic full stop is a label separator", () => {
+  // U+3002 is normalised to "." by WHATWG, so `shared.example。evil.example`
+  // resolves to shared.example.evil.example.
+  const permitted = shared({ request_from: ["dashboard/src/A.jsx"] });
+  assert.ok(
+    attack('fetch("https://shared.example。evil.example/x");', [permitted]).some((f) =>
+      f.includes("evil.example"),
+    ),
+  );
+});
+
+test("interpolation in the path leaves the host literal", () => {
+  // `https://evil.example/${owner}.png` has a resolvable authority. Testing the
+  // whole string for `${` sent every such URL down the pin path, where it
+  // resolved to nothing — a silent miss on the commonest shape there is.
+  assert.ok(
+    attack("const x = <img src={`https://evil.example/${owner}.png`} />;").some((f) =>
+      f.includes("evil.example"),
+    ),
+  );
+});
+
+test("a regex literal stripping a URL prefix is not a destination", () => {
+  // `repoInput.replace(/^https:\/\/github\.com\//, "")` is string surgery on user
+  // input. The `/^` between `replace(` and the URL hid that, and the escaped
+  // slashes then resolved to a bare `github` — a demand to declare a host that
+  // does not exist.
+  assert.deepEqual(
+    attack('const raw = repoInput.trim().replace(/^https:\\/\\/shared\\.example\\//, "");'),
+    [],
+  );
+});
