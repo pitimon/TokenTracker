@@ -63,11 +63,6 @@ function decodeSourceEscapes(text) {
     .replace(/\\\//g, "/");
 }
 
-// Only %XX sequences; anything malformed is left alone rather than guessed at.
-function percentDecode(text) {
-  return text.replace(/%([0-9a-fA-F]{2})/g, (_m, hex) => safeFromCodePoint(parseInt(hex, 16)));
-}
-
 function safeFromCodePoint(code) {
   try {
     return String.fromCodePoint(code);
