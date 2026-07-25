@@ -61,7 +61,7 @@ tokentracker doctor     # health check
 
 ---
 
-## 🖥️ Prefer an app? There's a desktop build
+## 💻 Prefer an app? There's a desktop build
 
 If you'd rather not keep a terminal open, both native apps are on the [Releases page](https://github.com/pitimon/TokenTracker/releases/latest):
 
@@ -78,8 +78,8 @@ Both bundle their own Node runtime, so there is nothing else to install. They sh
 
 ## ✨ What you get
 
-- 🔒 **Your usage data never leaves your machine.** Token counts and timestamps only — never prompts, responses, or file contents. No account, no telemetry, no analytics, no phone-home. TokenTracker does make a few outbound calls *on your behalf* (model prices, your own plan quotas); every one is named in the Privacy section below, and none of them carry your usage.
-- 📊 **One calm web dashboard.** Your whole picture in the browser at a local URL, no login — light or dark, auto-refreshing while the tab is open.
+- 🔒 **Your usage data never leaves your machine.** Token counts and timestamps only — never prompts, responses, or file contents. No account, no telemetry, no analytics, no phone-home. TokenTracker does make a few outbound calls *on your behalf* (model prices, your own plan quotas); every one is named in [Privacy](#-privacy) below, and none of them carry your usage.
+- 📊 **One calm web dashboard.** Your whole picture in the browser at a local URL, no login — light or dark, auto-refreshing while the tab is open. [What's on it ↓](#-the-dashboard)
 - 📈 **Quota at a glance, on every card.** Live plan-quota usage (used %, e.g. 5h + weekly) as color-coded chips right on each provider's card — see how close you are to your limits without leaving the overview. Full windows + reset countdowns on the Limits page. Covers Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity.
 - 💰 **Cost you can trust — and a price tag when it can't.** 2,200+ models priced from [LiteLLM](https://github.com/BerriAI/litellm) (refreshed daily) with a bundled offline snapshot, so USD totals are right even without a network. A model too new to have a price is badged **pricing missing** rather than quietly counted as $0, and prices refresh in the background instead of waiting for a restart. Cross-provider records are de-duplicated to match each provider's own billing.
 - 🔌 **20+ tools, zero config.** Claude Code, Codex, Cursor, Gemini, Copilot, Antigravity, OpenCode, Kiro, Zed, Goose, and more — auto-detected, hooks auto-install on first run. Zero to dashboard in ~30 seconds.
@@ -119,7 +119,7 @@ Rate-limit providers are auto-detected where possible. For Z.AI / GLM Coding Pla
 
 ---
 
-## 🏗️ How it works
+## 🧩 How it works
 
 ```
 AI CLI tools  →  hooks / passive readers  →  local queue file  →  dashboard
@@ -135,7 +135,7 @@ No account, no upload of your usage, and no server to sign in to.
 
 ---
 
-## 🛡️ Privacy
+## 🔐 Privacy
 
 | Protection | What it means |
 |---|---|
@@ -184,7 +184,7 @@ Browser auto-open is opt-in: `tokentracker serve --open`. Background services an
 
 ---
 
-## ⏱️ Always-on, without a terminal (macOS)
+## ⏰ Always-on, without a terminal (macOS)
 
 If you want the dashboard up all the time but don't want the desktop app, the repo ships a launchd installer. It registers two LaunchAgents — the dashboard on port `7680`, and a periodic background sync — both pinned to a specific published version:
 
@@ -198,7 +198,7 @@ macOS only; it uses `launchd` directly. On Linux, the same effect is a small sys
 
 ---
 
-## 🛠️ Development
+## 🧰 Development
 
 ```bash
 git clone https://github.com/pitimon/TokenTracker.git
@@ -232,7 +232,7 @@ If a tool you use shows as not configured, run `tokentracker init` — it re-run
 
 <br/>
 
-The server auto-picks the next free port (`7681`, `7682`, …) and logs it on startup. To force one, use the Bash or PowerShell command in [Configuration](#configuration). To see what's holding port `7680`:
+The server auto-picks the next free port (`7681`, `7682`, …) and logs it on startup. To force one, use the Bash or PowerShell command in [Configuration](#-configuration). To see what's holding port `7680`:
 
 ```bash
 lsof -i :7680
