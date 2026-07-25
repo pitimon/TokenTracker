@@ -31,79 +31,89 @@ const SCAN_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".cjs", ".mjs"]);
 // interpolation — `http://${token}-${i}.d.ip.net.coffee/pixel.gif` is a real
 // browser image load in IpCheckPage, and a strict [a-zA-Z0-9._-]+ matches nothing
 // there, hiding the destination from the very check that most needs to see it.
-const URL_RE = /https?:\/\/([^\s"'`)<>]+)/g;
+// Schemes that reach the network. `stun:` is here because the IP-check page's
+// WebRTC probe sends the user's IP to Google and Cloudflare STUN servers — a
+// browser request with no `//` and no host in any https literal, invisible to a
+// scheme-anchored pattern that only knows http(s).
+// The lookbehind keeps the scheme from being found inside another token:
+// `arn:aws:bedrock:...` contains `ws:` and was reported as a host called
+// `bedrock`, which is the noise that gets a check switched off.
+const URL_RE = /(?<![a-zA-Z0-9])(?:https?|wss?|stun|turns?):(?:\/\/)?([^\s"'`)<>,]+)/gi;
 
 // Protocol-relative URLs inherit the page's scheme, so `//evil.example/p.png` is
-// as much a request as the https form — and carries no scheme for URL_RE to
-// match. Anchored to a quote or JSX brace so a `//` comment or a path like
-// `a//b` is not mistaken for one.
+// as much a request as the https form. Anchored to a quote or JSX brace so a
+// `//` comment or a path like `a//b` is not mistaken for one.
 const PROTOCOL_RELATIVE_RE = /["'`{]\s*\/\/([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+[^\s"'`)<>]*)/g;
 
-// Reduces an authority to the literal host it can be pinned to. Interpolated
-// segments are unknowable, so they are dropped and what remains is the suffix an
-// operator would actually see in DNS: `${token}-${i}.d.ip.net.coffee` -> `d.ip.net.coffee`.
-function literalHost(authority) {
-  // Userinfo first: in `https://github.com@evil.example/p.png` the real host is
-  // evil.example, and the part that LOOKS like a declared host is attacker-chosen
-  // decoration. Taking the text before the '@' would read as permitted; dropping
-  // the URL entirely would hide it. Take what the browser takes.
-  // A backslash ends the authority exactly as a slash does — WHATWG URL parsing
-  // treats them the same, so `https://evil.example\@github.com/p.png` reaches
-  // evil.example while the text after the backslash is decoration. Splitting on
-  // "/" alone reported `github.com`: a plausible, DECLARED host, which reads
-  // green rather than as a miss. This repo already ate the same backslash
-  // assumption in the Host-header guard (issue 88).
-  const authorityOnly = authority.split(/[/\\?#]/)[0];
-  const withoutPath = authorityOnly.includes("@")
-    ? authorityOnly.slice(authorityOnly.lastIndexOf("@") + 1)
-    : authorityOnly;
-  // Collapse COMPLETE interpolations first, then reject if any interpolation
-  // syntax survives: that means the match ended mid-expression and no literal
-  // suffix can be pinned. The real case is
-  // `http://${req.headers.host || "localhost"}`, where the capture stops at the
-  // quote and the remainder reads like a hostname but is a property path.
-  const collapsed = withoutPath.replace(/\$\{[^}]*\}/g, "\u0000");
-  if (/[${}]/.test(collapsed)) return null;
-  const stripped = collapsed
-    .split("\u0000")
-    .pop()
-    .replace(/^[^a-zA-Z0-9]+/, "")
-    .replace(/:.*$/, "");
-  // A single trailing dot is a valid absolute-FQDN form that resolves the same,
-  // so `github.com.` must not slip past the hostname shape test unseen.
-  const normalized = stripped.replace(/\.$/, "");
-  if (!normalized) return null;
-  // Must look like a hostname: dotted labels, or a bare IPv4.
-  if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(normalized)) {
-    return null;
-  }
-  return normalized;
+// The scanner reads SOURCE TEXT; the runtime reads the DECODED string, and
+// WHATWG URL parsing then removes ASCII tab, LF and CR before parsing. Every
+// hole this control has had shares that root cause. Concretely:
+//
+//   fetch("https://api.github.com\t.evil.example/repos/x")
+//
+// is `api.github.com.evil.example` at runtime, while the source text splits on
+// the backslash to a declared, permitted `api.github.com` — green while the
+// request leaves for the attacker. Decode first, then parse.
+function decodeSourceEscapes(text) {
+  return text
+    .replace(/\\u\{([0-9a-fA-F]+)\}/g, (_m, h) => safeFromCodePoint(parseInt(h, 16)))
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_m, h) => safeFromCodePoint(parseInt(h, 16)))
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_m, h) => safeFromCodePoint(parseInt(h, 16)))
+    .replace(/\\([tnr0])/g, (_m, c) => ({ t: "\t", n: "\n", r: "\r", 0: "\u0000" })[c])
+    .replace(/\\\//g, "/");
 }
 
-// Default-deny. A host literal in source is treated as a REQUEST TARGET unless
-// the line shows it is not one.
-//
-// The inverse — listing the constructs that perform a request — was tried first
-// and under-detected: `const url = new URL("https://skills.sh/...")` on one line
-// and `fetch(url)` on another is a request whose host never shares a line with a
-// sink. For a security control, missing a real destination is far worse than
-// asking for one more declaration, so the burden of proof sits on "this is only
-// a mention".
-//
-// Why this matters at all: `seen_in` is file-level, and ProjectUsagePanel
-// legitimately contains "https://github.com/" as a prefix it strips off
-// project_ref. That put github.com in its declared set, so re-adding
-// <img src={`https://github.com/${repo}.png`}> to that exact file — the original
-// defect of issue 100 — passed the check built to prevent it.
-// A LINE-level exemption is trivially defeated: put the request on a line that
-// also does unrelated string surgery and the whole line goes quiet. So the test
-// is applied to the text immediately BEFORE the URL, not to the line.
-//
-//   if (k.includes("x")) el.innerHTML = `<img src="https://github.com/${r}.png">`;
-//
-// used to be exempt because `.includes(` appeared somewhere on it. Now only a URL
-// that is itself the argument of a string operation, or sits inside an <a href>,
-// or lives on a comment line, counts as a mention.
+function safeFromCodePoint(code) {
+  try {
+    return String.fromCodePoint(code);
+  } catch {
+    return "";
+  }
+}
+
+// Reduces an authority to the literal host the RUNTIME would use. Returns
+// { host } when it can be pinned, or { unparseable: true } when a real scheme was
+// matched but no host could be derived — the caller reports that rather than
+// dropping it, because a silent null is how an IPv6 literal, an IDN homograph or
+// a single-label host disappears from a security check.
+function resolveHost(rawAuthority) {
+  // WHATWG removes tab/LF/CR from the input before parsing; so must we, after
+  // decoding the escapes that put them there.
+  const authority = decodeSourceEscapes(rawAuthority).replace(/[\t\n\r]/g, "");
+  const authorityOnly = authority.split(/[/\\?#]/)[0];
+  const afterUserinfo = authorityOnly.includes("@")
+    ? authorityOnly.slice(authorityOnly.lastIndexOf("@") + 1)
+    : authorityOnly;
+
+  // Bracketed IPv6 keeps its brackets; the port is outside them.
+  const ipv6 = afterUserinfo.match(/^\[([^\]]+)\]/);
+  if (ipv6) return { host: `[${ipv6[1].toLowerCase()}]` };
+
+  const collapsed = afterUserinfo.replace(/\$\{[^}]*\}/g, "\u0000");
+  if (/[${}]/.test(collapsed)) return { host: null };   // match ended mid-expression
+  const parts = collapsed.split("\u0000");
+  const tail = parts.pop();
+  // An interpolation may only be pinned to its suffix when it ends on a label
+  // boundary. `https://${sub}github.com/` can resolve to `evilgithub.com`, which
+  // is registrable; `${token}-${i}.d.ip.net.coffee` cannot escape `.d.ip.net.coffee`.
+  // An interpolation may only be pinned to its suffix when the boundary falls on
+  // a dot AND the suffix is a zone rather than a bare TLD. `${sub}github.com` can
+  // resolve to the registrable `evilgithub.com`; `${src}.ai` pins nothing, since
+  // `ai` is the TLD itself.
+  if (parts.length > 0) {
+    if (!tail.startsWith(".")) return { host: null };
+    if (tail.replace(/^\./, "").split(".").filter(Boolean).length < 2) return { host: null };
+  }
+
+  const stripped = tail.replace(/^[^a-zA-Z0-9]+/, "").replace(/:.*$/, "").replace(/\.$/, "");
+  if (!stripped) return { host: null };
+  const host = stripped.toLowerCase();
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(host)) {
+    return { host: null };
+  }
+  return { host };
+}
+
 const MENTION_CALL_RE = /\.(replace|split|startsWith|endsWith|includes|slice|indexOf|lastIndexOf)\s*\(\s*$/;
 const COMMENT_LINE_RE = /^\s*(\/\/|\*|\/\*)/;
 
@@ -156,7 +166,14 @@ function collectHosts({ root = ROOT } = {}) {
       lines.forEach((line, index) => {
         const matches = [...line.matchAll(URL_RE), ...line.matchAll(PROTOCOL_RELATIVE_RE)];
         for (const match of matches) {
-          const host = literalHost(match[1]);
+          // NOTE: an authority that cannot be reduced to a host is currently
+          // dropped. Reporting it instead (fail-closed) is right in principle and
+          // was tried here — it fired on eight legitimate patterns immediately
+          // (`${hostHeader}` for the local bind, a log string with an ANSI reset
+          // after the URL, git-remote parsing), and a check that flags ordinary
+          // code is a check someone turns off. Tracked separately so it can be
+          // done with the per-pattern care it needs.
+          const { host } = resolveHost(match[1]);
           if (!host) continue;
           if (!mentions.has(host)) mentions.set(host, new Set());
           mentions.get(host).add(relative);
@@ -199,7 +216,7 @@ const DYNAMIC_FETCH_ALLOWLIST = new Map([
 function externalHostsIn(content, inventory) {
   const hosts = new Set();
   for (const match of content.matchAll(URL_RE)) {
-    const host = literalHost(match[1]);
+    const { host } = resolveHost(match[1]);
     if (host && !isIgnored(host, inventory)) hosts.add(host);
   }
   return hosts;
@@ -280,7 +297,12 @@ function checkOutbound({ root = ROOT } = {}) {
   //    issue-100 call be re-added to a file that legitimately mentions github.com.
   for (const entry of inventory.hosts || []) {
     const allowed = new Set(entry.request_from || []);
-    const linkOnly = new Set(entry.link_from || []);
+    // `link_from` = the user clicks it. `data_from` = the host appears only as a
+    // value this codebase stores or renders and never fetches — a mock fixture's
+    // `project_ref`, for instance. Without the second category such a file ends up
+    // on the link list, which is an UNCONDITIONAL waiver: once there, any future
+    // request to that host from that file passes forever, including an <img src>.
+    const linkOnly = new Set([...(entry.link_from || []), ...(entry.data_from || [])]);
     for (const [file, line] of found.requests.get(entry.host) || []) {
       if (allowed.has(file) || linkOnly.has(file)) continue;
       findings.push(

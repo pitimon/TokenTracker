@@ -190,7 +190,7 @@
       "from": "both",
       "user_data": false,
       "readme": false,
-      "purpose": "Server: reads public skill repositories. Browser: link targets only \u2014 the repository, releases and skill sources, which are requests the user makes by clicking. No avatar or image is loaded from here (issue 100).",
+      "purpose": "Link targets only \u2014 the repository, releases and skill sources, which are requests the user makes by clicking. The server never fetches github.com: skills-manager builds these URLs for the UI and fetches api.github.com and raw.githubusercontent.com instead. No avatar or image is loaded from here (issue 100).",
       "seen_in": [
         "dashboard/src/components/LocalOnlyNotice.jsx",
         "dashboard/src/lib/mock-data.ts",
@@ -203,17 +203,18 @@
         "src/commands/init.js",
         "src/lib/skills-manager.js"
       ],
-      "request_from": [
-        "src/lib/skills-manager.js"
-      ],
+      "request_from": [],
       "link_from": [
         "dashboard/src/components/LocalOnlyNotice.jsx",
         "dashboard/src/pages/SkillsPage.jsx",
         "dashboard/src/pages/WidgetsPage.jsx",
         "dashboard/src/ui/components/HeaderGithubStar.jsx",
         "dashboard/src/pages/SkillDetailPanel.jsx",
-        "dashboard/src/lib/mock-data.ts",
-        "src/commands/init.js"
+        "src/commands/init.js",
+        "src/lib/skills-manager.js"
+      ],
+      "data_from": [
+        "dashboard/src/lib/mock-data.ts"
       ]
     },
     {
@@ -263,6 +264,32 @@
       "user_data": true,
       "readme": true,
       "purpose": "IP-check page only. The browser loads image probes at a unique per-run subdomain so ip.net.coffee's authoritative DNS server can observe WHICH RESOLVER asked \u2014 that is how the page detects a DNS leak, and it is the page's stated purpose. The hostname is built by interpolation, which is why an earlier version of this check could not see the destination at all.",
+      "seen_in": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ],
+      "request_from": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ]
+    },
+    {
+      "host": "stun.l.google.com",
+      "from": "browser",
+      "user_data": true,
+      "readme": true,
+      "purpose": "IP-check page only. A WebRTC STUN binding request to Google, which is how the page detects whether a VPN leaks your real address \u2014 the probe necessarily discloses that address to the STUN server. Only reached when that page is opened. The `stun:` scheme has no `//` and no https literal, so an earlier version of the check could not see it at all.",
+      "seen_in": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ],
+      "request_from": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ]
+    },
+    {
+      "host": "stun.cloudflare.com",
+      "from": "browser",
+      "user_data": true,
+      "readme": true,
+      "purpose": "IP-check page only. A WebRTC STUN binding request to Cloudflare, which is how the page detects whether a VPN leaks your real address \u2014 the probe necessarily discloses that address to the STUN server. Only reached when that page is opened. The `stun:` scheme has no `//` and no https literal, so an earlier version of the check could not see it at all.",
       "seen_in": [
         "dashboard/src/pages/IpCheckPage.jsx"
       ],
