@@ -25,6 +25,13 @@ function resolveModelName(model: any, fallback: any) {
 // price is plausible and therefore never looks wrong — worth flagging.
 const FUZZY_PRICING_TIERS = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip"]);
 
+// Server tiers that mean "$0 because we have no price", as opposed to a model
+// that genuinely costs nothing. "unattributed"/"empty" rows carry no model id at
+// all, but their tokens still count toward the total, so the same caveat applies
+// — they are excluded from the server's unpriced_models list (which exists to
+// name models needing a curated price) but must not silently read as priced.
+const UNPRICED_PRICING_TIERS = new Set(["miss", "unattributed", "empty"]);
+
 function isKnownZeroCostModel(name: any) {
   const lower = String(name || "").toLowerCase();
   return lower.includes("free") || lower.includes("hy3-preview") || /^glm-[\d.]+-flash(?![a-z])/.test(lower);
@@ -92,7 +99,7 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
           // stays as the fallback for responses from an older server.
           const pricingTier = typeof model?.pricing_tier === "string" ? model.pricing_tier : null;
           const pricingMissing = pricingTier
-            ? pricingTier === "miss" && modelTokens > 0
+            ? UNPRICED_PRICING_TIERS.has(pricingTier) && modelTokens > 0
             : modelTokens > 0 && (modelCost == null || modelCost <= 0) && !isKnownZeroCostModel(name);
           const pricingFuzzy = Boolean(pricingTier && FUZZY_PRICING_TIERS.has(pricingTier));
           return {

@@ -718,3 +718,40 @@ test("without pricing_tier the cost<=0 heuristic still applies (older server res
   assert.deepEqual(provider.missingPricingModels.map((m) => m.name), ["brand-new-model"]);
   assert.deepEqual(provider.fuzzyPricingModels, []);
 });
+
+test("an unattributed row still carries the unpriced caveat", async () => {
+  const mod = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
+  const { buildFleetData } = mod;
+
+  // The server excludes the "unknown" placeholder from unpriced_models — that
+  // list names models needing a curated price, and a placeholder is not one.
+  // The dashboard chip answers a different question: "are these tokens counted
+  // at $0?" For an unattributed row they are, so it must still be flagged. On
+  // this machine every such row currently has 0 tokens and is dropped earlier,
+  // so only a synthesized row exercises the path.
+  const [provider] = buildFleetData({
+    sources: [
+      {
+        source: "claude",
+        totals: { billable_total_tokens: 2000, total_cost_usd: "5" },
+        models: [
+          {
+            model: "unknown",
+            model_id: "unknown",
+            pricing_tier: "unattributed",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+          },
+          {
+            model: "acme-1",
+            model_id: "acme-1",
+            pricing_tier: "litellm:exact",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "5" },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(provider.missingPricingModels.map((m) => m.name), ["unknown"]);
+  assert.deepEqual(provider.fuzzyPricingModels, []);
+});

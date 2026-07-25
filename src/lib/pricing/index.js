@@ -51,6 +51,11 @@ const RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
 // wrong, unlike a $0 one.
 const FUZZY_SOURCES = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip"]);
 
+// Placeholder ids that stand in for "this row has no model", so they resolve to
+// the "unattributed" tier instead of being looked up and recorded as a miss.
+// Closed set on purpose: a real model id must never be silently un-priced here.
+const UNATTRIBUTED_MODEL_IDS = new Set(["unknown"]);
+
 // `last_refresh_error` is served over HTTP to the dashboard, so it is built
 // from CLOSED sets, never from an arbitrary value. A previous version accepted
 // anything symbol-shaped, which a QA pass broke immediately: a 32-character
@@ -204,11 +209,28 @@ function resolveLookupSource(opts) {
   return null;
 }
 
+// A row whose model id could not be determined is stored and aggregated under
+// the literal id "unknown" — persisted into the queue by src/commands/sync.js
+// and src/lib/claude-categorizer.js, then coalesced to it again at read time by
+// src/lib/local-api.js. That is a placeholder for "no model", not a model, so
+// pricing it turned a missing *attribution* into a missing *price*: it recorded
+// a permanent miss, listed "unknown" in unpriced_models as though a real model
+// needed a curated price, and logged advice to add it to curated-overrides.json
+// where it could never match anything.
+// Returns the tier to report, or null when this is a real model id to look up.
+function resolvePlaceholderTier(model) {
+  if (!model) return "empty";
+  const normalized = String(model).trim().toLowerCase();
+  if (!normalized) return "empty";
+  return UNATTRIBUTED_MODEL_IDS.has(normalized) ? "unattributed" : null;
+}
+
 // Returns the price AND how it was resolved. getModelPricing keeps the old
 // bare-numbers contract for the many existing callers; anything that wants to
 // show the user how much to trust the number uses this.
 function getModelPricingMeta(model, opts = {}) {
-  if (!model) return { pricing: ZERO_PRICING, tier: "empty" };
+  const placeholderTier = resolvePlaceholderTier(model);
+  if (placeholderTier) return { pricing: ZERO_PRICING, tier: placeholderTier };
 
   const lookupSource = resolveLookupSource(opts);
   const cacheKey = lookupSource ? `${lookupSource}\0${model}` : model;
