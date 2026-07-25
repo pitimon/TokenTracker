@@ -26,6 +26,7 @@ npm run dashboard:build                   # build to dashboard/dist/
 npm run validate:copy                     # copy registry completeness
 npm run validate:ui-hardcode              # no hardcoded UI strings
 npm run validate:guardrails               # architecture guardrails
+npm run validate:version-lockstep         # desktop project versions match package.json
 node bin/tracker.js serve --no-sync       # local dashboard server on :7680
 ```
 

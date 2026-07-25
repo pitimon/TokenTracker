@@ -3,6 +3,16 @@
 This fork publishes the CLI as `@ipv9/tokentracker-cli`. Keep the binary aliases
 unchanged: `tokentracker`, `tracker`, and `tokentracker-cli`.
 
+Bump the version with `npm version <x.y.z> --no-git-tag-version`. That fires the
+`version` lifecycle script, which rewrites `TokenTrackerBar/project.yml` and
+`TokenTrackerWin/TokenTrackerWin.csproj` to match — but because
+`--no-git-tag-version` makes no commit, npm does not stage them. **`git add`
+those two files with `package.json`.** `npm run validate:version-lockstep` (part
+of `ci:local`) fails if they drift, because `release-dmg.yml` and
+`release-windows.yml` refuse to build a version their project files disagree
+with — which is exactly how 0.39.39 through 0.39.42 shipped to npm with no
+desktop build and no tag.
+
 Run these checks before publishing:
 
 ```bash
@@ -70,6 +80,17 @@ Manual MFA publish flow:
   Review any non-metadata pricing changes before recording the publish state.
 - Update the PR body with the published version, npm verification, and validation
   commands.
+
+Desktop apps and the git tag:
+
+- The `vX.Y.Z` tag and the GitHub Release are created by **`release-dmg.yml`**
+  (Actions → "Release DMG" → Run workflow → version). Nothing else tags. Its
+  final job flips the release out of draft and marks it `--latest`, and it
+  dispatches the Windows build in parallel, so one run produces the tag, the
+  `.dmg`, and the `.exe`.
+- So "we forgot to tag" and "we did not build the desktop apps" are the same
+  omission. If you publish to npm without dispatching this, the Releases page
+  keeps pointing at an older version — which the README links to for downloads.
 
 GitHub Actions publish guardrails:
 
