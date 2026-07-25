@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { writePlan } = require("../scripts/graph/lib/plan-writer.cjs");
+const { writePlan } = require("../../scripts/graph/lib/plan-writer.cjs");
 
 test("writePlan writes graph.plan.json", () => {
   let written = null;

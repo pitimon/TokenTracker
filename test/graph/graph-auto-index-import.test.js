@@ -4,7 +4,7 @@ const path = require("node:path");
 const os = require("node:os");
 const fs = require("node:fs");
 const { execFileSync } = require("node:child_process");
-const { importScip } = require("../scripts/graph/lib/importer.cjs");
+const { importScip } = require("../../scripts/graph/lib/importer.cjs");
 
 test("importScip writes sqlite with documents, symbols, and occurrences", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "graph-import-"));

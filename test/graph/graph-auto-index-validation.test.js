@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { validateScipCoverage } = require("../scripts/graph/lib/validate.cjs");
+const { validateScipCoverage } = require("../../scripts/graph/lib/validate.cjs");
 
 test("validateScipCoverage fails when domain has zero docs", () => {
   const deps = {
