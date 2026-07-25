@@ -30,6 +30,8 @@ const avatarProxyCache = new Map();
 const {
   MODEL_PRICING,
   getModelPricing,
+  getModelPricingMeta,
+  getPricingDiagnostics,
   computeRowCost,
   ensurePricingLoaded,
 } = require("./pricing");
@@ -1147,7 +1149,15 @@ function createLocalApiHandler({ queuePath }) {
               model: m.model,
               source: s.source,
             });
-            return { ...m, totals: { ...m.totals, total_cost_usd: cost.toFixed(6) } };
+            // How the price was resolved, so the dashboard can say "unpriced"
+            // or "matched by substring" instead of inferring it from a $0 cost
+            // — a genuinely free model and an unknown one both cost $0.
+            const { tier } = getModelPricingMeta(m.model, { source: s.source });
+            return {
+              ...m,
+              pricing_tier: tier,
+              totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
+            };
           })
           .sort((a, b) => b.totals.total_tokens - a.totals.total_tokens);
         const sourceCost = s.models.reduce((sum, m) => sum + Number(m.totals.total_cost_usd), 0);
@@ -1157,7 +1167,13 @@ function createLocalApiHandler({ queuePath }) {
 
       json(res, {
         from, to, days: 0, scope, excluded_sources: excludedSources, sources,
-        pricing: { model: "per-model", pricing_mode: "per_token_type", source: "litellm", effective_from: new Date().toISOString().slice(0, 10) },
+        pricing: {
+          model: "per-model",
+          pricing_mode: "per_token_type",
+          source: "litellm",
+          effective_from: new Date().toISOString().slice(0, 10),
+          ...getPricingDiagnostics(),
+        },
       });
       return true;
     }

@@ -639,3 +639,82 @@ test("buildFleetData treats GLM flash models with zero cost as known-zero-cost, 
     "glm-4.7-flashx must appear in missingPricingModels",
   );
 });
+
+test("pricing_tier from the server beats the cost<=0 guess for missing pricing", async () => {
+  const mod = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
+  const { buildFleetData, buildUsageInsights } = mod;
+
+  const modelBreakdown = {
+    sources: [
+      {
+        source: "claude",
+        totals: { billable_total_tokens: 3000, total_cost_usd: "5" },
+        models: [
+          {
+            // Costs nothing AND resolved exactly — a genuinely free model, not
+            // an unpriced one. The old cost<=0 heuristic flagged this unless the
+            // name happened to contain "free".
+            model: "vendor-zero-rate",
+            model_id: "vendor-zero-rate",
+            pricing_tier: "litellm:exact",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+          },
+          {
+            // Priced, so the heuristic sees nothing wrong — but the price came
+            // from a substring match and may belong to a different model.
+            model: "acme-9-turbo",
+            model_id: "acme-9-turbo",
+            pricing_tier: "litellm:fuzzy",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "5" },
+          },
+          {
+            model: "brand-new-model",
+            model_id: "brand-new-model",
+            pricing_tier: "miss",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+          },
+        ],
+      },
+    ],
+  };
+
+  const [provider] = buildFleetData(modelBreakdown);
+  assert.deepEqual(
+    provider.missingPricingModels.map((m) => m.name),
+    ["brand-new-model"],
+    "only the tier=miss model is unpriced",
+  );
+  assert.deepEqual(
+    provider.fuzzyPricingModels.map((m) => m.name),
+    ["acme-9-turbo"],
+    "a substring-matched price is surfaced even though it is non-zero",
+  );
+
+  const insights = buildUsageInsights(modelBreakdown);
+  assert.deepEqual(insights.missingPricingModels.map((m) => m.name), ["brand-new-model"]);
+  assert.deepEqual(insights.fuzzyPricingModels.map((m) => m.name), ["acme-9-turbo"]);
+});
+
+test("without pricing_tier the cost<=0 heuristic still applies (older server response)", async () => {
+  const mod = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
+  const { buildFleetData } = mod;
+
+  const [provider] = buildFleetData({
+    sources: [
+      {
+        source: "claude",
+        totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+        models: [
+          {
+            model: "brand-new-model",
+            model_id: "brand-new-model",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(provider.missingPricingModels.map((m) => m.name), ["brand-new-model"]);
+  assert.deepEqual(provider.fuzzyPricingModels, []);
+});

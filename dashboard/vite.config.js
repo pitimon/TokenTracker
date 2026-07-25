@@ -280,7 +280,7 @@ async function runLocalSyncCommand(extraEnv = {}) {
 // at require-time, so dev-server mocks still get LiteLLM-backed cost data.
 const __viteRequire = createRequire(import.meta.url);
 const __pricing = __viteRequire(path.resolve(REPO_ROOT, "src/lib/pricing"));
-const { getModelPricing, computeRowCost } = __pricing;
+const { getModelPricing, getModelPricingMeta, computeRowCost } = __pricing;
 
 async function handleLocalApi(req, res, url) {
   // Honor the dashboard's tz / tz_offset_minutes params so hourly/daily
@@ -777,7 +777,14 @@ async function handleLocalApi(req, res, url) {
           model: m.model,
           source: s.source,
         });
-        return { ...m, totals: { ...m.totals, total_cost_usd: cost.toFixed(6) } };
+        // Mirror the real handler: without pricing_tier the dev server cannot
+        // exercise the unpriced/fuzzy badges at all.
+        const { tier } = getModelPricingMeta(m.model, { source: s.source });
+        return {
+          ...m,
+          pricing_tier: tier,
+          totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
+        };
       }).sort((a, b) => b.totals.total_tokens - a.totals.total_tokens);
       const sourceCost = s.models.reduce((sum, m) => sum + Number(m.totals.total_cost_usd), 0);
       s.totals.total_cost_usd = sourceCost.toFixed(6);

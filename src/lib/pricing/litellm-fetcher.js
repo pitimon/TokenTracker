@@ -112,6 +112,11 @@ async function writeCache(cachePath, data) {
 async function loadLitellmData({
   cachePath,
   ttlMs = DEFAULT_TTL_MS,
+  // Skip the disk cache and go upstream. Needed because `ttlMs: 0` does NOT
+  // reliably force a refetch: mtime carries sub-millisecond precision while
+  // Date.now() does not, so a cache file written moments ago can compare as
+  // "written in the future" and still count as fresh.
+  forceRefresh = false,
   fetchTimeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
   fetchImpl = fetchUpstream,
   url = LITELLM_PRICING_URL,
@@ -126,7 +131,7 @@ async function loadLitellmData({
 
   // 1. Fresh disk cache
   const stat = await statSafe(cachePath);
-  if (isFresh(stat, ttlMs)) {
+  if (!forceRefresh && isFresh(stat, ttlMs)) {
     try {
       const data = await readJsonAsync(cachePath);
       delete data._meta;
