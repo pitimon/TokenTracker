@@ -25,10 +25,18 @@ node bin/tracker.js doctor       # Health check
 ## Tests
 
 ```bash
-npm test                                     # Full suite (node --test over test/*.test.js)
+npm test                                     # Product suite (node --test over test/*.test.js)
 node --test test/rollout-parser.test.js      # A single test file
 npm run ci:local                             # Tests + validations + builds (everything CI runs)
+npm run test:graph                           # Maintainer tooling only — see below
 ```
+
+`test/graph/` covers `scripts/graph/`, a SCIP code-graph indexer built for the
+maintainer's own agent tooling. It is not part of the published package and
+ships to nobody, so it is **not** in `npm test` or `ci:local` — its 12 files
+were a tenth of the suite, which made the coverage picture look better than it
+is while four product parsers still have no test at all. CI runs it in its own
+job, triggered only when `scripts/graph/**` or `test/graph/**` changes.
 
 If you're touching the dashboard:
 

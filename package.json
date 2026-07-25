@@ -38,6 +38,7 @@
     "audit:tokens": "node scripts/audit-token-correctness.cjs",
     "graph:auto-index": "node scripts/graph/auto-index.cjs",
     "graph:scip": "node scripts/graph/generate-scip.cjs",
+    "test:graph": "node --test test/graph/*.test.js",
     "pricing:build-seed": "node scripts/build-pricing-seed.cjs",
     "prepublishOnly": "node scripts/build-pricing-seed.cjs",
     "test": "node --test test/*.test.js",

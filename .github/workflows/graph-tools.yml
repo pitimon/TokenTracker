@@ -1,0 +1,52 @@
+name: Graph tools
+
+# `scripts/graph/` is a SCIP code-graph indexer built for the maintainer's own
+# agent tooling. It is not part of @ipv9/tokentracker-cli and ships to nobody,
+# but its 12 test files were a tenth of the suite and ran in every `ci:local`
+# on every PR — distorting the coverage picture while four product parsers have
+# no test at all (#104), and charging every contributor for it (#107).
+#
+# So the product gate no longer runs them. This workflow does, and ONLY when
+# the graph code or its tests change.
+#
+# Deliberately a real, blocking job rather than a `continue-on-error` one: a
+# gate that cannot fail is a gate that reports success it did not earn. Path
+# filtering makes it absent when irrelevant, not green when broken.
+#
+# Note this does NOT make the tests run on unrelated PRs, so a change elsewhere
+# that breaks the indexer would be caught only on the next graph-touching PR.
+# That is the accepted trade for taking it off the product's critical path; the
+# tool has no runtime dependency on the product.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/graph/**"
+      - "test/graph/**"
+      - ".github/workflows/graph-tools.yml"
+
+concurrency:
+  group: graph-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-graph:
+    name: test:graph
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Run the graph-tool tests
+        run: npm run test:graph

@@ -14,7 +14,7 @@ test("parseScipFile deserializes scip index", () => {
   const index = new scip.Index({ documents: [] });
   fs.writeFileSync(scipPath, index.serializeBinary());
 
-  const autoIndexPath = path.join(__dirname, "..", "scripts", "graph", "auto-index.cjs");
+  const autoIndexPath = path.join(__dirname, "..", "..", "scripts", "graph", "auto-index.cjs");
   const code = `${fs.readFileSync(autoIndexPath, "utf8")}\nmodule.exports._test = { parseScipFile };`;
   const localRequire = createRequire(autoIndexPath);
   const sandbox = {

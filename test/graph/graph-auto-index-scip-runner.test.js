@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const path = require("node:path");
-const { runScipForPlan } = require("../scripts/graph/lib/scip-runner.cjs");
+const { runScipForPlan } = require("../../scripts/graph/lib/scip-runner.cjs");
 
 test("runScipForPlan throws when no tsconfig is available", () => {
   const fakeFs = {
