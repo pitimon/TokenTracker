@@ -4,7 +4,13 @@ import { shouldFetchGithubStars } from "../dashboard/util/should-fetch-github-st
 /**
  * Dashboard / marketing header: single row — icon + Star + count (matches Shell header).
  */
-export function HeaderGithubStar({ repo = "pitimon/TokenTracker" }) {
+// This project's own repository, fixed. It was a prop with a default, which is
+// an API that invites a caller to pass a user-derived value into a URL — the
+// shape of issue 100. Nothing passed one, so this is hardening, not a fix.
+const REPO = "pitimon/TokenTracker";
+
+export function HeaderGithubStar() {
+  const repo = REPO;
   const [stars, setStars] = useState(null);
 
   useEffect(() => {

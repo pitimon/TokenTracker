@@ -31,6 +31,7 @@ const declared = (host, extra = {}) => ({
   readme: false,
   purpose: "test",
   seen_in: ["src/a.js"],
+  request_from: ["src/a.js"],
   ...extra,
 });
 
@@ -124,32 +125,42 @@ test("an ignore entry cannot exempt more than the host it names", () => {
   );
 });
 
-test("a declared host reached from an undeclared file is caught", () => {
-  // The check that closes the actual #100 shape. api.github.com is legitimately
-  // declared for the header star count, so re-adding the per-project call would
-  // pass a check that only asks "which hosts can we reach". The question that
-  // matters is also "from where".
+test("a request from a file that only had permission to MENTION the host is caught", () => {
+  // The exact bypass an independent QA pass demonstrated on the merged branch.
+  // ProjectUsagePanel legitimately contains "https://github.com/" as a prefix it
+  // strips off project_ref, so file-level seen_in listed it as declared — and
+  // re-adding <img src={`https://github.com/${repo}.png`}> to that very file,
+  // the original defect, passed the check built to prevent it.
   const root = fixture({
     files: {
-      "dashboard/src/Allowed.jsx": 'const u = "https://shared.example/ok";\n',
-      "dashboard/src/Sneaky.jsx": 'const u = `https://shared.example/${repo}`;\n',
+      "dashboard/src/Allowed.jsx": 'fetch("https://shared.example/ok");\n',
+      "dashboard/src/Mentions.jsx": [
+        'const ref = raw.replace("https://shared.example/", "");',
+        "const bad = <img src={`https://shared.example/${repo}.png`} />;",
+        "",
+      ].join("\n"),
     },
-    hosts: [declared("shared.example", { seen_in: ["dashboard/src/Allowed.jsx"] })],
+    hosts: [
+      declared("shared.example", {
+        seen_in: ["dashboard/src/Allowed.jsx", "dashboard/src/Mentions.jsx"],
+        request_from: ["dashboard/src/Allowed.jsx"],
+      }),
+    ],
   });
   const findings = checkOutbound({ root });
-  assert.equal(findings.length, 1);
-  assert.match(findings[0], /Sneaky\.jsx, which is not in its seen_in list/);
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.match(findings[0], /Mentions\.jsx:2 requests 'shared\.example'/);
 });
 
-test("seen_in is enforced, so it cannot drift into decoration", () => {
+test("request_from is enforced, so it cannot drift into decoration", () => {
   // Every seen_in list in the committed inventory is exact. They were
   // hand-written first and were wrong in six entries; the repo test above is
   // what surfaced that, and this one states the expectation directly.
   const root = fixture({
     files: { "src/a.js": 'const u = "https://x.example/1";\n' },
-    hosts: [declared("x.example", { seen_in: ["src/nonexistent.js"] })],
+    hosts: [declared("x.example", { request_from: [] })],
   });
-  assert.ok(checkOutbound({ root }).some((f) => f.includes("not in its seen_in list")));
+  assert.ok(checkOutbound({ root }).some((f) => f.includes("not in its request_from list")));
 });
 
 // --- Half B ------------------------------------------------------------------
@@ -165,7 +176,7 @@ test("a runtime-built fetch target is caught where the file can reach outside", 
         "",
       ].join("\n"),
     },
-    hosts: [declared("exfil.example", { seen_in: ["dashboard/src/Bad.jsx"] })],
+    hosts: [declared("exfil.example", { seen_in: ["dashboard/src/Bad.jsx"], request_from: ["dashboard/src/Bad.jsx"] })],
   });
   const findings = checkOutbound({ root });
   assert.ok(
@@ -186,6 +197,48 @@ test("a runtime-built fetch is left alone when the file names no external host",
         "",
       ].join("\n"),
     },
+  });
+  assert.deepEqual(checkOutbound({ root }), []);
+});
+
+test("a host built by interpolation is resolved to its literal suffix", () => {
+  // `img.src = `http://${token}-${i}.d.ip.net.coffee/pixel.gif`` is a real
+  // browser request in IpCheckPage. A strict [a-zA-Z0-9._-]+ host pattern matches
+  // nothing there, so that destination was invisible to the check that most
+  // needed to see it — and the inventory described the host as server-only.
+  const root = fixture({
+    files: {
+      "dashboard/src/Probe.jsx": "img.src = `http://${token}-${i}.probe.example/p.gif`;\n",
+    },
+  });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("undeclared outbound host 'probe.example'")),
+    "the literal suffix of an interpolated host must be reported",
+  );
+});
+
+test("an unresolvable interpolated host is not invented", () => {
+  // `http://${req.headers.host || "localhost"}` ends the match mid-expression.
+  // Guessing from the remainder reports `req.headers.host` as a destination,
+  // which is noise that trains people to ignore the check.
+  const root = fixture({
+    files: { "src/serve.js": 'const u = new URL(p, `http://${req.headers.host || "localhost"}`);\n' },
+  });
+  assert.deepEqual(checkOutbound({ root }), []);
+});
+
+test("a comment or a clickable link is a mention, not a request", () => {
+  // Default-deny would otherwise flag every documented URL and every <a href>,
+  // and a check that flags prose gets switched off.
+  const root = fixture({
+    files: {
+      "dashboard/src/Doc.jsx": [
+        "// See https://docs.example/guide for the format.",
+        'const link = <a href="https://docs.example/guide">docs</a>;',
+        "",
+      ].join("\n"),
+    },
+    hosts: [declared("docs.example", { seen_in: ["dashboard/src/Doc.jsx"], request_from: [] })],
   });
   assert.deepEqual(checkOutbound({ root }), []);
 });

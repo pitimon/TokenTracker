@@ -114,3 +114,14 @@ describe("DataDetails", () => {
     expect(screen.queryByText("fable-5")).not.toBeInTheDocument();
   });
 });
+
+describe("DataDetails — Projects empty state", () => {
+  it("says so when nothing has been attributed to a project", () => {
+    // It used to render an empty container, which reads as "you spent nothing"
+    // rather than "no usage carries project attribution yet". The Daily tab has
+    // always explained itself; this one did not.
+    renderDetails({ projectEntries: [] });
+    fireEvent.click(screen.getByRole("tab", { name: "Project Usage" }));
+    expect(screen.getByText("dashboard.projects.empty")).toBeInTheDocument();
+  });
+});

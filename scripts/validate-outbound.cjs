@@ -26,7 +26,64 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const SCAN_DIRS = ["src", "dashboard/src"];
 const SCAN_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".cjs", ".mjs"]);
-const HOST_RE = /https?:\/\/([a-zA-Z0-9._-]+)/g;
+// Matches the scheme, then the authority up to the first delimiter. Deliberately
+// permissive about what the authority contains, because a host is often built by
+// interpolation — `http://${token}-${i}.d.ip.net.coffee/pixel.gif` is a real
+// browser image load in IpCheckPage, and a strict [a-zA-Z0-9._-]+ matches nothing
+// there, hiding the destination from the very check that most needs to see it.
+const URL_RE = /https?:\/\/([^\s"'`)<>]+)/g;
+
+// Reduces an authority to the literal host it can be pinned to. Interpolated
+// segments are unknowable, so they are dropped and what remains is the suffix an
+// operator would actually see in DNS: `${token}-${i}.d.ip.net.coffee` -> `d.ip.net.coffee`.
+function literalHost(authority) {
+  const withoutPath = authority.split("/")[0].split("?")[0];
+  // Collapse COMPLETE interpolations first, then reject if any interpolation
+  // syntax survives: that means the match ended mid-expression and no literal
+  // suffix can be pinned. The real case is
+  // `http://${req.headers.host || "localhost"}`, where the capture stops at the
+  // quote and the remainder reads like a hostname but is a property path.
+  const collapsed = withoutPath.replace(/\$\{[^}]*\}/g, "\u0000");
+  if (/[${}]/.test(collapsed)) return null;
+  const stripped = collapsed
+    .split("\u0000")
+    .pop()
+    .replace(/^[^a-zA-Z0-9]+/, "")
+    .replace(/:.*$/, "");
+  if (!stripped) return null;
+  // Must look like a hostname: dotted labels, or a bare IPv4.
+  if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(stripped)) {
+    return null;
+  }
+  return stripped;
+}
+
+// Default-deny. A host literal in source is treated as a REQUEST TARGET unless
+// the line shows it is not one.
+//
+// The inverse — listing the constructs that perform a request — was tried first
+// and under-detected: `const url = new URL("https://skills.sh/...")` on one line
+// and `fetch(url)` on another is a request whose host never shares a line with a
+// sink. For a security control, missing a real destination is far worse than
+// asking for one more declaration, so the burden of proof sits on "this is only
+// a mention".
+//
+// Why this matters at all: `seen_in` is file-level, and ProjectUsagePanel
+// legitimately contains "https://github.com/" as a prefix it strips off
+// project_ref. That put github.com in its declared set, so re-adding
+// <img src={`https://github.com/${repo}.png`}> to that exact file — the original
+// defect of issue 100 — passed the check built to prevent it.
+const MENTION_ONLY_RE = [
+  /^\s*(\/\/|\*|\/\*)/,                       // a comment
+  /\.(replace|split|startsWith|endsWith|includes|slice)\s*\(/, // string surgery on a stored value
+  /<a\b[^>]*href/,                              // a link the user must click
+  /\bhref=\{`?https/,                           // JSX anchor href
+  /\b(readmeUrl|sourceHref|RELEASES_URL|repoUrl|docsUrl)\b/,   // named link constants
+];
+
+function isMentionOnly(line) {
+  return MENTION_ONLY_RE.some((re) => re.test(line));
+}
 
 function walk(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
@@ -48,21 +105,31 @@ function isTestFile(filePath) {
   return /\.test\.[jt]sx?$/.test(filePath) || /(^|[\\/])__tests__[\\/]/.test(filePath);
 }
 
+// Returns two views of the same scan: every file that NAMES each host, and every
+// file that REQUESTS it. The second is the one with security meaning.
 function collectHosts({ root = ROOT } = {}) {
-  const found = new Map(); // host -> Set(relative file)
+  const mentions = new Map();
+  const requests = new Map();
   for (const dir of SCAN_DIRS) {
     for (const filePath of walk(path.join(root, dir))) {
       if (isTestFile(filePath)) continue;
-      const content = fs.readFileSync(filePath, "utf8");
       const relative = path.relative(root, filePath);
-      for (const match of content.matchAll(HOST_RE)) {
-        const host = match[1];
-        if (!found.has(host)) found.set(host, new Set());
-        found.get(host).add(relative);
-      }
+      const lines = fs.readFileSync(filePath, "utf8").split("\n");
+      lines.forEach((line, index) => {
+        for (const match of line.matchAll(URL_RE)) {
+          const host = literalHost(match[1]);
+          if (!host) continue;
+          if (!mentions.has(host)) mentions.set(host, new Set());
+          mentions.get(host).add(relative);
+          if (isMentionOnly(line)) continue;
+          if (!requests.has(host)) requests.set(host, new Map());
+          requests.get(host).set(relative, index + 1);
+        }
+      });
     }
   }
-  return found;
+  mentions.requests = requests;
+  return mentions;
 }
 
 // --- Half B: the hole a host-literal scan cannot see -------------------------
@@ -92,8 +159,9 @@ const DYNAMIC_FETCH_ALLOWLIST = new Map([
 
 function externalHostsIn(content, inventory) {
   const hosts = new Set();
-  for (const match of content.matchAll(HOST_RE)) {
-    if (!isIgnored(match[1], inventory)) hosts.add(match[1]);
+  for (const match of content.matchAll(URL_RE)) {
+    const host = literalHost(match[1]);
+    if (host && !isIgnored(host, inventory)) hosts.add(host);
   }
   return hosts;
 }
@@ -166,20 +234,19 @@ function checkOutbound({ root = ROOT } = {}) {
     }
   }
 
-  // 3. A declared host may only be reached from the files that declare it.
-  //    Without this, `seen_in` is documentation: re-adding the exact call that
-  //    caused #100 to ProjectUsagePanel would pass, because api.github.com is
-  //    legitimately declared for the header star count elsewhere. The question
-  //    that matters is not only "which hosts can we reach" but "from where".
+  // 3. A declared host may only be REQUESTED from the files listed in
+  //    request_from. `seen_in` records every file that names the host, which is
+  //    inventory; `request_from` records the files allowed to actually reach it,
+  //    which is the security constraint. Conflating them is what let the original
+  //    issue-100 call be re-added to a file that legitimately mentions github.com.
   for (const entry of inventory.hosts || []) {
-    const allowed = new Set(entry.seen_in || []);
-    if (allowed.size === 0) continue;
-    for (const file of found.get(entry.host) || []) {
+    const allowed = new Set(entry.request_from || []);
+    for (const [file, line] of found.requests.get(entry.host) || []) {
       if (allowed.has(file)) continue;
       findings.push(
-        `'${entry.host}' is referenced in ${file}, which is not in its seen_in list` +
-          ` — add the file to outbound-hosts.json if the call belongs there, and re-read the` +
-          ` purpose field before you do`,
+        `${file}:${line} requests '${entry.host}', which is not in its request_from list` +
+          ` — if this call belongs, add the file to outbound-hosts.json and re-read the` +
+          ` purpose field first; if it does not, this is the defect the check exists for`,
       );
     }
   }

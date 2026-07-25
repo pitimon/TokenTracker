@@ -130,6 +130,14 @@ export function DataDetails({
       {/* Projects Tab */}
       {activeTab === "projects" && (
         <div className="space-y-1">
+          {/* The Daily tab explains itself when empty; this one rendered a blank
+              box, which reads as "you have no spending" rather than "nothing has
+              been attributed to a project yet". */}
+          {projectEntries.length === 0 ? (
+            <div className="oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300">
+              {copy("dashboard.projects.empty")}
+            </div>
+          ) : null}
           {projectEntries.slice(0, projectLimit).map((entry, idx) => {
             const ref = typeof entry?.project_ref === "string" ? entry.project_ref : "";
             const key = entry?.project_key || ref || `entry-${idx}`;
