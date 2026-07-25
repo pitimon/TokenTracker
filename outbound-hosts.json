@@ -8,24 +8,23 @@
       "user_data": "true when the request itself discloses something about the user or their work \u2014 a repo name in the path, an account token, their IP. false for anonymous public fetches.",
       "readme": "true when this host must appear in the README outbound table. Every user_data host must.",
       "request_from": "Files allowed to actually REACH this host. A whole-file permission, because a file listed here is declared to be a caller of this host.",
-      "link_from": "Places the host appears as something the USER clicks, never a request this code makes. Pinned per URL: {\"file\": ..., \"url\": ...}, where url is the literal as the scanner reads it. A bare filename is rejected — it waived the whole file forever, so a later <img src> in that file passed silently, which is the shape of #100.",
-      "data_from": "Same pinned form. The host is a value this codebase stores or renders and never fetches — a mock fixture's project_ref, for instance."
+      "link_from": "Places the host appears as something the USER clicks, never a request this code makes. Pinned per URL: {\"file\": ..., \"url\": ...}, where url is the literal as the scanner reads it. A bare filename is rejected \u2014 it waived the whole file forever, so a later <img src> in that file passed silently, which is the shape of #100.",
+      "data_from": "Same pinned form. The host is a value this codebase stores or renders and never fetches \u2014 a mock fixture's project_ref, for instance.",
+      "unresolved_authorities": "Authorities the scanner cannot reduce to a host. Dropping them silently meant a destination it could not model went unmentioned; failing closed with no list fired on ordinary code and would have got the check switched off. So each is declared with a why, matched on file + authority text, and a NEW one fails CI."
     }
   },
   "hosts": [
     {
-      "host": "raw.githubusercontent.com",
-      "from": "server",
+      "host": "1.1.1.1",
+      "from": "browser",
       "user_data": true,
       "readme": true,
-      "purpose": "Two uses. The public LiteLLM price list (anonymous, nothing sent, works offline from a bundled snapshot), and downloading the FILES of a public skill you chose to install \u2014 that request carries the repository owner, name, branch and file path.",
+      "purpose": "IP-check page only: Cloudflare's trace endpoint, which is how the page learns your public IP. Showing you your own IP is that page's entire purpose.",
       "seen_in": [
-        "src/lib/pricing/litellm-fetcher.js",
-        "src/lib/skills-manager.js"
+        "dashboard/src/pages/IpCheckPage.jsx"
       ],
       "request_from": [
-        "src/lib/pricing/litellm-fetcher.js",
-        "src/lib/skills-manager.js"
+        "dashboard/src/pages/IpCheckPage.jsx"
       ]
     },
     {
@@ -34,136 +33,6 @@
       "user_data": true,
       "readme": true,
       "purpose": "Asks Anthropic about the user's own plan limits, using credentials already on the machine.",
-      "seen_in": [
-        "src/lib/usage-limits.js"
-      ],
-      "request_from": [
-        "src/lib/usage-limits.js"
-      ]
-    },
-    {
-      "host": "chatgpt.com",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "Codex plan limits for the signed-in account.",
-      "seen_in": [
-        "src/lib/usage-limits.js"
-      ],
-      "request_from": [
-        "src/lib/usage-limits.js"
-      ]
-    },
-    {
-      "host": "api.openai.com",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "OpenAI usage/limits for the signed-in account.",
-      "seen_in": [
-        "src/lib/subscriptions.js"
-      ],
-      "request_from": [
-        "src/lib/subscriptions.js"
-      ]
-    },
-    {
-      "host": "auth.openai.com",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "Refreshes the OpenAI credential when it expires.",
-      "seen_in": [
-        "src/lib/codex-token-refresh.js"
-      ],
-      "request_from": [
-        "src/lib/codex-token-refresh.js"
-      ]
-    },
-    {
-      "host": "cursor.com",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "Cursor plan usage for the signed-in account.",
-      "seen_in": [
-        "src/lib/cursor-config.js"
-      ],
-      "request_from": [
-        "src/lib/cursor-config.js"
-      ]
-    },
-    {
-      "host": "www.cursor.com",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "Same as cursor.com; both hosts appear in Cursor's own endpoints.",
-      "seen_in": [
-        "src/lib/cursor-config.js"
-      ],
-      "request_from": [
-        "src/lib/cursor-config.js"
-      ]
-    },
-    {
-      "host": "cloudcode-pa.googleapis.com",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "Gemini Code Assist quota for the signed-in account.",
-      "seen_in": [
-        "src/lib/usage-limits.js"
-      ],
-      "request_from": [
-        "src/lib/usage-limits.js"
-      ]
-    },
-    {
-      "host": "oauth2.googleapis.com",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "Refreshes the Google credential when it expires.",
-      "seen_in": [
-        "src/lib/usage-limits.js"
-      ],
-      "request_from": [
-        "src/lib/usage-limits.js"
-      ]
-    },
-    {
-      "host": "api.kimi.com",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "Kimi plan usage for the signed-in account.",
-      "seen_in": [
-        "src/lib/usage-limits.js"
-      ],
-      "request_from": [
-        "src/lib/usage-limits.js"
-      ]
-    },
-    {
-      "host": "auth.kimi.com",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "Refreshes the Kimi credential when it expires.",
-      "seen_in": [
-        "src/lib/usage-limits.js"
-      ],
-      "request_from": [
-        "src/lib/usage-limits.js"
-      ]
-    },
-    {
-      "host": "api.z.ai",
-      "from": "server",
-      "user_data": true,
-      "readme": true,
-      "purpose": "Z.AI / GLM coding-plan quota, using ZAI_API_KEY or a reused Anthropic-compatible token.",
       "seen_in": [
         "src/lib/usage-limits.js"
       ],
@@ -189,12 +58,143 @@
       ]
     },
     {
+      "host": "api.kimi.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Kimi plan usage for the signed-in account.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ],
+      "request_from": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "api.openai.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "OpenAI usage/limits for the signed-in account.",
+      "seen_in": [
+        "src/lib/subscriptions.js"
+      ],
+      "request_from": [
+        "src/lib/subscriptions.js"
+      ]
+    },
+    {
+      "host": "api.z.ai",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Z.AI / GLM coding-plan quota, using ZAI_API_KEY or a reused Anthropic-compatible token.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ],
+      "request_from": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "auth.kimi.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Refreshes the Kimi credential when it expires.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ],
+      "request_from": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "auth.openai.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Refreshes the OpenAI credential when it expires.",
+      "seen_in": [
+        "src/lib/codex-token-refresh.js"
+      ],
+      "request_from": [
+        "src/lib/codex-token-refresh.js"
+      ]
+    },
+    {
+      "host": "chatgpt.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Codex plan limits for the signed-in account.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ],
+      "request_from": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "claude.ai",
+      "from": "browser",
+      "user_data": true,
+      "readme": true,
+      "purpose": "IP-check page only: a reachability probe measuring whether Anthropic is reachable from this network.",
+      "seen_in": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ],
+      "request_from": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ]
+    },
+    {
+      "host": "cloudcode-pa.googleapis.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Gemini Code Assist quota for the signed-in account.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ],
+      "request_from": [
+        "src/lib/usage-limits.js"
+      ]
+    },
+    {
+      "host": "cursor.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Cursor plan usage for the signed-in account.",
+      "seen_in": [
+        "src/lib/cursor-config.js"
+      ],
+      "request_from": [
+        "src/lib/cursor-config.js"
+      ]
+    },
+    {
+      "host": "d.ip.net.coffee",
+      "from": "browser",
+      "user_data": true,
+      "readme": true,
+      "purpose": "IP-check page only. The browser loads image probes at a unique per-run subdomain so ip.net.coffee's authoritative DNS server can observe WHICH RESOLVER asked \u2014 that is how the page detects a DNS leak, and it is the page's stated purpose. The hostname is built by interpolation, which is why an earlier version of this check could not see the destination at all.",
+      "seen_in": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ],
+      "request_from": [
+        "dashboard/src/pages/IpCheckPage.jsx"
+      ]
+    },
+    {
       "host": "github.com",
       "from": "both",
       "user_data": false,
       "readme": false,
       "purpose": "Link targets only \u2014 the repository, releases and skill sources, which are requests the user makes by clicking. The server never fetches github.com: skills-manager builds these URLs for the UI and fetches api.github.com and raw.githubusercontent.com instead. No avatar or image is loaded from here (issue 100).",
       "seen_in": [
+        "dashboard/index.html",
         "dashboard/src/components/LocalOnlyNotice.jsx",
         "dashboard/src/lib/mock-data.ts",
         "dashboard/src/pages/SkillDetailPanel.jsx",
@@ -239,6 +239,14 @@
         {
           "file": "src/lib/skills-manager.js",
           "url": "https://github.com/${owner}/${repoName}"
+        },
+        {
+          "file": "dashboard/index.html",
+          "url": "https://github.com/mm7894215/TokenTracker"
+        },
+        {
+          "file": "dashboard/index.html",
+          "url": "https://github.com/mm7894215/TokenTracker/issues"
         }
       ],
       "data_from": [
@@ -249,16 +257,33 @@
       ]
     },
     {
-      "host": "skills.sh",
-      "from": "server",
-      "user_data": false,
+      "host": "ip.net.coffee",
+      "from": "both",
+      "user_data": true,
       "readme": true,
-      "purpose": "Public skills directory searched by the Skills tab. Sends the terms you typed. Installing a skill then reads repository metadata from api.github.com and files from raw.githubusercontent.com, which carry owner, repo, branch and path. No usage data is attached to any of it.",
+      "purpose": "Backs the optional IP-check page. The server proxies the data endpoints at /proxy/ipcheck; the browser also loads image probes directly. Only reached when that page is opened. The dev server proxies the same endpoints (dashboard/vite.config.js), so 5173 behaves like the packaged build.",
       "seen_in": [
-        "src/lib/skills-manager.js"
+        "dashboard/src/pages/IpCheckPage.jsx",
+        "dashboard/vite.config.js",
+        "src/lib/local-api.js"
       ],
       "request_from": [
-        "src/lib/skills-manager.js"
+        "dashboard/src/pages/IpCheckPage.jsx",
+        "dashboard/vite.config.js",
+        "src/lib/local-api.js"
+      ]
+    },
+    {
+      "host": "oauth2.googleapis.com",
+      "from": "server",
+      "user_data": true,
+      "readme": true,
+      "purpose": "Refreshes the Google credential when it expires.",
+      "seen_in": [
+        "src/lib/usage-limits.js"
+      ],
+      "request_from": [
+        "src/lib/usage-limits.js"
       ]
     },
     {
@@ -275,26 +300,57 @@
       ]
     },
     {
-      "host": "ip.net.coffee",
-      "from": "both",
+      "host": "raw.githubusercontent.com",
+      "from": "server",
       "user_data": true,
       "readme": true,
-      "purpose": "Backs the optional IP-check page. The server proxies the data endpoints at /proxy/ipcheck; the browser also loads image probes directly. Only reached when that page is opened.",
+      "purpose": "Two uses. The public LiteLLM price list (anonymous, nothing sent, works offline from a bundled snapshot), and downloading the FILES of a public skill you chose to install \u2014 that request carries the repository owner, name, branch and file path. The vendored seed is built by scripts/build-pricing-seed.cjs, which fetches that same list; the seed file records the source URL as a value and fetches nothing.",
       "seen_in": [
-        "dashboard/src/pages/IpCheckPage.jsx",
-        "src/lib/local-api.js"
+        "scripts/build-pricing-seed.cjs",
+        "src/lib/pricing/litellm-fetcher.js",
+        "src/lib/pricing/seed-snapshot.json",
+        "src/lib/skills-manager.js"
       ],
       "request_from": [
-        "dashboard/src/pages/IpCheckPage.jsx",
-        "src/lib/local-api.js"
+        "scripts/build-pricing-seed.cjs",
+        "src/lib/pricing/litellm-fetcher.js",
+        "src/lib/skills-manager.js"
+      ],
+      "data_from": [
+        {
+          "file": "src/lib/pricing/seed-snapshot.json",
+          "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+        }
       ]
     },
     {
-      "host": "d.ip.net.coffee",
+      "host": "registry.npmjs.org",
+      "from": "server",
+      "user_data": false,
+      "readme": true,
+      "purpose": "Not called by our code \u2014 this is npx fetching the package when TokenTracker is started that way. Listed because a user watching their network sees it and deserves an explanation.",
+      "seen_in": [],
+      "request_from": []
+    },
+    {
+      "host": "skills.sh",
+      "from": "server",
+      "user_data": false,
+      "readme": true,
+      "purpose": "Public skills directory searched by the Skills tab. Sends the terms you typed. Installing a skill then reads repository metadata from api.github.com and files from raw.githubusercontent.com, which carry owner, repo, branch and path. No usage data is attached to any of it.",
+      "seen_in": [
+        "src/lib/skills-manager.js"
+      ],
+      "request_from": [
+        "src/lib/skills-manager.js"
+      ]
+    },
+    {
+      "host": "stun.cloudflare.com",
       "from": "browser",
       "user_data": true,
       "readme": true,
-      "purpose": "IP-check page only. The browser loads image probes at a unique per-run subdomain so ip.net.coffee's authoritative DNS server can observe WHICH RESOLVER asked \u2014 that is how the page detects a DNS leak, and it is the page's stated purpose. The hostname is built by interpolation, which is why an earlier version of this check could not see the destination at all.",
+      "purpose": "IP-check page only. A WebRTC STUN binding request to Cloudflare, which is how the page detects whether a VPN leaks your real address \u2014 the probe necessarily discloses that address to the STUN server. Only reached when that page is opened. The `stun:` scheme has no `//` and no https literal, so an earlier version of the check could not see it at all.",
       "seen_in": [
         "dashboard/src/pages/IpCheckPage.jsx"
       ],
@@ -316,45 +372,6 @@
       ]
     },
     {
-      "host": "stun.cloudflare.com",
-      "from": "browser",
-      "user_data": true,
-      "readme": true,
-      "purpose": "IP-check page only. A WebRTC STUN binding request to Cloudflare, which is how the page detects whether a VPN leaks your real address \u2014 the probe necessarily discloses that address to the STUN server. Only reached when that page is opened. The `stun:` scheme has no `//` and no https literal, so an earlier version of the check could not see it at all.",
-      "seen_in": [
-        "dashboard/src/pages/IpCheckPage.jsx"
-      ],
-      "request_from": [
-        "dashboard/src/pages/IpCheckPage.jsx"
-      ]
-    },
-    {
-      "host": "1.1.1.1",
-      "from": "browser",
-      "user_data": true,
-      "readme": true,
-      "purpose": "IP-check page only: Cloudflare's trace endpoint, which is how the page learns your public IP. Showing you your own IP is that page's entire purpose.",
-      "seen_in": [
-        "dashboard/src/pages/IpCheckPage.jsx"
-      ],
-      "request_from": [
-        "dashboard/src/pages/IpCheckPage.jsx"
-      ]
-    },
-    {
-      "host": "claude.ai",
-      "from": "browser",
-      "user_data": true,
-      "readme": true,
-      "purpose": "IP-check page only: a reachability probe measuring whether Anthropic is reachable from this network.",
-      "seen_in": [
-        "dashboard/src/pages/IpCheckPage.jsx"
-      ],
-      "request_from": [
-        "dashboard/src/pages/IpCheckPage.jsx"
-      ]
-    },
-    {
       "host": "www.anthropic.com",
       "from": "browser",
       "user_data": true,
@@ -368,32 +385,159 @@
       ]
     },
     {
-      "host": "registry.npmjs.org",
+      "host": "www.cursor.com",
       "from": "server",
-      "user_data": false,
+      "user_data": true,
       "readme": true,
-      "purpose": "Not called by our code \u2014 this is npx fetching the package when TokenTracker is started that way. Listed because a user watching their network sees it and deserves an explanation.",
-      "seen_in": [],
-      "request_from": []
+      "purpose": "Same as cursor.com; both hosts appear in Cursor's own endpoints.",
+      "seen_in": [
+        "src/lib/cursor-config.js"
+      ],
+      "request_from": [
+        "src/lib/cursor-config.js"
+      ]
+    },
+    {
+      "host": "www.npmjs.com",
+      "from": "browser",
+      "user_data": false,
+      "readme": false,
+      "purpose": "The package page, named as downloadUrl/installUrl in the same JSON-LD block. Not fetched. Distinct from registry.npmjs.org, which npx really does contact.",
+      "seen_in": [
+        "dashboard/index.html"
+      ],
+      "request_from": [],
+      "data_from": [
+        {
+          "file": "dashboard/index.html",
+          "url": "https://www.npmjs.com/package/tokentracker-cli"
+        }
+      ]
+    },
+    {
+      "host": "www.tokentracker.cc",
+      "from": "browser",
+      "user_data": false,
+      "readme": false,
+      "purpose": "The project's own site, named inside the page's JSON-LD structured-data block (canonical url, logo, breadcrumbs). Metadata for search engines; the browser does not fetch it, and the local dashboard never reaches it.",
+      "seen_in": [
+        "dashboard/index.html"
+      ],
+      "request_from": [],
+      "data_from": [
+        {
+          "file": "dashboard/index.html",
+          "url": "https://www.tokentracker.cc/"
+        },
+        {
+          "file": "dashboard/index.html",
+          "url": "https://www.tokentracker.cc/icon-512.png"
+        },
+        {
+          "file": "dashboard/index.html",
+          "url": "https://www.tokentracker.cc/ip-check"
+        }
+      ]
     }
   ],
   "ignored_hosts": {
     "_note": "Matched on host exactly. Not prefixes \u2014 a path here would be ignored, exempting the whole host.",
     "hosts": [
-      "localhost",
       "127.0.0.1",
-      "local.tokentracker",
-      "www.w3.org",
-      "example.com",
+      "codex.ai",
       "evil",
-      "codex.ai"
+      "example.com",
+      "example.invalid",
+      "local.tokentracker",
+      "localhost",
+      "schema.org",
+      "www.w3.org"
     ],
     "why": {
       "localhost / 127.0.0.1": "loopback",
       "local.tokentracker": "a synthetic project_ref identifier for claude-mem observer sessions (src/lib/rollout.js:19), never requested",
       "www.w3.org": "the SVG XML namespace",
       "example.com / evil": "appear only inside comments illustrating attacks and enterprise host shapes",
-      "codex.ai": "named in a comment about provider domains; not a request target"
+      "codex.ai": "named in a comment about provider domains; not a request target",
+      "schema.org": "the JSON-LD @context identifier, the same class as the www.w3.org XML namespace \u2014 an identifier, not a URL anything fetches",
+      "example.invalid": "the reserved TLD that is guaranteed never to resolve; used as a deliberately dead endpoint in scripts/acceptance/*"
     }
-  }
+  },
+  "unresolved_authorities": [
+    {
+      "file": "dashboard/index.html",
+      "authority": "localhost:7680.",
+      "why": "Prose inside the JSON-LD HowTo block telling the reader to open the local dashboard. Text in a sentence, not a link."
+    },
+    {
+      "file": "dashboard/vite.config.js",
+      "authority": "${req.headers.host}",
+      "why": "Dev server only: proxying to the local CLI on 127.0.0.1:7680, parsing the incoming request URL, and a mock project_ref whose ${source}.ai pins nothing because .ai is the TLD itself."
+    },
+    {
+      "file": "dashboard/vite.config.js",
+      "authority": "${source}.ai",
+      "why": "Dev server only: proxying to the local CLI on 127.0.0.1:7680, parsing the incoming request URL, and a mock project_ref whose ${source}.ai pins nothing because .ai is the TLD itself."
+    },
+    {
+      "file": "dashboard/vite.config.js",
+      "authority": "127.0.0.1:7680${req.url}",
+      "why": "Dev server only: proxying to the local CLI on 127.0.0.1:7680, parsing the incoming request URL, and a mock project_ref whose ${source}.ai pins nothing because .ai is the TLD itself."
+    },
+    {
+      "file": "scripts/acceptance/offline-replay.cjs",
+      "authority": "127.0.0.1:${stub.port}",
+      "why": "A loopback stub server started by the acceptance test itself."
+    },
+    {
+      "file": "scripts/validate-outbound.cjs",
+      "authority": "${authorityText.replace(",
+      "why": "This scanner building a probe URL so new URL() can parse an authority for it. Never requested \u2014 it is the parsing step itself."
+    },
+    {
+      "file": "scripts/validate-outbound.cjs",
+      "authority": "pinned${tail}",
+      "why": "This scanner building a probe URL so new URL() can parse an authority for it. Never requested \u2014 it is the parsing step itself."
+    },
+    {
+      "file": "src/commands/init.js",
+      "authority": "localhost:7680${RESET}",
+      "why": "The startup banner printed to the terminal, with an ANSI reset after the URL. Text, not a request."
+    },
+    {
+      "file": "src/commands/serve.js",
+      "authority": "${hostHeader}",
+      "why": "Parses the INCOMING Host header, or uses it as a base to parse req.url. Inbound request handling; nothing is fetched. serve.js:146 returns the local bind URL for display."
+    },
+    {
+      "file": "src/commands/serve.js",
+      "authority": "${LOCAL_BIND_HOST}:${port}",
+      "why": "Parses the INCOMING Host header, or uses it as a base to parse req.url. Inbound request handling; nothing is fetched. serve.js:146 returns the local bind URL for display."
+    },
+    {
+      "file": "src/commands/serve.js",
+      "authority": "${req.headers.host",
+      "why": "Parses the INCOMING Host header, or uses it as a base to parse req.url. Inbound request handling; nothing is fetched. serve.js:146 returns the local bind URL for display."
+    },
+    {
+      "file": "src/lib/proxy-env.js",
+      "authority": "${values.HTTPSProxy}:${values.HTTPSPort}",
+      "why": "The proxy the USER configured in HTTPS_PROXY. The destination is whatever they set, which is the honest answer and cannot be a literal here."
+    },
+    {
+      "file": "src/lib/rollout.js",
+      "authority": "${gitAtMatch[1]}",
+      "why": "Normalises a git remote into the project_ref string stored on each row (ssh, git:// and https forms). A value written to the queue, never fetched."
+    },
+    {
+      "file": "src/lib/rollout.js",
+      "authority": "${parsed.hostname}${parsed.pathname}",
+      "why": "Normalises a git remote into the project_ref string stored on each row (ssh, git:// and https forms). A value written to the queue, never fetched."
+    },
+    {
+      "file": "src/lib/rollout.js",
+      "authority": "${ref.slice(",
+      "why": "Normalises a git remote into the project_ref string stored on each row (ssh, git:// and https forms). A value written to the queue, never fetched."
+    }
+  ]
 }
