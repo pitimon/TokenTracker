@@ -764,6 +764,160 @@ const HOP_BY_HOP_HEADERS = new Set([
 // Main handler factory
 // ---------------------------------------------------------------------------
 
+// Project usage, filtered the way every other card is filtered.
+//
+// Extracted from the request handler so the aggregation can be tested without
+// standing up a server — and because the handler block reached 129 lines once it
+// stopped ignoring the query string.
+// The client has always sent from/to/source/limit/timeZone; the project handler
+// read none of them and aggregated the whole file unconditionally. Pick "24h"
+// and every other card narrowed while Projects kept showing all-time totals,
+// with nothing on screen saying so — someone comparing "this week's spend by
+// repo" was reading lifetime numbers.
+//
+// Pure surfacing: hour_start is already on every row. Same shape as the other
+// range-filtered handlers (getTimeZoneContext + rowDayKey), so a day boundary
+// means the same thing on every card.
+function buildProjectFilters(url) {
+  const from = url.searchParams.get("from") || "";
+  const to = url.searchParams.get("to") || "";
+  const timeZoneContext = getTimeZoneContext(url);
+  const requestedSource = (url.searchParams.get("source") || "").trim().toLowerCase();
+  const rawLimit = Number(url.searchParams.get("limit"));
+
+  return {
+    limit: Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : null,
+    // An absent bound means "no bound". The other handlers compare against ""
+    // directly, which is safe there because the client always sends both; here
+    // it does not, and `day <= ""` would silently return nothing.
+    inWindow(row) {
+      if (!from && !to) return true;
+      if (!row.hour_start) return false;
+      const day = rowDayKey(row, timeZoneContext);
+      return (!from || day >= from) && (!to || day <= to);
+    },
+    matchesSource(row) {
+      return !requestedSource || String(row.source || "").toLowerCase() === requestedSource;
+    },
+  };
+}
+
+// Which sources contributed usage in this window but carry no project
+// attribution at all. Without naming them, their absence reads as "that tool
+// cost nothing here" — the panel under-reports and looks complete while doing
+// it. `projectBucketsQueued` exists in 7 of the parsers; Cursor, Copilot, Zed,
+// Goose and Kiro have no per-repo story at all.
+function findUnattributedSources({ queuePath, allProjectRows, inWindow, matchesSource }) {
+  const attributed = new Set(
+    allProjectRows.filter(inWindow).map((row) => String(row.source || "").toLowerCase()),
+  );
+  return [
+    ...new Set(
+      readQueueData(queuePath)
+        .filter((row) => inWindow(row) && matchesSource(row))
+        .map((row) => String(row.source || "").toLowerCase())
+        .filter((src) => src && !attributed.has(src)),
+    ),
+  ].sort();
+}
+
+// No project-attributed rows at all (project attribution never synced, or only
+// non-project-capable CLIs used). Falls back to per-source totals so the panel
+// is not simply empty. This path once ALSO ran for the non-empty case and
+// produced fiction — "session-file count x total tokens" gave every short-and-
+// hot project the same weight as every long-and-cold one. Empty case only.
+function aggregateBySource(queuePath, inWindow, matchesSource) {
+  const bySrc = new Map();
+  for (const row of readQueueData(queuePath)) {
+    if (!inWindow(row) || !matchesSource(row)) continue;
+    const src = row.source || "unknown";
+    if (!bySrc.has(src)) {
+      bySrc.set(src, {
+        project_key: src,
+        // Synthetic source-only row: project_ref stays empty rather than
+        // fabricating `https://${src}.ai`, which resolves to unrelated domains
+        // (codex.ai, cursor.ai) and was sent to the dashboard as a clickable
+        // href before v0.11.1.
+        project_ref: "",
+        total_tokens: 0,
+        billable_total_tokens: 0,
+      });
+    }
+    bySrc.get(src).total_tokens += row.total_tokens || 0;
+    bySrc.get(src).billable_total_tokens += row.total_tokens || 0;
+  }
+  return bySrc;
+}
+
+function aggregateByProject(rows) {
+  const byProject = new Map();
+  for (const row of rows) {
+    const key = row.project_key || "unknown";
+    if (!byProject.has(key)) {
+      byProject.set(key, {
+        project_key: key,
+        project_ref: row.project_ref || key,
+        total_tokens: 0,
+        billable_total_tokens: 0,
+      });
+    }
+    const agg = byProject.get(key);
+    agg.total_tokens += Number(row.total_tokens || 0);
+    agg.billable_total_tokens += Number(row.total_tokens || 0);
+    if (!agg.project_ref && row.project_ref) agg.project_ref = row.project_ref;
+  }
+  return byProject;
+}
+
+// Rows -> ranked entries, in the shape the panel already renders (token counts
+// as strings). Split out so buildProjectUsageSummary stays under the size rule.
+function rankProjectEntries(byKey) {
+  return Array.from(byKey.values())
+    .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
+    .map((e) => ({
+      ...e,
+      total_tokens: String(e.total_tokens),
+      billable_total_tokens: String(e.billable_total_tokens),
+    }));
+}
+
+function buildProjectUsageSummary({ url, queuePath, projectQueuePath }) {
+    // Use the per-project bucket log that rollout.js emits — it already
+    // carries the actual tokens attributed to each (project_key, source,
+    // hour_start). Falling back to "session-file count × total tokens"
+    // (the old behavior) produced pure fiction: every short-and-hot
+    // project got the same weight as every long-and-cold one.
+    const allProjectRows = readProjectQueueData(projectQueuePath);
+
+    const { inWindow, matchesSource, limit } = buildProjectFilters(url);
+
+    const projectRows = allProjectRows.filter((row) => inWindow(row) && matchesSource(row));
+
+    const unattributedSources = findUnattributedSources({
+      queuePath,
+      allProjectRows,
+      inWindow,
+      matchesSource,
+    });
+
+    const byProject = aggregateByProject(projectRows);
+
+    let entries =
+      byProject.size === 0
+        ? rankProjectEntries(aggregateBySource(queuePath, inWindow, matchesSource))
+        : rankProjectEntries(byProject);
+
+    if (limit != null) entries = entries.slice(0, limit);
+
+    return {
+      generated_at: new Date().toISOString(),
+      entries,
+      // Named so the panel can say what it cannot account for, rather than
+      // letting a missing tool read as a tool that cost nothing.
+      unattributed_sources: unattributedSources,
+    };
+}
+
 function createLocalApiHandler({ queuePath }) {
   const qp = queuePath || resolveQueuePath();
 
@@ -1317,78 +1471,14 @@ function createLocalApiHandler({ queuePath }) {
 
     // --- project-usage-summary ---
     if (p === "/functions/tokentracker-project-usage-summary") {
-      // Use the per-project bucket log that rollout.js emits — it already
-      // carries the actual tokens attributed to each (project_key, source,
-      // hour_start). Falling back to "session-file count × total tokens"
-      // (the old behavior) produced pure fiction: every short-and-hot
-      // project got the same weight as every long-and-cold one.
-      const projectQueuePath = path.join(
-        path.dirname(qp),
-        "project.queue.jsonl",
+      json(
+        res,
+        buildProjectUsageSummary({
+          url,
+          queuePath: qp,
+          projectQueuePath: path.join(path.dirname(qp), "project.queue.jsonl"),
+        }),
       );
-      const projectRows = readProjectQueueData(projectQueuePath);
-
-      const byProject = new Map();
-      for (const row of projectRows) {
-        const key = row.project_key || "unknown";
-        if (!byProject.has(key)) {
-          byProject.set(key, {
-            project_key: key,
-            project_ref: row.project_ref || key,
-            total_tokens: 0,
-            billable_total_tokens: 0,
-          });
-        }
-        const agg = byProject.get(key);
-        agg.total_tokens += Number(row.total_tokens || 0);
-        agg.billable_total_tokens += Number(row.total_tokens || 0);
-        if (!agg.project_ref && row.project_ref) agg.project_ref = row.project_ref;
-      }
-
-      // If no project-attributed rows exist yet (user hasn't synced project
-      // attribution, or never used a project-capable CLI), fall back to
-      // per-source aggregation over the main queue so the panel isn't
-      // totally empty. This path used to also exist for the non-empty case
-      // and produce wrong numbers; keep it only as the empty fallback.
-      let entries;
-      if (byProject.size === 0) {
-        const rows = readQueueData(qp);
-        const bySrc = new Map();
-        for (const row of rows) {
-          const src = row.source || "unknown";
-          if (!bySrc.has(src)) {
-            bySrc.set(src, {
-              project_key: src,
-              // Synthetic source-only row: leave project_ref empty rather than
-              // fabricating `https://${src}.ai`, which resolves to unrelated
-              // domains (e.g. codex.ai, cursor.ai) and was sent to the
-              // dashboard as a clickable href before v0.11.1 / this commit.
-              project_ref: "",
-              total_tokens: 0,
-              billable_total_tokens: 0,
-            });
-          }
-          bySrc.get(src).total_tokens += row.total_tokens || 0;
-          bySrc.get(src).billable_total_tokens += row.total_tokens || 0;
-        }
-        entries = Array.from(bySrc.values())
-          .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
-          .map((e) => ({
-            ...e,
-            total_tokens: String(e.total_tokens),
-            billable_total_tokens: String(e.billable_total_tokens),
-          }));
-      } else {
-        entries = Array.from(byProject.values())
-          .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
-          .map((e) => ({
-            ...e,
-            total_tokens: String(e.total_tokens),
-            billable_total_tokens: String(e.billable_total_tokens),
-          }));
-      }
-
-      json(res, { generated_at: new Date().toISOString(), entries });
       return true;
     }
 
@@ -1621,6 +1711,8 @@ function createLocalApiHandler({ queuePath }) {
 }
 
 module.exports = {
+  // Exported for tests: the aggregation runs without a server.
+  buildProjectUsageSummary,
   createLocalApiHandler,
   // Exported so the redirect allowlist can be tested directly: the SSRF this
   // closes is only observable across a redirect hop, which no handler-level

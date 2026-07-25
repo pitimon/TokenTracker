@@ -12,6 +12,10 @@ export function useProjectUsageSummary({
   tzOffsetMinutes,
 }: any = {}) {
   const [entries, setEntries] = useState<any[]>([]);
+  // Sources with usage in this window that carry no project attribution. The
+  // panel names them: their absence otherwise reads as "that tool cost nothing
+  // here", which under-reports while looking complete.
+  const [unattributedSources, setUnattributedSources] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,10 +34,14 @@ export function useProjectUsageSummary({
         tzOffsetMinutes,
       });
       setEntries(Array.isArray(res?.entries) ? res.entries : []);
+      setUnattributedSources(
+        Array.isArray(res?.unattributed_sources) ? res.unattributed_sources : [],
+      );
     } catch (err) {
       const message = (err as any)?.message || String(err);
       setError(message);
       setEntries([]);
+      setUnattributedSources([]);
     } finally {
       setLoading(false);
     }
@@ -43,5 +51,5 @@ export function useProjectUsageSummary({
     refresh();
   }, [refresh]);
 
-  return { entries, loading, error, refresh };
+  return { entries, unattributedSources, loading, error, refresh };
 }
