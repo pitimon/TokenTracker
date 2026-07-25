@@ -25,6 +25,7 @@ export function DashboardView(props) {
     identitySubscriptions,
     identityScrambleDurationMs,
     projectUsageEntries,
+    projectUnattributedSources = [],
     projectUsageLimit,
     setProjectUsageLimit,
     pulse,
@@ -287,6 +288,7 @@ export function DashboardView(props) {
             <FadeIn delay={0.43}>
               <DataDetails
                 projectEntries={projectUsageEntries}
+                projectUnattributedSources={projectUnattributedSources}
                 projectLimit={projectUsageLimit}
                 onProjectLimitChange={setProjectUsageLimit}
                 copy={copy}

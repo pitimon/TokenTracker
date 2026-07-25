@@ -125,3 +125,20 @@ describe("DataDetails — Projects empty state", () => {
     expect(screen.getByText("dashboard.projects.empty")).toBeInTheDocument();
   });
 });
+
+describe("DataDetails — sources with no per-repo attribution", () => {
+  it("names them, so their absence does not read as zero spend", () => {
+    // projectBucketsQueued exists in 7 parsers. Cursor, Copilot, Zed, Goose and
+    // Kiro have no per-repo story at all, and the panel used to just omit them —
+    // which looks identical to "that tool cost nothing here".
+    renderDetails({ projectUnattributedSources: ["cursor", "zed"] });
+    fireEvent.click(screen.getByText("Project Usage"));
+    expect(screen.getByText(/cursor, zed/)).toBeTruthy();
+  });
+
+  it("says nothing when everything is attributed", () => {
+    renderDetails({ projectUnattributedSources: [] });
+    fireEvent.click(screen.getByText("Project Usage"));
+    expect(screen.queryByText("dashboard.projects.unattributed")).toBeNull();
+  });
+});

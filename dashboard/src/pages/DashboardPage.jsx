@@ -332,6 +332,7 @@ export function DashboardPage({
   const [projectUsageLimit, setProjectUsageLimit] = useState(10);
   const {
     entries: projectUsageEntries,
+    unattributedSources: projectUnattributedSources,
     loading: projectUsageLoading,
     refresh: refreshProjectUsage,
   } = useProjectUsageSummary({
@@ -1097,6 +1098,7 @@ export function DashboardPage({
       identitySubscriptions={identitySubscriptions}
       identityScrambleDurationMs={identityScrambleDurationMs}
       projectUsageEntries={projectUsageEntries}
+      projectUnattributedSources={projectUnattributedSources}
       projectUsageLimit={projectUsageLimit}
       setProjectUsageLimit={setProjectUsageLimit}
       pulse={pulse}

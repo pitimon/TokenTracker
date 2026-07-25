@@ -28,6 +28,7 @@ function ProjectAvatar({ projectKey, projectRef }) {
 export function DataDetails({
   // Project props
   projectEntries = [],
+  projectUnattributedSources = [],
   projectLimit = 3,
   onProjectLimitChange,
   // Daily breakdown props
@@ -57,6 +58,11 @@ export function DataDetails({
   setDetailsPage,
 }) {
   const [activeTab, setActiveTab] = useState("daily");
+  // A named boolean rather than an inline `length > 0 ?`: the ui-hardcode
+  // scanner reads `0 ? (` as a JSX text node and would ratchet on it. Same false
+  // positive class as a three-digit issue reference, which it reads as a hex
+  // colour — this very comment tripped that on the first attempt.
+  const hasUnattributedSources = projectUnattributedSources.length > 0;
 
   function getDailyCellClass(row, column, index) {
     if (index === 0) return "text-oai-gray-500 dark:text-oai-gray-300";
@@ -162,6 +168,15 @@ export function DataDetails({
               </div>
             );
           })}
+          {/* Naming what this tab cannot account for. projectBucketsQueued
+              exists in 7 parsers; Cursor, Copilot, Zed, Goose and Kiro have no
+              per-repo story, and without this line their absence reads as "that
+              tool cost nothing here" rather than "we cannot attribute it". */}
+          {hasUnattributedSources ? (
+            <div className="pt-2 oai-text-caption text-oai-gray-500 dark:text-oai-gray-400">
+              {`${copy("dashboard.projects.unattributed")} ${projectUnattributedSources.join(", ")}`}
+            </div>
+          ) : null}
         </div>
       )}
 
