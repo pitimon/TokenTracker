@@ -318,13 +318,12 @@ test("the fallback branch reports only an allowlisted label", async () => {
   );
 });
 
-// NOT TESTED end to end, deliberately: scheduleReload's catch is a
-// belt-and-braces path that loadLitellmData makes practically unreachable — it
-// recovers internally (upstream → stale cache → bundled seed) and only throws
-// when cachePath is falsy, which loadInto substitutes away. An earlier attempt
-// to force it ended up making a real network call and asserting nothing. The
-// allowlist that branch uses is covered by the unit test above; this comment
-// records the gap rather than papering over it with a test that cannot fail.
+// NOT TESTED end to end: scheduleReload's catch IS reachable — statSafe
+// rethrows a non-ENOENT stat error, so an unusable cache path lands there and a
+// QA probe observed refresh-failed:TypeError. An earlier attempt to drive it
+// from a test made a real network call and asserted nothing, so the branch is
+// left to the unit test of the allowlist above rather than covered by a test
+// that cannot fail. Recorded as a real gap, not dismissed as unreachable.
 
 test("one provider's exact hit cannot hide another provider's miss", async () => {
   // Antigravity normalises model names before the lookup, so the same id can

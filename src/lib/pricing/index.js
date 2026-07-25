@@ -163,8 +163,9 @@ function scheduleReload(nowMs = Date.now()) {
       // re-read the same stale snapshot we already hold.
       await loadInto({ ...state.reloadOptions, forceRefresh: true }, { requireUpstream: true });
     } catch (e) {
-      // Rarely reached: loadLitellmData recovers internally rather than
-      // throwing, so this is belt-and-braces. Kept allowlisted anyway. Only
+      // Reached when loadLitellmData itself throws rather than falling back —
+      // statSafe rethrows a non-ENOENT stat error, so an unusable cache path
+      // lands here (QA probe: refresh-failed:TypeError). Only
       // the error CODE is kept: messages from fs/fetch carry absolute paths and
       // this string is served over HTTP to the dashboard.
       state.lastReloadError = `refresh-failed:${labelFrom(KNOWN_ERROR_CODES, [e?.code, e?.name])}`;
