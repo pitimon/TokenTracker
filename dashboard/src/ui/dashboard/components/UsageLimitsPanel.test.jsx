@@ -153,3 +153,33 @@ describe("UsageLimitsPanel", () => {
     expect(screen.getByText("Cursor")).toBeInTheDocument();
   });
 });
+
+describe("UsageLimitsPanel — Copilot premium-request counts", () => {
+  const copilot = {
+    configured: true,
+    error: null,
+    plan_name: "Pro",
+    primary_window: { used_percent: 52.7, used: 158, limit: 300, reset_at: null },
+    secondary_window: { used_percent: 20, reset_at: null },
+    otel_has_files: true,
+  };
+
+  it("prints the count beside the bar instead of a percentage that repeats it", () => {
+    // A render assertion, not a pure-function one: the counts reach the screen
+    // through a copy() key, and a mistyped key renders as the raw key string —
+    // which every unit test on getWindowCounts would still pass.
+    render(<UsageLimitsPanel copilot={copilot} order={["copilot"]} />);
+
+    expect(screen.getByText("158/300")).toBeInTheDocument();
+    // The bar already draws 52.7%; printing it as text next to itself is what
+    // the count replaces.
+    expect(screen.queryByText("53%")).not.toBeInTheDocument();
+    // A window with no counts keeps the percentage.
+    expect(screen.getByText("20%")).toBeInTheDocument();
+  });
+
+  it("counts down in Remaining mode", () => {
+    render(<UsageLimitsPanel copilot={copilot} order={["copilot"]} displayMode="remaining" />);
+    expect(screen.getByText("142/300")).toBeInTheDocument();
+  });
+});

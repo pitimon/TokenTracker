@@ -3,6 +3,7 @@ import {
   limitIdForLabel,
   getCardLimitWindows,
   getCardTierClasses,
+  getWindowCounts,
 } from "../limitDisplay.jsx";
 import { LIMIT_DISPLAY_MODES } from "../../../../hooks/use-limits-display-prefs.js";
 
@@ -89,5 +90,53 @@ describe("getCardLimitWindows", () => {
     expect(getCardLimitWindows("claude", data, USED)).toHaveLength(1);
     expect(getCardLimitWindows("opencode", data, USED)).toEqual([]);
     expect(getCardLimitWindows("claude", null, USED)).toEqual([]);
+  });
+});
+
+describe("getWindowCounts", () => {
+  const win = { used_percent: 52.7, used: 158, limit: 300, reset_at: null };
+
+  it("reports consumed units in Used mode and remaining ones in Remaining mode", () => {
+    // The whole point of the counts: "142 left" is a decision, "47% left" is a
+    // calculation. The flip has to follow the mode toggle or one of the two
+    // readings is a lie.
+    expect(getWindowCounts(win, USED)).toEqual({ used: 158, limit: 300 });
+    expect(getWindowCounts(win, REMAINING)).toEqual({ used: 142, limit: 300 });
+  });
+
+  it("returns null for providers that report no countable units", () => {
+    expect(getWindowCounts({ used_percent: 52.7 }, USED)).toBeNull();
+    expect(getWindowCounts({ used_percent: 10, used: 5 }, USED)).toBeNull();
+    expect(getWindowCounts({ used_percent: 10, limit: 0, used: 0 }, USED)).toBeNull();
+    expect(getWindowCounts(null, USED)).toBeNull();
+  });
+
+  it("never renders a negative remaining count", () => {
+    // The server clamps, but an older server's payload reaching a newer
+    // dashboard must not print "-12".
+    expect(getWindowCounts({ used: 312, limit: 300 }, REMAINING)).toEqual({ used: 0, limit: 300 });
+  });
+});
+
+describe("getCardLimitWindows with counts", () => {
+  const copilot = {
+    primary_window: { used_percent: 52.7, used: 158, limit: 300, reset_at: null },
+    secondary_window: { used_percent: 20, reset_at: null },
+  };
+
+  it("attaches counts only to the window that has them", () => {
+    const windows = getCardLimitWindows("copilot", copilot, USED);
+    expect(windows).toHaveLength(2);
+    expect(windows[0].counts).toEqual({ used: 158, limit: 300 });
+    expect(windows[1].counts).toBeNull();
+    // The percentage is still carried — the chip falls back to it, and the
+    // severity tier is computed from it either way.
+    expect(windows[0].displayPct).toBeCloseTo(52.7);
+  });
+
+  it("flips the counts with the percentage in Remaining mode", () => {
+    const [premium] = getCardLimitWindows("copilot", copilot, REMAINING);
+    expect(premium.counts).toEqual({ used: 142, limit: 300 });
+    expect(premium.displayPct).toBeCloseTo(47.3);
   });
 });

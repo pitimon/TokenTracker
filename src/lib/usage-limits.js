@@ -41,13 +41,28 @@ function clampPercent(value) {
   return n;
 }
 
-function buildWindow({ usedPercent, resetAt }) {
+// `used`/`limit` are optional and only emitted when a provider actually reports
+// countable units — Copilot's premium requests are the first. Most providers
+// publish a percentage and nothing to count, so the keys are omitted rather than
+// set to null: their payload shape stays byte-identical and no consumer has to
+// learn a new field it will never see.
+function buildWindow({ usedPercent, resetAt, used, limit }) {
   const pct = clampPercent(usedPercent);
   if (pct === null) return null;
-  return {
+  const window = {
     used_percent: pct,
     reset_at: typeof resetAt === "string" && resetAt ? resetAt : null,
   };
+  const usedCount = Number(used);
+  const limitCount = Number(limit);
+  if (Number.isFinite(usedCount) && Number.isFinite(limitCount) && limitCount > 0) {
+    // Clamp to the allowance: a plan can report more consumed than granted
+    // (over-quota keeps billing), and "312/300 used" reads as a bug even when
+    // it is the truth. The percentage is already clamped for the same reason.
+    window.used = Math.max(0, Math.min(limitCount, usedCount));
+    window.limit = limitCount;
+  }
+  return window;
 }
 
 function decodeJwtPayload(token) {
@@ -1170,7 +1185,17 @@ function buildCopilotWindow(snapshot, resetIso) {
   } else {
     return null;
   }
-  return buildWindow({ usedPercent, resetAt: resetIso });
+  // The counts are what the user actually asked about ("how many premium
+  // requests do I have left"). They were being read, divided once, and thrown
+  // away — carry them through. Only when GitHub sent both: `percent_remaining`
+  // alone is enough for the percentage but names no denominator to count against.
+  const hasCounts = Number.isFinite(entitlement) && entitlement > 0 && Number.isFinite(remaining);
+  return buildWindow({
+    usedPercent,
+    resetAt: resetIso,
+    used: hasCounts ? entitlement - remaining : undefined,
+    limit: hasCounts ? entitlement : undefined,
+  });
 }
 
 function describeCopilotOtelStatus({ home, env = process.env } = {}) {

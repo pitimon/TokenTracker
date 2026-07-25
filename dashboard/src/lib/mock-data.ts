@@ -599,7 +599,21 @@ export function getMockUsageLimits() {
     kimi: { configured: false },
     zai: { configured: false },
     kiro: { configured: false },
-    copilot: { configured: false },
+    // Configured with counts so `npm run dashboard:dev` shows the counted quota
+    // chip without a real Copilot install — this is the only way to see it on a
+    // machine that has never signed in to Copilot.
+    copilot: {
+      configured: true,
+      error: null,
+      plan_name: "Pro",
+      primary_window: { used_percent: 52.7, used: 158, limit: 300, reset_at: "2026-08-01T00:00:00.000Z" },
+      secondary_window: { used_percent: 12, used: 6, limit: 50, reset_at: "2026-08-01T00:00:00.000Z" },
+      otel_enabled: false,
+      otel_exporter_type: null,
+      otel_path: null,
+      otel_default_dir: "~/.copilot/otel",
+      otel_has_files: false,
+    },
     antigravity: { configured: false },
   };
 }
