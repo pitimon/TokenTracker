@@ -120,9 +120,10 @@ test("the scheme's default port is still accepted, written either way", async ()
   }
 });
 
-test("the entry-point guard and the redirect guard are the same check", async () => {
-  // Both call sites go through isAllowedAvatarTarget, so a target refused at one
-  // cannot be reached through the other.
+test("the shared address guard refuses port, lookalike and scheme variants", async () => {
+  // This pins the predicate's target set. That the entry point and the redirect
+  // hop BOTH use it is a property of the source, not of this test: the handler
+  // calls isAllowedAvatarTarget at local-api.js:879 and the walk calls it at :60.
   const refused = [
     "https://gravatar.com:8443/x",
     "http://169.254.169.254/latest/meta-data/",
