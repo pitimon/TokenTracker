@@ -4,7 +4,7 @@ const path = require("node:path");
 const fssync = require("node:fs");
 
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
-const { createLocalApiHandler, resolveQueuePath } = require("../lib/local-api");
+const { createLocalApiHandler, resolveQueuePath, isLoopbackHostname } = require("../lib/local-api");
 const {
   buildServeDataPreflightMessage,
   summarizeQueueData,
@@ -17,6 +17,122 @@ const DEFAULT_PORT = 7680;
 const DEFAULT_MAX_PORT_ATTEMPTS = 20;
 const NPM_PACKAGE_NAME = "@ipv9/tokentracker-cli";
 const LOCAL_BIND_HOST = "127.0.0.1";
+
+// Anti-DNS-rebinding guard. Binding the socket to loopback does not make the
+// Host header trustworthy: under DNS rebinding a browser sends
+// `Host: attacker.example:<port>` to 127.0.0.1 and treats the response as
+// same-origin, so CORS never applies. Mutations are already gated on a loopback
+// Origin; without this check every GET /functions/* endpoint — full spend
+// history, model mix, project names — is readable by any page the victim
+// happens to have open. Issue #88.
+//
+// Only the hostname matters: the port is chosen at runtime by
+// listenOnAvailablePort, so pinning it here would be fragile without adding any
+// protection. An absent Host (HTTP/1.0, some local probes) is allowed — the
+// socket is already loopback-bound, and there is no rebinding vector without a
+// browser sending a name.
+function isAllowedHostHeader(hostHeader) {
+  if (hostHeader == null || hostHeader === "") return true;
+  // Userinfo has no meaning in a Host header, so anything carrying it is
+  // malformed. Tested on the RAW value: an EMPTY userinfo ("@localhost",
+  // ":@localhost") parses to a falsy url.username, so checking the parsed
+  // fields alone lets exactly the malformed forms through.
+  if (hostHeader.includes("@")) return false;
+  // Same reason as the request target: URL parsing strips these bytes, so they
+  // can smuggle a different authority past a check on the raw string.
+  if (/[\u0000-\u0020\u007f]/.test(hostHeader)) return false;
+  try {
+    const url = new URL(`http://${hostHeader}`);
+    // `localhost.` is the valid fully-qualified spelling of localhost. WHATWG
+    // URL canonicalises the trailing dot away for IPv4 literals but not for
+    // names, so strip it here or the FQDN form gets a spurious 403.
+    return isLoopbackHostname(url.hostname.replace(/\.$/, ""));
+  } catch (_e) {
+    return false;
+  }
+}
+
+// An origin server is not a proxy: a request-target must be origin-form
+// ("/path") or asterisk-form ("*"). Absolute-form ("GET http://evil/x") carries
+// its own authority, which WOULD win over the Host header when the URL is
+// parsed for routing — so the Host allowlist and the routing would disagree
+// about which site this request is for. Refuse instead of picking a winner.
+function isAllowedRequestTarget(target) {
+  if (typeof target !== "string" || target === "") return false;
+  if (target === "*") return true;
+  if (!target.startsWith("/")) return false;
+  // "//evil/x" is a network-path reference, and WHATWG URL treats a backslash
+  // like a slash, so "/\evil/x" behaves the same way: both make the parsed URL
+  // adopt a foreign authority even though the Host header said loopback.
+  // Routing only reads url.pathname today, but leaving the parsed URL pointing
+  // at someone else's origin is the same guard-vs-parser disagreement that
+  // absolute-form creates.
+  if (target.startsWith("//") || target.startsWith("/\\")) return false;
+  // WHATWG URL strips tab, LF and CR from its input BEFORE parsing, so
+  // "/<tab>//evil/x" becomes "//evil/x" and adopts a foreign authority after
+  // passing the prefix checks above. Node's own parser rejects these bytes in a
+  // request-target with a 400 before the handler runs, so this is not reachable
+  // over the wire today — but a guard that only holds because a different layer
+  // is strict is the disagreement this function exists to prevent.
+  if (/[\u0000-\u0020\u007f]/.test(target)) return false;
+  return true;
+}
+
+// Extracted from cmdServe so the wiring — not just the predicate — is testable:
+// a guard that exists but is never reached is the failure mode this is guarding
+// against in the first place.
+function createRequestHandler({ handleApi, dashboardDir }) {
+  return async function handleRequest(req, res) {
+    try {
+      // Reject rebound hostnames before anything reads the request. Issue #88.
+      if (!isAllowedHostHeader(req.headers.host)) {
+        res.writeHead(403, { "Content-Type": "text/plain" });
+        res.end("Forbidden: TokenTracker only serves loopback hosts.\n");
+        return;
+      }
+
+      if (!isAllowedRequestTarget(req.url)) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Bad Request: absolute-form request targets are not served.\n");
+        return;
+      }
+
+      const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+      // CORS preflight
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, {
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        });
+        res.end();
+        return;
+      }
+
+      // API routes
+      if (
+        url.pathname.startsWith("/functions/")
+        || url.pathname.startsWith("/api/")
+        || url.pathname.startsWith("/proxy/")
+      ) {
+        const handled = await handleApi(req, res, url);
+        if (handled) return;
+      }
+
+      // Static files
+      const served = await serveStaticFile(dashboardDir, url.pathname, res);
+      if (served) return;
+
+      // SPA fallback
+      await serveStaticFile(dashboardDir, "/index.html", res);
+    } catch (e) {
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Internal Server Error");
+      }
+    }
+  };
+}
 
 function buildPortInUseHint(port) {
   return `Port ${port} is unavailable. Try: npx ${NPM_PACKAGE_NAME} serve --port ${port + 1}\n`;
@@ -110,43 +226,7 @@ async function cmdServe(argv) {
   // 3. Create handler
   const handleApi = createLocalApiHandler({ queuePath });
 
-  const server = http.createServer(async (req, res) => {
-    try {
-      const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-
-      // CORS preflight
-      if (req.method === "OPTIONS") {
-        res.writeHead(204, {
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        });
-        res.end();
-        return;
-      }
-
-      // API routes
-      if (
-        url.pathname.startsWith("/functions/")
-        || url.pathname.startsWith("/api/")
-        || url.pathname.startsWith("/proxy/")
-      ) {
-        const handled = await handleApi(req, res, url);
-        if (handled) return;
-      }
-
-      // Static files
-      const served = await serveStaticFile(dashboardDir, url.pathname, res);
-      if (served) return;
-
-      // SPA fallback
-      await serveStaticFile(dashboardDir, "/index.html", res);
-    } catch (e) {
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "text/plain" });
-        res.end("Internal Server Error");
-      }
-    }
-  });
+  const server = http.createServer(createRequestHandler({ handleApi, dashboardDir }));
 
   // 4. Listen. Default startup follows README behavior and picks the next
   // available port; an explicit --port/PORT remains strict.
@@ -316,6 +396,9 @@ module.exports = {
   NPM_PACKAGE_NAME,
   LOCAL_BIND_HOST,
   isPortUnavailableError,
+  isAllowedHostHeader,
+  isAllowedRequestTarget,
+  createRequestHandler,
   listenOnAvailablePort,
   getLocalServerUrl,
   parseArgs,

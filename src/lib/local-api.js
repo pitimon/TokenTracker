@@ -1538,6 +1538,8 @@ module.exports = {
   resolveQueuePath,
   // Exported for cross-consumer tests (pricing + native contract lock).
   MODEL_PRICING,
+  // Shared with serve.js so the Host allowlist and the Origin allowlist agree.
+  isLoopbackHostname,
   getModelPricing,
   computeRowCost,
   ensurePricingLoaded,
