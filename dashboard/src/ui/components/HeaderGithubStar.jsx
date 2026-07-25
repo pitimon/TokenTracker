@@ -4,7 +4,7 @@ import { shouldFetchGithubStars } from "../dashboard/util/should-fetch-github-st
 /**
  * Dashboard / marketing header: single row — icon + Star + count (matches Shell header).
  */
-export function HeaderGithubStar({ repo = "mm7894215/TokenTracker" }) {
+export function HeaderGithubStar({ repo = "pitimon/TokenTracker" }) {
   const [stars, setStars] = useState(null);
 
   useEffect(() => {

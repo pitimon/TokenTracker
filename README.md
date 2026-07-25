@@ -144,16 +144,22 @@ No account, no upload of your usage, and no server to sign in to.
 | **Auditable in one command** | You don't have to take our word for it — the store is an append-only text file you can open yourself: `cat ~/.tokentracker/tracker/queue.jsonl`. It's numbers and timestamps. |
 | **No telemetry** | No analytics, no crash reporting, no phone-home, no account. |
 
-**Outbound calls, on your behalf only.** TokenTracker is local-first, not network-free. It talks to the internet in exactly these cases, and none of them carry your usage data:
+**Outbound calls.** TokenTracker is local-first, not network-free. It reaches these hosts and no others. None of them carry your usage data — but some do reveal that *you* are asking, so they are listed with who makes the call.
 
-| When | Where | Why |
-|---|---|---|
-| Pricing refresh (daily) | `raw.githubusercontent.com` | Downloads the public [LiteLLM](https://github.com/BerriAI/litellm) price list. Anonymous — no credentials, nothing sent. Works offline from a bundled snapshot. |
-| Quota chips + Limits page | `api.anthropic.com`, `chatgpt.com`, `cursor.com`, `cloudcode-pa.googleapis.com`, `api.kimi.com`, `api.z.ai`, `api.github.com` | Asks *your* provider about *your* plan limits, using credentials already on your machine. Only for providers you actually use. |
-| Token refresh | `auth.openai.com`, `oauth2.googleapis.com`, `auth.kimi.com` | Renews those same provider credentials when they expire. |
-| Profile avatars | Allowlisted avatar CDNs | Fetched server-side so your browser doesn't contact them directly. |
-| IP check page | `ip.net.coffee` | Only if you open that page. |
-| `npx` startup | npm registry | How `npx` works — it downloads the package. A global install avoids it. |
+This table is checked in CI against [`outbound-hosts.json`](outbound-hosts.json): a host the code can reach but the file does not declare fails the build, and so does a declared host missing from this table. It is not maintained by memory.
+
+| When | Host | From | Why |
+|---|---|---|---|
+| Pricing refresh (daily) | `raw.githubusercontent.com` | server | The public [LiteLLM](https://github.com/BerriAI/litellm) price list. Anonymous — no credentials, nothing sent. Works offline from a bundled snapshot. |
+| Quota chips + Limits page | `api.anthropic.com`, `chatgpt.com`, `api.openai.com`, `cursor.com`, `www.cursor.com`, `cloudcode-pa.googleapis.com`, `api.kimi.com`, `api.z.ai`, `api.github.com` | server | Asks *your* provider about *your* plan limits, using credentials already on your machine. Only for providers you actually use. |
+| Token refresh | `auth.openai.com`, `oauth2.googleapis.com`, `auth.kimi.com` | server | Renews those same provider credentials when they expire. |
+| Skills tab | `skills.sh`, `api.github.com`, `github.com` | server | Searches the public skills directory and reads public repository metadata. Sends your search terms, nothing else. Only when you open that tab. |
+| Currency conversion | `open.er-api.com` | **browser** | Public USD exchange rates. Anonymous. Only when you pick a non-USD currency. |
+| Star count in the header | `api.github.com` | **browser** | The star count for this project's own repository — a fixed public URL that says nothing about you. |
+| IP check page | `ip.net.coffee`, `1.1.1.1`, `claude.ai`, `www.anthropic.com` | server + **browser** | Only if you open that page, whose entire purpose is showing you your own IP and whether Anthropic is reachable. |
+| `npx` startup | `registry.npmjs.org` | server | How `npx` works — it downloads the package. A global install avoids it. |
+
+**What is deliberately absent:** the Projects panel does not fetch repository avatars or star counts. Doing so would have put the name of a repository you have checked out — a private one included — into a URL sent to GitHub from your browser. It did, until [#100](https://github.com/pitimon/TokenTracker/issues/100). Project rows now render a local icon.
 
 ---
 

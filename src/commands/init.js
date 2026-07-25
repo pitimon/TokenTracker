@@ -251,7 +251,7 @@ function renderLocalSuccess({ firstSync } = {}) {
     // One-shot, post-success star CTA. `init` is run once per machine, so
     // this is the only place a CLI user naturally sees the project's GitHub
     // URL — and they're at peak satisfaction.
-    `  ${color("⭐ Star us if useful: https://github.com/mm7894215/TokenTracker", DIM)}`,
+    `  ${color("⭐ Star us if useful: https://github.com/pitimon/TokenTracker", DIM)}`,
     "",
   );
   process.stdout.write(lines.join("\n"));

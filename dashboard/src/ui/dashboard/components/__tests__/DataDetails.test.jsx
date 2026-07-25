@@ -39,13 +39,16 @@ function renderDetails(props = {}) {
 }
 
 describe("DataDetails", () => {
-  it("uses an owner avatar for project usage rows instead of a letter initial", () => {
+  it("never loads a remote avatar for a project row (issue 100)", () => {
     const { container } = renderDetails();
 
     fireEvent.click(screen.getByRole("tab", { name: "Project Usage" }));
 
-    const avatar = container.querySelector('img[src="https://github.com/pitimon.png?size=80"]');
-    expect(avatar).toBeInTheDocument();
+    // The owner name comes from a repo the user has checked out. An <img src>
+    // pointing at the owner's github.com avatar discloses it to a third party from the
+    // browser just as a fetch would — that is how issue 100 shipped unnoticed.
+    expect(container.querySelector('img[src*="github.com"]')).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
     expect(screen.queryByText("P")).not.toBeInTheDocument();
   });
 
