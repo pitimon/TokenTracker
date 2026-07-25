@@ -1,4 +1,5 @@
 const fs = require("node:fs/promises");
+const { findRowViolations } = require("./queue-compact");
 const { constants } = require("node:fs");
 const path = require("node:path");
 
@@ -27,6 +28,9 @@ async function buildDoctorReport({
   }
   if (paths.cliPath) {
     checks.push(await checkCliEntrypoint(paths.cliPath));
+  }
+  if (paths.queuePath) {
+    checks.push(await checkQueueRows(paths.queuePath));
   }
 
   // No cloud reachability check: TokenTracker is local-only, so there is no
@@ -358,8 +362,76 @@ function summarizeChecks(checks = []) {
   return summary;
 }
 
+// CLAUDE.md states the column invariant in prose:
+//
+//   total = input + output + cache_creation + cache_read + reasoning
+//
+// Nothing enforced it at runtime, so a miswritten or corrupt row was aggregated
+// and rendered rather than flagged — and a parser bug of exactly that shape is
+// the class CLAUDE.md records at 1.6-7x magnitude. Same conversion as the
+// curated-expiry and version-lockstep checks: a rule that lived in a document
+// starts running.
+//
+// A warn rather than a fail: the rows are already on disk and already being
+// rendered, so failing the whole health check would be reporting a crisis the
+// user cannot act on in the moment. What they can act on is knowing which rows,
+// and how many.
+const QUEUE_VIOLATIONS_SHOWN = 5;
+
+function queueCheck(status, detail, meta) {
+  return { id: "queue.row_invariant", status, detail, critical: false, meta };
+}
+
+async function readQueueRowsForDoctor(queuePath) {
+  const raw = await fs.readFile(queuePath, "utf8");
+  const rows = [];
+  let malformed = 0;
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      rows.push(JSON.parse(line));
+    } catch {
+      malformed += 1;
+    }
+  }
+  return { rows, malformed };
+}
+
+async function checkQueueRows(queuePath) {
+  let rows;
+  let malformed;
+  try {
+    ({ rows, malformed } = await readQueueRowsForDoctor(queuePath));
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      return queueCheck("ok", "no queue yet", { path: queuePath });
+    }
+    return queueCheck("warn", `queue unreadable: ${err?.message || err}`, { path: queuePath });
+  }
+
+  const violations = findRowViolations(rows);
+  if (violations.length === 0 && malformed === 0) {
+    return queueCheck("ok", `${rows.length} rows satisfy the column invariant`, {
+      path: queuePath,
+      rows: rows.length,
+    });
+  }
+
+  const parts = [];
+  if (violations.length > 0) parts.push(`${violations.length} row problem(s)`);
+  if (malformed > 0) parts.push(`${malformed} unparseable line(s)`);
+  return queueCheck("warn", `${parts.join(", ")} in ${rows.length + malformed} line(s)`, {
+    path: queuePath,
+    rows: rows.length,
+    malformed,
+    violations: violations.length,
+    examples: violations.slice(0, QUEUE_VIOLATIONS_SHOWN),
+  });
+}
+
 module.exports = {
   buildDoctorReport,
+  checkQueueRows,
   buildBrowserOpenerCheck,
   buildNodeVersionCheck,
   isHeadlessEnvironment,

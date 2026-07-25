@@ -33,7 +33,14 @@ function flattenHookEntries(entries) {
   return entries.flatMap((entry) => (Array.isArray(entry?.hooks) ? entry.hooks : [entry]));
 }
 
-async function runGeneratedNotifyHandler({ trackerDir, notify }) {
+// `home` is REQUIRED, and is the whole point of this signature. The handler is
+// run in a CHILD PROCESS, so overriding process.env.HOME in the parent does not
+// reach it — and without an isolated HOME the child resolves ~/.tokentracker and
+// runs a real sync against the developer's own data. It really did: this test
+// appended to and (once queue compaction landed) rewrote an 11 MB production
+// queue during `npm test`.
+async function runGeneratedNotifyHandler({ trackerDir, notify, home }) {
+  if (!home) throw new Error("runGeneratedNotifyHandler needs an isolated home");
   await fs.mkdir(trackerDir, { recursive: true });
   const notifyPath = path.join(trackerDir, "notify.cjs");
   await fs.writeFile(
@@ -48,7 +55,7 @@ async function runGeneratedNotifyHandler({ trackerDir, notify }) {
     "utf8",
   );
   await new Promise((resolve, reject) => {
-    const env = { ...process.env };
+    const env = { ...process.env, HOME: home, USERPROFILE: home };
     delete env.TOKENTRACKER_DEVICE_TOKEN;
     const child = require("node:child_process").execFile(
       process.execPath,
@@ -89,12 +96,14 @@ test("notify handler skips SkyComputerUseClient and stale explicit original noti
     await fs.chmod(skyPath, 0o755);
 
     await runGeneratedNotifyHandler({
+      home: tmp,
       trackerDir: path.join(tmp, "tracker-sky"),
       notify: [skyPath, "turn-ended"],
     });
     assert.equal(await waitForFile(markerPath, { timeoutMs: 500 }), null);
 
     await runGeneratedNotifyHandler({
+      home: tmp,
       trackerDir: path.join(tmp, "tracker-missing"),
       notify: [path.join(tmp, "missing-notify"), "turn-ended"],
     });
@@ -115,6 +124,7 @@ test("notify handler still chains normal original notify commands", async () => 
     );
 
     await runGeneratedNotifyHandler({
+      home: tmp,
       trackerDir: path.join(tmp, "tracker-safe"),
       notify: [process.execPath, shimPath],
     });
@@ -874,4 +884,16 @@ test("init installs Opencode plugin when config dir is missing", async () => {
     else process.env.OPENCODE_CONFIG_DIR = prevOpencodeConfigDir;
     await fs.rm(tmp, { recursive: true, force: true });
   }
+});
+
+test("the notify-handler helper refuses to run without an isolated home", async () => {
+  // A durable guard, not a one-off check. The handler runs in a CHILD process,
+  // so overriding process.env.HOME in the parent does not reach it. Without this
+  // the child resolved ~/.tokentracker and ran a real sync against the
+  // developer's own data — it appended to, and once queue compaction landed
+  // rewrote, an 11 MB production queue during `npm test`.
+  await assert.rejects(
+    () => runGeneratedNotifyHandler({ trackerDir: "/tmp/whatever", notify: ["echo"] }),
+    /isolated home/,
+  );
 });

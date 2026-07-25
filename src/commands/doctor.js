@@ -12,6 +12,7 @@ async function cmdDoctor(argv = []) {
   const home = os.homedir();
   const { trackerDir } = await resolveTrackerPaths({ home });
   const configPath = path.join(trackerDir, "config.json");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
 
   const configStatus = await readJsonStrict(configPath);
   const config =
@@ -36,6 +37,7 @@ async function cmdDoctor(argv = []) {
       trackerDir,
       configPath,
       cliPath,
+      queuePath,
     },
   });
 

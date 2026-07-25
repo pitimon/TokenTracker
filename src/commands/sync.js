@@ -6,6 +6,7 @@ const cp = require("node:child_process");
 const readline = require("node:readline");
 
 const { ensureDir, readJson, writeJson, openLock } = require("../lib/fs");
+const { analyzeQueue, compactQueue } = require("../lib/queue-compact");
 const {
   listRolloutFiles,
   listClaudeProjectFiles,
@@ -143,6 +144,13 @@ async function cmdSync(argv) {
     const cursorsPath = path.join(trackerDir, "cursors.json");
     const queuePath = path.join(trackerDir, "queue.jsonl");
     const queueStatePath = path.join(trackerDir, "queue.state.json");
+
+    // Maintenance path: compact and stop. Deliberately inside the lock, since
+    // the whole point is that a concurrent append must not land between the
+    // read and the rename.
+    if (opts.compact) {
+      return runCompaction(queuePath, { auto: opts.auto });
+    }
     const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
     const projectQueueStatePath = path.join(trackerDir, "project.queue.state.json");
     const grokSignalPath = path.join(trackerDir, "grok-last-session.json");
@@ -982,6 +990,29 @@ async function cmdSync(argv) {
       totalBuckets,
     };
 
+    // Nothing ever reclaimed superseded rows, so the file grows monotonically
+    // and every endpoint call re-parses all of it. #103 proposed compacting
+    // automatically past a threshold. This RECOMMENDS instead, deliberately.
+    //
+    // The reason is not caution in the abstract. Wiring the automatic version up
+    // first, it immediately rewrote an 11 MB production queue — 34,924 lines
+    // down to 5,636 — during `npm test`, because test/init-uninstall.test.js
+    // spawned the notify handler in a child process without an isolated HOME.
+    // That leak is fixed, but the lesson stands: rewriting the user's data file
+    // without being asked turns any path that reaches sync into a data-mutating
+    // path. `--compact` is one command and the user chooses to run it.
+    const queueHealth = analyzeQueue(queuePath);
+    if (
+      !opts.auto &&
+      queueHealth.parseable >= COMPACT_MIN_LINES &&
+      queueHealth.ratio >= COMPACT_RATIO
+    ) {
+      process.stdout.write(
+        `\nQueue: ${Math.round(queueHealth.ratio * 100)}% of ${queueHealth.parseable} rows are superseded` +
+          ` (${Math.round(queueHealth.bytes / 1024)} KiB). Run \`tracker sync --compact\` to reclaim them.\n`,
+      );
+    }
+
     if (!opts.auto) {
       process.stdout.write(
         [
@@ -1002,6 +1033,40 @@ async function cmdSync(argv) {
   }
 }
 
+// When a queue is mostly dead weight and big enough to be worth rewriting, sync
+// says so. Below either threshold the rewrite costs more than it saves.
+const COMPACT_RATIO = 0.5;
+const COMPACT_MIN_LINES = 5000;
+
+// Reporting is not optional. The README tells users they can `cat` this file;
+// silently rewriting it underneath them is the wrong default.
+function runCompaction(queuePath, { auto = false } = {}) {
+  const result = compactQueue(queuePath);
+  if (auto) return result;
+  if (!result.changed) {
+    process.stdout.write(`Queue compaction: nothing to reclaim (${result.reason}).\n`);
+    return result;
+  }
+  const savedKiB = Math.round((result.bytesBefore - result.bytesAfter) / 1024);
+  process.stdout.write(
+    [
+      "Queue compacted:",
+      `- Lines: ${result.totalLines} -> ${result.keptLines}`,
+      `- Superseded rows reclaimed: ${result.superseded}`,
+      `- Size: ${savedKiB} KiB smaller`,
+      result.malformed > 0
+        ? `- Kept ${result.malformed} unparseable line(s) untouched — they are invisible to every reader, but they are still your bytes`
+        : null,
+      "",
+    ]
+      // Not filter(Boolean): that drops the trailing "" too, and the report ran
+      // straight into the next line of output.
+      .filter((line) => line !== null)
+      .join("\n"),
+  );
+  return result;
+}
+
 function parseArgs(argv) {
   const out = {
     auto: false,
@@ -1010,6 +1075,7 @@ function parseArgs(argv) {
     fromOpenclaw: false,
     drain: false,
     repairGrok: false,
+    compact: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -1019,6 +1085,7 @@ function parseArgs(argv) {
     else if (a === "--from-openclaw") out.fromOpenclaw = true;
     else if (a === "--drain") out.drain = true;
     else if (a === "--repair-grok") out.repairGrok = true;
+    else if (a === "--compact") out.compact = true;
     else throw new Error(`Unknown option: ${a}`);
   }
   return out;
