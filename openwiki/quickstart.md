@@ -1,18 +1,8 @@
-# TokenTracker OpenWiki
+# Working on this documentation
 
-TokenTracker is a local-first token-usage tracker. The Node CLI parses supported
-tool logs into local queue files, serves a dashboard on loopback, and can be
-bundled by the macOS and Windows desktop applications.
-
-Start with [architecture](architecture/overview.md) for the data flow. Use these
-pages for change-oriented source maps:
-
-- [CLI and operations](cli-and-operations.md)
-- [Parsers and sync](parsers-and-sync.md)
-- [Local API](local-api.md)
-- [Dashboard routes](dashboard-routes.md)
-- [Native app boundaries](native-app-boundaries.md)
-- [Testing and release](testing-and-release.md)
+How to keep these pages true: where the authority lives, which commands
+regenerate it, and the entry points worth knowing before you edit. For the map
+of the pages themselves, start at [the OpenWiki index](README.md).
 
 ## Source of truth
 
@@ -25,6 +15,20 @@ incremental parser symbols. Regenerate it with:
 npm run docs:openwiki:extract
 npm run docs:openwiki:check
 ```
+
+The check runs two different ways over two different file sets:
+
+- **Every reference must resolve** — across `openwiki/**`, plus `README.md` and
+  `CONTRIBUTING.md`. A CLI command, `/functions/*` endpoint, dashboard route, or
+  `parse*Incremental` symbol named in any of them must exist in the ledger. The
+  front-door docs are included because that is where readers copy commands from:
+  `README.md` spent a long time telling users with a broken install to run a
+  repair command the CLI has never had, while this checker passed every time
+  without ever looking at that file. There is deliberately no way to silence a
+  finding — if a page needs to name something that does not exist, describe it
+  instead of quoting it.
+- **Every contract must be documented** — `openwiki/**` only. The README is a
+  front door, not a manifest; it is not required to list every endpoint.
 
 ## Local flow
 

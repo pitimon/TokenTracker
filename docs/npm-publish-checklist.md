@@ -28,8 +28,20 @@ service scripts under `scripts/`.
 
 Dashboard pricing/UI release gate:
 
-- `claude-sonnet-5`, `claude-fable-5`, and `claude-opus-4-8` must resolve to
-  non-zero pricing before publish. Use `node --test test/pricing.test.js`.
+- Every model you actually used must resolve to non-zero pricing before publish.
+  Run `node --test test/pricing.test.js`, then check the live surface rather than
+  a hard-coded list of model names — a list in prose goes stale the week a new
+  model ships, which is the failure this gate exists to catch:
+
+  ```bash
+  curl -s "http://localhost:7680/functions/tokentracker-usage-model-breakdown?from=$(date -v-7d +%F)&to=$(date +%F)" \
+    | python3 -c 'import json,sys; p=json.load(sys.stdin)["pricing"]; print(p["unpriced_models"], p["fuzzy_priced_models"])'
+  ```
+
+  `unpriced_models` should be empty. Anything listed needs an entry in
+  `src/lib/pricing/curated-overrides.json` before you publish. Entries in
+  `fuzzy_priced_models` are priced by partial match — plausible but possibly
+  wrong, so confirm them rather than assuming.
 - Collapsed provider cards must show model chips, top-cost signal, and a
   pricing-missing badge when a non-free model has tokens but zero cost. Use the
   focused `UsageOverview` and `model-breakdown` tests before relying on a

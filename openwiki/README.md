@@ -92,8 +92,8 @@ transformed between them, see the [Data flow](architecture/dataflow.md) view.
 
 ## Start here
 
-- [Quickstart](quickstart.md): documentation workflow, source ledger, and local
-  update commands.
+- [Working on this documentation](quickstart.md): the source ledger, the
+  regeneration commands, and what the fact checker enforces.
 - [Architecture](architecture/overview.md): runtime components and boundaries.
 - [Data flow](architecture/dataflow.md): how usage data moves from tool logs to
   the dashboard, with a leveled data-flow diagram.
