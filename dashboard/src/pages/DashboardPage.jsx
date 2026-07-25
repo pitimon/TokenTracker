@@ -6,6 +6,7 @@ import { useUsageData } from "../hooks/use-usage-data.js";
 import { useUsageLimits } from "../hooks/use-usage-limits.js";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
+import { usePlanPrices } from "../hooks/use-plan-prices";
 import { usePulse } from "../hooks/use-pulse";
 import { copy } from "../lib/copy";
 import { useLocale } from "../hooks/useLocale.js";
@@ -329,6 +330,8 @@ export function DashboardPage({
     }
   }, [dashboardNow, timeZone]);
 
+  // What the user pays each provider. Local only — never sent anywhere.
+  const { planPrices, setPlanPrice } = usePlanPrices();
   const [projectUsageLimit, setProjectUsageLimit] = useState(10);
   const {
     entries: projectUsageEntries,
@@ -1098,6 +1101,9 @@ export function DashboardPage({
       identitySubscriptions={identitySubscriptions}
       identityScrambleDurationMs={identityScrambleDurationMs}
       projectUsageEntries={projectUsageEntries}
+      planPrices={planPrices}
+      onPlanPriceChange={setPlanPrice}
+      modelBreakdown={modelBreakdown}
       projectUnattributedSources={projectUnattributedSources}
       projectUsageLimit={projectUsageLimit}
       setProjectUsageLimit={setProjectUsageLimit}

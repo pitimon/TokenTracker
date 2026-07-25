@@ -58,6 +58,13 @@ dashboard.projects.limit_top_10,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top
 dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,No public repositories,,active
 dashboard.projects.unattributed,ui,ProjectUsagePanel,ProjectUsagePanel,unattributed,Not counted per repo:,Prefix for the list of sources with usage but no project attribution,active
 dashboard.projects.unpriced,ui,ProjectUsagePanel,ProjectUsagePanel,unpriced,no model recorded,Shown instead of a cost when every row for this repo predates per-model project attribution,active
+dashboard.plan_value.title,ui,PlanValueCard,PlanValueCard,title,Plan vs list price,,active
+dashboard.plan_value.empty,ui,PlanValueCard,PlanValueCard,empty,Enter what you pay for a plan to compare it against list price.,Shown when no provider has a plan price set,active
+dashboard.plan_value.headline,ui,PlanValueCard,PlanValueCard,headline,{{plan}}/mo of plans · {{list}} of usage at API list price,Deliberately neutral: no "saved" or "wasted",active
+dashboard.plan_value.row,ui,PlanValueCard,PlanValueCard,row,{{plan}}/mo · {{list}} at list price,Per-provider line,active
+dashboard.plan_value.floor_note,ui,PlanValueCard,PlanValueCard,floor_note,At least this much — some usage could not be priced ({{models}}).,Shown when any model is unpriced or fuzzy-matched,active
+dashboard.plan_value.disclaimer,ui,PlanValueCard,PlanValueCard,disclaimer,List-price-equivalent for this window — not a bill you would have paid.,Guards against reading the number as a counterfactual,active
+dashboard.plan_value.input_aria,ui,PlanValueCard,PlanValueCard,input_aria,Monthly plan price for {{source}},,active
 dashboard.widgets.title,dashboard,DashboardPage,WidgetOnboardingCard,title,Desktop Widgets,,active
 dashboard.widgets.hint,dashboard,DashboardPage,WidgetOnboardingCard,hint,"Right-click your desktop → Edit Widgets → search ""TokenTracker""",,active
 dashboard.widgets.dismiss_aria,dashboard,DashboardPage,WidgetOnboardingCard,dismiss_aria,Dismiss widget intro,,active
