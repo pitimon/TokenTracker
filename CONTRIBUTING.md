@@ -62,6 +62,10 @@ This is the most common kind of contribution. The pattern:
 2. **Add a hook installer in `src/commands/init.js`** — most tools support a config file or hook script you can patch. Make it idempotent (safe to re-run).
 3. **Add a status check in `src/commands/status.js`** — show whether the hook is installed and whether data has been collected.
 4. **Add a parser test in its own `test/<tool>-parser.test.js`** — use a real (anonymized) sample log fixture. Recent tools each got their own file (`droid-parser.test.js`, `zed-parser.test.js`, `goose-parser.test.js`); only the older ones share `rollout-parser.test.js`.
+
+   **Also add a conformance fixture: `test/fixtures/parser-conformance/<tool>.cjs`.** `test/parser-conformance.test.js` enumerates every `parse*Incremental` from `src/lib/rollout.js` **source**, so a new parser without a fixture fails the build — it cannot be silently skipped. The alternative is an entry in `allowlist.json` explaining why a fixture is not possible (a SQLite schema, a live API shape), and that list is a ratchet: it may only shrink.
+
+   The fixture checks the parser's *output* — the column invariant `total = input + output + cache_creation + cache_read + reasoning`, non-negative counts, a model, a 30-minute UTC bucket, and that re-parsing the same input does not double-count. It deliberately does **not** prove you read the provider's format correctly; a parser that double-counts cache reads and inflates the total to match still passes. That is what step 4's real sample log is for. Copy `craft.cjs` for the shape.
 5. **Add the tool to the Supported tools list in `README.md`** — the blockquote under "🔌 Supported tools". Leave the "20+" count alone; a hard number in prose has no validator and goes stale silently.
 
 Look at how Claude Code, Codex, or Gemini are wired in for reference — they're the simplest examples.
