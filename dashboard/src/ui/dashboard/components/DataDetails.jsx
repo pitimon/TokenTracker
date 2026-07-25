@@ -151,6 +151,19 @@ export function DataDetails({
             const n = Number(raw);
             const tokenLabel = Number.isFinite(n) ? n.toLocaleString() : "—";
             const projectLabel = entry?.project_key || ref.split("/").pop() || "—";
+            // Cost is per-model, and project rows only started carrying a model
+            // recently. Rows written before that price at 0 and are counted as
+            // unattributed rather than folded in — so a repo that is entirely
+            // pre-model shows no cost line at all instead of a confident $0.
+            const cost = Number(entry?.total_cost_usd);
+            const unpriced = Number(entry?.unattributed_tokens);
+            const hasCost = Number.isFinite(cost) && cost > 0;
+            const hasUnpriced = Number.isFinite(unpriced) && unpriced > 0;
+            const costLabel = hasCost
+              ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}${hasUnpriced ? "+" : ""}`
+              : hasUnpriced
+                ? copy("dashboard.projects.unpriced")
+                : "";
             return (
               <div
                 key={key}
@@ -162,8 +175,15 @@ export function DataDetails({
                     {projectLabel}
                   </div>
                 </div>
-                <div className="oai-text-body-sm font-medium text-oai-black dark:text-oai-white tabular-nums">
-                  {tokenLabel}
+                <div className="text-right">
+                  <div className="oai-text-body-sm font-medium text-oai-black dark:text-oai-white tabular-nums">
+                    {tokenLabel}
+                  </div>
+                  {costLabel ? (
+                    <div className="oai-text-caption text-oai-gray-500 dark:text-oai-gray-400 tabular-nums">
+                      {costLabel}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );

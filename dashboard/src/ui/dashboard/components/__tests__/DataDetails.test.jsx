@@ -142,3 +142,49 @@ describe("DataDetails — sources with no per-repo attribution", () => {
     expect(screen.queryByText("dashboard.projects.unattributed")).toBeNull();
   });
 });
+
+describe("DataDetails — per-repo cost", () => {
+  function projectsTab(entry) {
+    renderDetails({ projectEntries: [entry] });
+    fireEvent.click(screen.getByText("Project Usage"));
+  }
+
+  it("shows the cost when the rows carry a model", () => {
+    projectsTab({
+      project_key: "acme/api",
+      total_tokens: "1000000",
+      total_cost_usd: "3.000000",
+      unattributed_tokens: "0",
+    });
+    expect(screen.getByText("$3.00")).toBeTruthy();
+  });
+
+  it("marks a repo whose rows all predate per-model attribution", () => {
+    // Pricing those at zero and showing "$0.00" would read as "this cost
+    // nothing" rather than "we recorded this before we recorded models".
+    projectsTab({
+      project_key: "acme/legacy",
+      total_tokens: "5000",
+      total_cost_usd: "0.000000",
+      unattributed_tokens: "5000",
+    });
+    expect(screen.queryByText("$0.00")).toBeNull();
+    expect(screen.getByText("dashboard.projects.unpriced")).toBeTruthy();
+  });
+
+  it("flags a partly-priced repo rather than implying the figure is complete", () => {
+    projectsTab({
+      project_key: "acme/mixed",
+      total_tokens: "1000700",
+      total_cost_usd: "3.000000",
+      unattributed_tokens: "700",
+    });
+    expect(screen.getByText("$3.00+")).toBeTruthy();
+  });
+
+  it("shows no cost line at all when the server sent none", () => {
+    // Older server, newer dashboard: absent is not zero.
+    projectsTab({ project_key: "acme/api", total_tokens: "1000" });
+    expect(screen.queryByText(/^\$/)).toBeNull();
+  });
+});

@@ -44,7 +44,7 @@
         "methods": [
           "POST"
         ],
-        "evidence": "src/lib/local-api.js:1139",
+        "evidence": "src/lib/local-api.js:1166",
         "mutation": true
       },
       {
@@ -52,7 +52,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1173",
+        "evidence": "src/lib/local-api.js:1200",
         "mutation": false
       },
       {
@@ -60,7 +60,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1184",
+        "evidence": "src/lib/local-api.js:1211",
         "mutation": false
       },
       {
@@ -68,7 +68,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1269",
+        "evidence": "src/lib/local-api.js:1296",
         "mutation": false
       },
       {
@@ -76,7 +76,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1280",
+        "evidence": "src/lib/local-api.js:1307",
         "mutation": false
       },
       {
@@ -84,7 +84,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1348",
+        "evidence": "src/lib/local-api.js:1375",
         "mutation": false
       },
       {
@@ -92,7 +92,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1427",
+        "evidence": "src/lib/local-api.js:1454",
         "mutation": false
       },
       {
@@ -100,7 +100,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1473",
+        "evidence": "src/lib/local-api.js:1500",
         "mutation": false
       },
       {
@@ -108,7 +108,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1486",
+        "evidence": "src/lib/local-api.js:1513",
         "mutation": false
       },
       {
@@ -116,7 +116,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1496",
+        "evidence": "src/lib/local-api.js:1523",
         "mutation": false
       },
       {
@@ -124,7 +124,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1506",
+        "evidence": "src/lib/local-api.js:1533",
         "mutation": false
       },
       {
@@ -133,7 +133,7 @@
           "GET",
           "POST"
         ],
-        "evidence": "src/lib/local-api.js:1540",
+        "evidence": "src/lib/local-api.js:1567",
         "mutation": true
       },
       {
@@ -141,7 +141,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1690",
+        "evidence": "src/lib/local-api.js:1717",
         "mutation": false
       }
     ]
@@ -214,79 +214,79 @@
       },
       {
         "name": "parseOpencodeDbIncremental",
-        "evidence": "src/lib/rollout.js:2556"
+        "evidence": "src/lib/rollout.js:2611"
       },
       {
         "name": "parseCursorApiIncremental",
-        "evidence": "src/lib/rollout.js:2737"
+        "evidence": "src/lib/rollout.js:2795"
       },
       {
         "name": "parseKiroIncremental",
-        "evidence": "src/lib/rollout.js:2995"
+        "evidence": "src/lib/rollout.js:3053"
       },
       {
         "name": "parseHermesIncremental",
-        "evidence": "src/lib/rollout.js:3250"
+        "evidence": "src/lib/rollout.js:3308"
       },
       {
         "name": "parseKiroCliIncremental",
-        "evidence": "src/lib/rollout.js:3869"
+        "evidence": "src/lib/rollout.js:3927"
       },
       {
         "name": "parseKimiIncremental",
-        "evidence": "src/lib/rollout.js:4499"
+        "evidence": "src/lib/rollout.js:4557"
       },
       {
         "name": "parseKimiCodeIncremental",
-        "evidence": "src/lib/rollout.js:4690"
+        "evidence": "src/lib/rollout.js:4748"
       },
       {
         "name": "parseCodebuddyIncremental",
-        "evidence": "src/lib/rollout.js:4914"
+        "evidence": "src/lib/rollout.js:4972"
       },
       {
         "name": "parseRoocodeIncremental",
-        "evidence": "src/lib/rollout.js:5417"
+        "evidence": "src/lib/rollout.js:5475"
       },
       {
         "name": "parseZedIncremental",
-        "evidence": "src/lib/rollout.js:5734"
+        "evidence": "src/lib/rollout.js:5792"
       },
       {
         "name": "parseGooseIncremental",
-        "evidence": "src/lib/rollout.js:6051"
+        "evidence": "src/lib/rollout.js:6109"
       },
       {
         "name": "parseDroidIncremental",
-        "evidence": "src/lib/rollout.js:6428"
+        "evidence": "src/lib/rollout.js:6486"
       },
       {
         "name": "parseKilocodeIncremental",
-        "evidence": "src/lib/rollout.js:6675"
+        "evidence": "src/lib/rollout.js:6733"
       },
       {
         "name": "parseOmpIncremental",
-        "evidence": "src/lib/rollout.js:6811"
+        "evidence": "src/lib/rollout.js:6869"
       },
       {
         "name": "parsePiIncremental",
-        "evidence": "src/lib/rollout.js:7064"
+        "evidence": "src/lib/rollout.js:7122"
       },
       {
         "name": "parseCraftIncremental",
-        "evidence": "src/lib/rollout.js:7348"
+        "evidence": "src/lib/rollout.js:7406"
       },
       {
         "name": "parseCopilotIncremental",
-        "evidence": "src/lib/rollout.js:7698"
+        "evidence": "src/lib/rollout.js:7756"
       },
       {
         "name": "parseGrokBuildIncremental",
-        "evidence": "src/lib/rollout.js:8164"
+        "evidence": "src/lib/rollout.js:8222"
       },
       {
         "name": "parseAntigravityIncremental",
-        "evidence": "src/lib/rollout.js:8336"
+        "evidence": "src/lib/rollout.js:8394"
       }
     ]
   }
