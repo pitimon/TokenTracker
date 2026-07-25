@@ -1,7 +1,7 @@
 {
   "_why": "Parsers with no conformance fixture yet. This list is a RATCHET: parser-conformance.test.js fails if it is longer than max_size, and also fails if it is SHORTER, telling you to lower max_size in the same commit. An allowlist that can grow is a TODO list, and this repo has evidence about what happens to those.",
   "_how_to_remove_an_entry": "Add test/fixtures/parser-conformance/<parserName>.cjs (see craft.cjs for the shape), delete the entry here, and lower max_size by one.",
-  "max_size": 21,
+  "max_size": 20,
   "parsers": {
     "parseRolloutIncremental": "Codex rollout JSONL. Covered behaviourally by test/rollout-parser.test.js; no conformance fixture yet.",
     "parseClaudeIncremental": "Covered behaviourally by test/rollout-parser.test.js; no conformance fixture yet.",
@@ -11,7 +11,6 @@
     "parseOpencodeDbIncremental": "Reads a SQLite database. A fixture needs a real schema, not a JSONL line.",
     "parseCursorApiIncremental": "Talks to Cursor's API shape rather than a local log; covered by test/cursor-parser.test.js.",
     "parseKiroIncremental": "No conformance fixture yet; test/fixtures/kiro-cli exists for the CLI variant.",
-    "parseHermesIncremental": "Reads a SQLite database across profile directories. A fixture needs a real schema, not a JSONL line.",
     "parseKiroCliIncremental": "No conformance fixture yet.",
     "parseKimiCodeIncremental": "No conformance fixture yet.",
     "parseRoocodeIncremental": "Covered by test/roocode-parser.test.js; no conformance fixture yet.",
