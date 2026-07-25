@@ -23,7 +23,7 @@
     "access": "public"
   },
   "scripts": {
-    "ci:local": "npm run dashboard:build && npm --prefix dashboard run test && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && npm run docs:openwiki:check && node --test test/architecture-guardrails.test.js",
+    "ci:local": "npm run dashboard:build && npm --prefix dashboard run test && npm test && npm run validate:copy && npm run validate:ui-hardcode && npm run validate:guardrails && npm run validate:curated-expiry && npm run docs:openwiki:check && node --test test/architecture-guardrails.test.js",
     "copy:pull": "node scripts/copy-sync.cjs pull",
     "copy:push": "node scripts/copy-sync.cjs push",
     "dashboard:build": "npm --prefix dashboard run build",
@@ -42,6 +42,7 @@
     "prepublishOnly": "node scripts/build-pricing-seed.cjs",
     "test": "node --test test/*.test.js",
     "validate:copy": "node scripts/validate-copy-registry.cjs",
+    "validate:curated-expiry": "node scripts/validate-curated-expiry.cjs",
     "validate:guardrails": "node scripts/validate-architecture-guardrails.cjs",
     "validate:retros": "node scripts/validate-retros.cjs",
     "validate:ui-hardcode": "node scripts/ops/validate-ui-hardcode.cjs"

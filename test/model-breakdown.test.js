@@ -356,20 +356,29 @@ test("computeRowCost still bills reasoning for non-Codex sources (e.g. gemini)",
 });
 
 test("pricing covers production MiniMax and DeepSeek model ids used by leaderboard", () => {
-  const cases = [
-    ["MiniMax-M2.7", { input: 0.3, output: 1.2, cache_read: 0.06, cache_write: 0.375 }],
-    ["MiniMax-M2.7-highspeed", { input: 0.6, output: 2.4, cache_read: 0.06, cache_write: 0.375 }],
-    ["deepseek-v4-flash", { input: 0.14, output: 0.28, cache_read: 0.0028, cache_write: 0.14 }],
-    ["deepseek-v4-pro", { input: 0.435, output: 0.87, cache_read: 0.003625, cache_write: 0.435 }],
-  ];
+  // This test is about the LOOKUP PATH — that these ids resolve at all, and that
+  // prefixed/lower-cased variants resolve to the same entry, rather than falling
+  // back to ZERO_PRICING. It deliberately reads the expected rates from the
+  // curated table instead of duplicating literals: a copy of the numbers here
+  // just means a legitimate price correction fails an unrelated test. The rates
+  // themselves are pinned once, in test/curated-expiry.test.js (issue #87).
+  const curated = require("../src/lib/pricing/curated-overrides.json").exact;
+  const models = ["MiniMax-M2.7", "MiniMax-M2.7-highspeed", "deepseek-v4-flash", "deepseek-v4-pro"];
 
-  for (const [model, expected] of cases) {
-    assert.deepEqual(localApi.getModelPricing(model), expected, `${model} must not fall back to zero pricing`);
+  for (const model of models) {
+    const pricing = localApi.getModelPricing(model);
+    assert.ok(
+      pricing.input > 0 && pricing.output > 0,
+      `${model} must not fall back to zero pricing`,
+    );
+    for (const field of ["input", "output", "cache_read", "cache_write"]) {
+      assert.equal(pricing[field], curated[model][field], `${model}.${field} must match the curated table`);
+    }
   }
 
   // DB rows can arrive with provider/model prefixes or lower-cased aliases.
-  assert.deepEqual(localApi.getModelPricing("openrouter/minimax-m2.7"), cases[0][1]);
-  assert.deepEqual(localApi.getModelPricing("DeepSeek-V4-Pro"), cases[3][1]);
+  assert.deepEqual(localApi.getModelPricing("openrouter/minimax-m2.7"), localApi.getModelPricing("MiniMax-M2.7"));
+  assert.deepEqual(localApi.getModelPricing("DeepSeek-V4-Pro"), localApi.getModelPricing("deepseek-v4-pro"));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
