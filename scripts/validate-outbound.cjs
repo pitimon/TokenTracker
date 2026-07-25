@@ -63,6 +63,11 @@ function decodeSourceEscapes(text) {
     .replace(/\\\//g, "/");
 }
 
+// Only %XX sequences; anything malformed is left alone rather than guessed at.
+function percentDecode(text) {
+  return text.replace(/%([0-9a-fA-F]{2})/g, (_m, hex) => safeFromCodePoint(parseInt(hex, 16)));
+}
+
 function safeFromCodePoint(code) {
   try {
     return String.fromCodePoint(code);
@@ -79,7 +84,13 @@ function safeFromCodePoint(code) {
 function resolveHost(rawAuthority) {
   // WHATWG removes tab/LF/CR from the input before parsing; so must we, after
   // decoding the escapes that put them there.
-  const authority = decodeSourceEscapes(rawAuthority).replace(/[\t\n\r]/g, "");
+  // Percent-decoding happens in the host too: `api.github.com%2eevil.example`
+  // resolves to api.github.com.evil.example, because a decoded dot is a valid
+  // host character. The shape test rejected the `%` and returned null, so the
+  // request went unseen — the same source-text-versus-decoded-string root cause
+  // as the escape splice, one encoding layer further out. Verify with
+  //   node -e 'console.log(new URL("https://a.example%2eevil.example/").host)'
+  const authority = percentDecode(decodeSourceEscapes(rawAuthority)).replace(/[\t\n\r]/g, "");
   const authorityOnly = authority.split(/[/\\?#]/)[0];
   const afterUserinfo = authorityOnly.includes("@")
     ? authorityOnly.slice(authorityOnly.lastIndexOf("@") + 1)

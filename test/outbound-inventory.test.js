@@ -417,3 +417,18 @@ test("data_from covers a host stored as a value and never fetched", () => {
   const asData = shared({ data_from: ["dashboard/src/A.jsx"] });
   assert.deepEqual(attack('const row = { project_ref: `https://shared.example/${repo}` };', [asData]), []);
 });
+
+test("percent-encoding in the authority cannot borrow a permitted host", () => {
+  // `https://shared.example%2eevil.example/x` resolves to
+  // shared.example.evil.example — a decoded dot is a valid host character:
+  //   node -e 'console.log(new URL("https://a.example%2eevil.example/").host)'
+  // The hostname shape test rejected the `%` and returned null, so the request
+  // was silently green. Same source-text-versus-decoded-string root cause as the
+  // escape splice, one encoding layer further out.
+  const permitted = shared({ request_from: ["dashboard/src/A.jsx"] });
+  const findings = attack('fetch("https://shared.example%2eevil.example/x");', [permitted]);
+  assert.ok(
+    findings.some((f) => f.includes("shared.example.evil.example")),
+    `percent-decoded host not resolved: ${JSON.stringify(findings)}`,
+  );
+});
