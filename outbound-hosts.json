@@ -232,14 +232,23 @@
       "seen_in": []
     }
   ],
-  "ignored_prefixes": [
-    "http://localhost",
-    "http://127.0.0.1",
-    "https://local.tokentracker",
-    "http://www.w3.org",
-    "https://example.com",
-    "http://evil",
-    "https://codex.ai",
-    "https://github.com/BerriAI"
-  ]
+  "ignored_hosts": {
+    "_note": "Matched on host exactly. Not prefixes \u2014 a path here would be ignored, exempting the whole host.",
+    "hosts": [
+      "localhost",
+      "127.0.0.1",
+      "local.tokentracker",
+      "www.w3.org",
+      "example.com",
+      "evil",
+      "codex.ai"
+    ],
+    "why": {
+      "localhost / 127.0.0.1": "loopback",
+      "local.tokentracker": "a synthetic project_ref identifier for claude-mem observer sessions (src/lib/rollout.js:19), never requested",
+      "www.w3.org": "the SVG XML namespace",
+      "example.com / evil": "appear only inside comments illustrating attacks and enterprise host shapes",
+      "codex.ai": "named in a comment about provider domains; not a request target"
+    }
+  }
 }

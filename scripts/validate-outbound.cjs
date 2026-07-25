@@ -128,11 +128,13 @@ function loadInventory(root = ROOT) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
+// Exact host match only. An earlier version took URL prefixes and reduced them
+// to their host, so an entry like "https://github.com/BerriAI" quietly exempted
+// every github.com reference — a field that looked narrow and was not. This is
+// the validator's own escape hatch; it must not be able to hide more than it says.
 function isIgnored(host, inventory) {
-  return (inventory.ignored_prefixes || []).some((prefix) => {
-    const prefixHost = prefix.replace(/^https?:\/\//, "").split("/")[0];
-    return prefixHost === host;
-  });
+  const ignored = inventory.ignored_hosts?.hosts || [];
+  return ignored.includes(host);
 }
 
 function checkOutbound({ root = ROOT } = {}) {

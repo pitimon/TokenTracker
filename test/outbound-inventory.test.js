@@ -18,7 +18,7 @@ function fixture({ files = {}, hosts = [], ignored = [], readme = "" }) {
   }
   fs.writeFileSync(
     path.join(root, "outbound-hosts.json"),
-    JSON.stringify({ hosts, ignored_prefixes: ignored }),
+    JSON.stringify({ hosts, ignored_hosts: { hosts: ignored } }),
   );
   fs.writeFileSync(path.join(root, "README.md"), readme);
   return root;
@@ -102,12 +102,26 @@ test("test fixtures naming a host are not treated as outbound calls", () => {
   assert.equal(collectHosts({ root }).has("fixture-only.example"), false);
 });
 
-test("ignored_prefixes cover loopback and non-network literals", () => {
+test("ignored_hosts covers loopback and non-network literals", () => {
   const root = fixture({
     files: { "src/a.js": 'const u = "http://localhost:7680"; const ns = "http://www.w3.org/2000/svg";\n' },
-    ignored: ["http://localhost", "http://www.w3.org"],
+    ignored: ["localhost", "www.w3.org"],
   });
   assert.deepEqual(checkOutbound({ root }), []);
+});
+
+test("an ignore entry cannot exempt more than the host it names", () => {
+  // The escape hatch used to take URL prefixes and reduce them to their host,
+  // so "https://github.com/BerriAI" silently exempted every github.com
+  // reference. A field that looks narrow and is not is worse than no field.
+  const root = fixture({
+    files: { "dashboard/src/a.jsx": 'const u = `https://github.com/${owner}.png`;\n' },
+    ignored: ["github.com/BerriAI"],
+  });
+  assert.ok(
+    checkOutbound({ root }).some((f) => f.includes("undeclared outbound host 'github.com'")),
+    "a path-shaped ignore entry must not exempt the host",
+  );
 });
 
 test("a declared host reached from an undeclared file is caught", () => {
