@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const path = require("node:path");
-const { scanDomainMetrics } = require("../scripts/graph/lib/metrics.cjs");
+const { scanDomainMetrics } = require("../../scripts/graph/lib/metrics.cjs");
 
 test("scanDomainMetrics counts files and noise", () => {
   const fakeFs = {

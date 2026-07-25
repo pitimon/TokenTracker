@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { decideSplit } = require("../scripts/graph/lib/split-decision.cjs");
+const { decideSplit } = require("../../scripts/graph/lib/split-decision.cjs");
 
 test("decideSplit chooses split when size threshold reached", () => {
   const decision = decideSplit({
