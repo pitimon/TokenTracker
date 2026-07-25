@@ -80,7 +80,7 @@ Both bundle their own Node runtime, so there is nothing else to install. They sh
 
 - 🔒 **Your usage data never leaves your machine.** Token counts and timestamps only — never prompts, responses, or file contents. No account, no telemetry, no analytics, no phone-home. TokenTracker does make a few outbound calls *on your behalf* (model prices, your own plan quotas); every one is named in [Privacy](#-privacy) below, and none of them carry your usage.
 - 📊 **One calm web dashboard.** Your whole picture in the browser at a local URL, no login — light or dark, auto-refreshing while the tab is open. [What's on it ↓](#-the-dashboard)
-- 📈 **Quota at a glance, on every card.** Live plan-quota usage (used %, e.g. 5h + weekly) as color-coded chips right on each provider's card — see how close you are to your limits without leaving the overview. Full windows + reset countdowns on the Limits page. Covers Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity.
+- 📈 **Quota at a glance, on every card.** Live plan-quota usage (e.g. 5h + weekly) as color-coded chips right on each provider's card — see how close you are to your limits without leaving the overview. Where the provider reports countable units you get the actual number rather than a percentage to convert in your head: GitHub Copilot reads `158/300` premium requests. Full windows + reset countdowns on the Limits page. Covers Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity.
 - 💰 **Cost you can trust — and a price tag when it can't.** 2,200+ models priced from [LiteLLM](https://github.com/BerriAI/litellm) (refreshed daily) with a bundled offline snapshot, so USD totals are right even without a network. A model too new to have a price is badged **pricing missing** rather than quietly counted as $0, and prices refresh in the background instead of waiting for a restart. Cross-provider records are de-duplicated to match each provider's own billing.
 - 🔌 **20+ tools, zero config.** Claude Code, Codex, Cursor, Gemini, Copilot, Antigravity, OpenCode, Kiro, Zed, Goose, and more — auto-detected, hooks auto-install on first run. Zero to dashboard in ~30 seconds.
 - 🧩 **Skills tab.** Syncs 250+ public skills across your tools.
@@ -96,7 +96,7 @@ Both bundle their own Node runtime, so there is nothing else to install. They sh
 **On one screen:**
 - **Total tokens + cost** for the selected window (24h / day / 7d / 30d / total / custom), with a browser-timezone "Updated" stamp.
 - **Usage Trend** — token volume over time, right beside the total.
-- **Provider breakdown** — every tool's share and top models, with each provider's live quota chips (used %, e.g. 5h + weekly) on its card and a click-to-expand per-model drill-down.
+- **Provider breakdown** — every tool's share and top models, with each provider's live quota chips (e.g. 5h + weekly — a count like `158/300` where the provider reports one, otherwise a percentage) on its card and a click-to-expand per-model drill-down.
 - **Context breakdown** — where Claude's and Codex's tokens actually go (input / output / cache / reasoning), shown side by side.
 - **Activity heatmap** — daily usage at a glance.
 - **Project & daily tables** — per-project totals and a day-by-day breakdown with cost and $/MTok.

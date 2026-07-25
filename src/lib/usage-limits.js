@@ -41,13 +41,28 @@ function clampPercent(value) {
   return n;
 }
 
-function buildWindow({ usedPercent, resetAt }) {
+// `used`/`limit` are optional and only emitted when a provider actually reports
+// countable units — Copilot's premium requests are the first. Most providers
+// publish a percentage and nothing to count, so the keys are omitted rather than
+// set to null: their payload shape stays byte-identical and no consumer has to
+// learn a new field it will never see.
+function buildWindow({ usedPercent, resetAt, used, limit }) {
   const pct = clampPercent(usedPercent);
   if (pct === null) return null;
-  return {
+  const window = {
     used_percent: pct,
     reset_at: typeof resetAt === "string" && resetAt ? resetAt : null,
   };
+  const usedCount = Number(used);
+  const limitCount = Number(limit);
+  if (Number.isFinite(usedCount) && Number.isFinite(limitCount) && limitCount > 0) {
+    // Clamp to the allowance: a plan can report more consumed than granted
+    // (over-quota keeps billing), and "312/300 used" reads as a bug even when
+    // it is the truth. The percentage is already clamped for the same reason.
+    window.used = Math.max(0, Math.min(limitCount, usedCount));
+    window.limit = limitCount;
+  }
+  return window;
 }
 
 function decodeJwtPayload(token) {
@@ -1155,22 +1170,47 @@ function copilotResetIso(value) {
   return new Date(ts).toISOString();
 }
 
+// `Number(null)` is 0 and `Number("")` is 0, so coercing a missing field reads
+// as "none left" — a snapshot with `remaining: null` reported the entire
+// allowance consumed. Require an actual finite number.
+function copilotCount(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function buildCopilotWindow(snapshot, resetIso) {
   if (!snapshot || typeof snapshot !== "object") return null;
-  const entitlement = Number(snapshot.entitlement);
-  const remaining = Number(snapshot.remaining);
-  const percentRemaining = Number(snapshot.percent_remaining);
+  const entitlement = copilotCount(snapshot.entitlement);
+  const remaining = copilotCount(snapshot.remaining);
+  const percentRemaining = copilotCount(snapshot.percent_remaining);
   const allZero = (!entitlement || entitlement <= 0) && (!remaining || remaining <= 0) && (!percentRemaining || percentRemaining <= 0);
   if (allZero) return null;
+  // The counts are what the user actually asked about ("how many premium
+  // requests do I have left"), and they were being read, divided once, and
+  // thrown away.
+  const hasCounts = entitlement !== null && entitlement > 0 && remaining !== null;
+
+  // When GitHub sends BOTH a percentage and counts, derive the percentage from
+  // the counts rather than trusting `percent_remaining`. The two can disagree —
+  // `percent_remaining: 30` alongside `entitlement: 300, remaining: 72` means a
+  // 70%-wide bar captioned "228/300", which is 76%. The caption is the number
+  // the user reads, so the bar has to be a drawing of it, not of a separately
+  // rounded field. `percent_remaining` stays the fallback for the case it was
+  // added for: a percentage with no denominator to count against.
   let usedPercent;
-  if (Number.isFinite(percentRemaining)) {
-    usedPercent = 100 - percentRemaining;
-  } else if (Number.isFinite(entitlement) && entitlement > 0 && Number.isFinite(remaining)) {
+  if (hasCounts) {
     usedPercent = ((entitlement - remaining) / entitlement) * 100;
+  } else if (percentRemaining !== null) {
+    usedPercent = 100 - percentRemaining;
   } else {
     return null;
   }
-  return buildWindow({ usedPercent, resetAt: resetIso });
+
+  return buildWindow({
+    usedPercent,
+    resetAt: resetIso,
+    used: hasCounts ? entitlement - remaining : undefined,
+    limit: hasCounts ? entitlement : undefined,
+  });
 }
 
 function describeCopilotOtelStatus({ home, env = process.env } = {}) {

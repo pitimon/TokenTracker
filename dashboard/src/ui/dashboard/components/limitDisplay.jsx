@@ -7,8 +7,10 @@ import { LIMIT_DISPLAY_MODES } from "../../../hooks/use-limits-display-prefs.js"
  * The Limits page (UsageLimitsPanel) renders the full set of windows as bars.
  * The dashboard card only has room for a glance, so it surfaces the provider's
  * first two windows ("5h + week") as tinted chips — a colored severity spot +
- * label + %. All the underlying data is the same `useUsageLimits()` payload;
- * this module just picks and formats it. See ProviderBreakdownCard.
+ * label + a reading: the count ("158/300") where the provider reports countable
+ * units, otherwise the percentage. All the underlying data is the same
+ * `useUsageLimits()` payload; this module just picks and formats it.
+ * See ProviderBreakdownCard.
  */
 
 // Shared with UsageLimitsPanel — kept here so both surfaces format resets identically.
@@ -84,10 +86,32 @@ const WINDOW_MAP = {
 };
 
 /**
- * The provider's card windows as `{ label, displayPct, reset }`, up to two.
- * `displayPct` is flipped for Remaining mode but kept at full precision — the
- * tier color must be computed from the raw value (rounding it first would push
- * e.g. 74.6% up to the 75% orange band), and the chip rounds only for the label.
+ * Counts for a window, flipped for Remaining mode, or null when the provider
+ * reports no countable units. Copilot is the only one so far: GitHub tells us
+ * how many premium requests the plan grants and how many are left, which is the
+ * form the question actually gets asked in ("how many do I have left?").
+ * A percentage answers it only after arithmetic.
+ */
+export function getWindowCounts(win, mode) {
+  const used = Number(win?.used);
+  const limit = Number(win?.limit);
+  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
+  // Clamp into [0, limit] BEFORE the flip, not after. The current server
+  // already clamps, but a newer dashboard talks to whatever server is installed:
+  // an unclamped `used: 312` renders "312/300" in Used mode, and `used: -12`
+  // renders "312/300" in Remaining mode — an impossible count either way.
+  // Clamping only the low end catches neither.
+  const safeUsed = Math.max(0, Math.min(limit, used));
+  const shown = mode === LIMIT_DISPLAY_MODES.REMAINING ? limit - safeUsed : safeUsed;
+  return { used: Math.round(shown), limit: Math.round(limit) };
+}
+
+/**
+ * The provider's card windows as `{ label, displayPct, counts, reset }`, up to
+ * two. `displayPct` is flipped for Remaining mode but kept at full precision —
+ * the tier color must be computed from the raw value (rounding it first would
+ * push e.g. 74.6% up to the 75% orange band), and the chip rounds only for the
+ * label. `counts` is null unless the provider reports countable units.
  */
 export function getCardLimitWindows(id, data, mode) {
   const spec = WINDOW_MAP[id];
@@ -103,6 +127,7 @@ export function getCardLimitWindows(id, data, mode) {
     out.push({
       label: w.labelKey ? copy(w.labelKey) : w.label,
       displayPct,
+      counts: getWindowCounts(win, mode),
       reset: formatReset(win[w.resetField || "reset_at"]),
     });
   }
@@ -126,13 +151,24 @@ export function getCardTierClasses(displayPct, mode) {
   };
 }
 
-function LimitChip({ label, displayPct, reset, mode }) {
+function LimitChip({ label, displayPct, counts, reset, mode }) {
   const tier = getCardTierClasses(displayPct, mode); // raw % → correct tier at boundaries
   const shown = Math.round(displayPct); // round only for the visible label
-  const pctLabel = copy("usage.overview.model_percent", { percent: shown });
-  const title = reset
-    ? copy("usage.overview.provider_limit_reset", { label, percent: shown, reset })
-    : copy("usage.overview.provider_limit", { label, percent: shown });
+  // Prefer the count when the provider gives one. Nothing is lost by dropping
+  // the percent sign here: severity is already carried by the coloured dot and
+  // the chip tint, and the tooltip keeps both numbers.
+  const pctLabel = counts
+    ? copy("usage.overview.provider_limit_count", { used: counts.used, limit: counts.limit })
+    : copy("usage.overview.model_percent", { percent: shown });
+  const titleKey = counts
+    ? (reset ? "usage.overview.provider_limit_counted_reset" : "usage.overview.provider_limit_counted")
+    : (reset ? "usage.overview.provider_limit_reset" : "usage.overview.provider_limit");
+  const title = copy(titleKey, {
+    label,
+    percent: shown,
+    reset,
+    ...(counts ? { used: counts.used, limit: counts.limit } : {}),
+  });
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] leading-none ${tier.chip}`}
@@ -178,7 +214,7 @@ export function LimitChips({ label, usageLimits, mode = LIMIT_DISPLAY_MODES.USED
   return (
     <div className="mt-2.5 pt-2.5 border-t border-dashed border-oai-gray-200 dark:border-oai-gray-700 flex flex-wrap items-center gap-1.5">
       {windows.map((w) => (
-        <LimitChip key={w.label} label={w.label} displayPct={w.displayPct} reset={w.reset} mode={effectiveMode} />
+        <LimitChip key={w.label} label={w.label} displayPct={w.displayPct} counts={w.counts} reset={w.reset} mode={effectiveMode} />
       ))}
     </div>
   );

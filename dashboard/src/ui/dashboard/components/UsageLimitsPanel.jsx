@@ -3,7 +3,7 @@ import { Card } from "../../components";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
 import { copy } from "../../../lib/copy";
 import { LIMIT_DISPLAY_MODES } from "../../../hooks/use-limits-display-prefs.js";
-import { formatReset } from "./limitDisplay.jsx";
+import { formatReset, getWindowCounts } from "./limitDisplay.jsx";
 
 /**
  * In "used" mode a high percentage is bad (lots of quota burned).
@@ -17,7 +17,13 @@ function barColor(displayPct, mode) {
   return "bg-emerald-500";
 }
 
-function LimitBar({ label, pct, reset, mode = LIMIT_DISPLAY_MODES.USED }) {
+// `quotaWindow` is optional and only passed by providers that report countable
+// units (Copilot premium requests today). When present its count replaces the
+// percent text: the bar is already a proportional drawing of that percentage, so
+// "53%" beside a 53%-wide bar repeats itself, while "158/300" beside it does not.
+// Named `quotaWindow`, not `window`, so it cannot shadow the browser global.
+function LimitBar({ label, pct, reset, quotaWindow, mode = LIMIT_DISPLAY_MODES.USED }) {
+  const counts = getWindowCounts(quotaWindow, mode);
   const rawUsed = Math.max(0, Math.min(100, Number(pct) || 0));
   const displayPct = mode === LIMIT_DISPLAY_MODES.REMAINING ? 100 - rawUsed : rawUsed;
   const rounded = Math.round(displayPct);
@@ -34,8 +40,12 @@ function LimitBar({ label, pct, reset, mode = LIMIT_DISPLAY_MODES.USED }) {
           style={{ width: `${widthPct}%`, minWidth: displayPct > 0 ? "3px" : 0 }}
         />
       </div>
-      <span className="text-[11px] tabular-nums text-oai-gray-500 dark:text-oai-gray-400 w-9 text-right shrink-0 whitespace-nowrap">
-        {labelPct}%
+      <span
+        className={`text-[11px] tabular-nums text-oai-gray-500 dark:text-oai-gray-400 text-right shrink-0 whitespace-nowrap ${counts ? "w-20" : "w-9"}`}
+      >
+        {counts
+          ? copy("usage.overview.provider_limit_count", { used: counts.used, limit: counts.limit })
+          : `${labelPct}%`}
       </span>
       {reset ? (
         <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-500 w-6 text-right shrink-0">
@@ -183,8 +193,8 @@ function renderProviderGroup(id, data, mode) {
     case "copilot":
       return (
         <ToolGroup key="copilot" name={title} icon={meta.icon}>
-          {data.primary_window ? <LimitBar label={copy("limits.label.copilot_premium")} pct={data.primary_window.used_percent} reset={formatReset(data.primary_window.reset_at)} mode={mode} /> : null}
-          {data.secondary_window ? <LimitBar label={copy("limits.label.copilot_chat")} pct={data.secondary_window.used_percent} reset={formatReset(data.secondary_window.reset_at)} mode={mode} /> : null}
+          {data.primary_window ? <LimitBar label={copy("limits.label.copilot_premium")} pct={data.primary_window.used_percent} reset={formatReset(data.primary_window.reset_at)} quotaWindow={data.primary_window} mode={mode} /> : null}
+          {data.secondary_window ? <LimitBar label={copy("limits.label.copilot_chat")} pct={data.secondary_window.used_percent} reset={formatReset(data.secondary_window.reset_at)} quotaWindow={data.secondary_window} mode={mode} /> : null}
           {!data.primary_window && !data.secondary_window ? <StatusLine>{copy("limits.status.no_data")}</StatusLine> : null}
           {data.otel_has_files || data.otel_enabled ? null : <CopilotOtelHint defaultDir={data.otel_default_dir} />}
         </ToolGroup>

@@ -578,8 +578,9 @@ export function getMockUsageLimits() {
   // dashboard cards. The mock model-breakdown renders claude + codex cards
   // (every-code has no limits provider), so give those two windows that span
   // all four chip tiers: neutral <50 / amber 50-74 / orange 75-89 / red >=90.
-  // resets_at is intentionally omitted — the chip shows only label + %, the
-  // reset lives in the tooltip and never appears in a static screenshot.
+  // resets_at is intentionally omitted — the chip shows label + a reading
+  // (count where the provider has one, else %), and the reset lives in the
+  // tooltip, which never appears in a static screenshot.
   return {
     fetched_at: "2025-12-31T12:00:00Z",
     claude: {
@@ -599,7 +600,21 @@ export function getMockUsageLimits() {
     kimi: { configured: false },
     zai: { configured: false },
     kiro: { configured: false },
-    copilot: { configured: false },
+    // Configured with counts so `npm run dashboard:dev` shows the counted quota
+    // chip without a real Copilot install — this is the only way to see it on a
+    // machine that has never signed in to Copilot.
+    copilot: {
+      configured: true,
+      error: null,
+      plan_name: "Pro",
+      primary_window: { used_percent: 52.7, used: 158, limit: 300, reset_at: "2026-08-01T00:00:00.000Z" },
+      secondary_window: { used_percent: 12, used: 6, limit: 50, reset_at: "2026-08-01T00:00:00.000Z" },
+      otel_enabled: false,
+      otel_exporter_type: null,
+      otel_path: null,
+      otel_default_dir: "~/.copilot/otel",
+      otel_has_files: false,
+    },
     antigravity: { configured: false },
   };
 }
