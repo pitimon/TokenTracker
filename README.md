@@ -4,7 +4,7 @@
 
 ### Know exactly what you're spending on AI — across every CLI
 
-Auto-collect token usage from **22 AI coding tools**, aggregate it locally, and read real cost trends in one dashboard. No account or API key required to start — just one command.
+Auto-collect token usage from **20+ AI coding tools**, aggregate it locally, and read real cost trends in one dashboard. No account or API key required to start — just one command.
 
 [![npm version](https://img.shields.io/npm/v/@ipv9/tokentracker-cli.svg?color=blue)](https://www.npmjs.com/package/@ipv9/tokentracker-cli)
 [![npm downloads](https://img.shields.io/npm/dm/@ipv9/tokentracker-cli.svg?color=brightgreen)](https://www.npmjs.com/package/@ipv9/tokentracker-cli)
@@ -21,6 +21,19 @@ Auto-collect token usage from **22 AI coding tools**, aggregate it locally, and 
 ⭐ **If TokenTracker saves you time, please [star it on GitHub](https://github.com/pitimon/TokenTracker).**
 
 </div>
+
+---
+
+## 🤔 Why not just read each provider's billing page?
+
+You can — that is the honest alternative, and for a single tool it is enough. TokenTracker earns its place once you use more than one:
+
+- **One number instead of six tabs.** Claude, Codex, Cursor, Gemini and Copilot each bill in their own dashboard, on their own reset schedule, in their own units. Nobody adds them up for you.
+- **Subscriptions hide the number entirely.** A flat monthly plan shows you a quota bar, not what your usage would have cost. TokenTracker prices every token against public model rates, so you can see whether the plan is a bargain or a subsidy you have outgrown.
+- **Per-project and per-model, not just per-account.** Billing pages answer "what do I owe this month". This answers "which repo, which model, and which hour" — the resolution you need to actually change something.
+- **Quota chips before you hit the wall.** Live plan-limit usage sits on each provider's card, so a 5-hour window running out is something you see rather than something you discover.
+
+If you only use one tool and never care about per-project cost, the provider's own page is genuinely fine. This is for the rest.
 
 ---
 
@@ -48,20 +61,33 @@ tokentracker doctor     # health check
 
 ---
 
+## 🖥️ Prefer an app? There's a desktop build
+
+If you'd rather not keep a terminal open, both native apps are on the [Releases page](https://github.com/pitimon/TokenTracker/releases/latest):
+
+| Platform | Download | What it adds |
+|---|---|---|
+| **macOS 12+** | `TokenTrackerBar.dmg` | A menu-bar app — live token count in the menu bar, launch at login, sync and update from a click, plus a desktop widget. |
+| **Windows** | `TokenTracker-Setup.exe` | The same dashboard as a standalone app. |
+
+<img src="https://raw.githubusercontent.com/pitimon/TokenTracker/main/docs/screenshots/menubar.gif" alt="TokenTracker in the macOS menu bar" width="420" />
+
+Both bundle their own Node runtime, so there is nothing else to install. They share the same local data as the CLI — run either, or both. The desktop builds are cut less often than the npm package, so the latest release tag usually trails the npm version badge above.
+
+---
+
 ## ✨ What you get
 
-- 🔒 **Private by design.** Runs entirely on your machine — token counts and timestamps only, never prompts, responses, or file contents. No account, no required API keys, no telemetry, no phone-home. Nothing ever leaves your laptop.
-- 📊 **One calm web dashboard.** Your whole picture in the browser at a local URL (no login): total spend, usage trend, per-provider breakdown, context breakdown, and a GitHub-style activity heatmap — light or dark, auto-refreshing while the tab is open.
+- 🔒 **Your usage data never leaves your machine.** Token counts and timestamps only — never prompts, responses, or file contents. No account, no telemetry, no analytics, no phone-home. TokenTracker does make a few outbound calls *on your behalf* (model prices, your own plan quotas); every one is named in the Privacy section below, and none of them carry your usage.
+- 📊 **One calm web dashboard.** Your whole picture in the browser at a local URL, no login — light or dark, auto-refreshing while the tab is open.
 - 📈 **Quota at a glance, on every card.** Live plan-quota usage (used %, e.g. 5h + weekly) as color-coded chips right on each provider's card — see how close you are to your limits without leaving the overview. Full windows + reset countdowns on the Limits page. Covers Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity.
-- 💰 **Cost you can trust.** 2,200+ models priced from [LiteLLM](https://github.com/BerriAI/litellm) (refreshed daily) with a bundled offline snapshot, so USD totals are right even without a network. Cross-provider records are de-duplicated to match each provider's own billing.
-- 🔌 **22 tools, zero config.** Claude Code, Codex, Cursor, Gemini, Copilot, Antigravity, OpenCode, Kiro, Zed, Goose, and more — auto-detected, hooks auto-install on first run. Zero to dashboard in ~30 seconds.
+- 💰 **Cost you can trust — and a price tag when it can't.** 2,200+ models priced from [LiteLLM](https://github.com/BerriAI/litellm) (refreshed daily) with a bundled offline snapshot, so USD totals are right even without a network. A model too new to have a price is badged **pricing missing** rather than quietly counted as $0, and prices refresh in the background instead of waiting for a restart. Cross-provider records are de-duplicated to match each provider's own billing.
+- 🔌 **20+ tools, zero config.** Claude Code, Codex, Cursor, Gemini, Copilot, Antigravity, OpenCode, Kiro, Zed, Goose, and more — auto-detected, hooks auto-install on first run. Zero to dashboard in ~30 seconds.
 - 🧩 **Skills tab.** Syncs 250+ public skills across your tools.
 
 ---
 
 ## 📊 The dashboard
-
-A calm, single-screen readout — a hero total paired with a usage-trend chart, a provider breakdown stacked above a per-provider context breakdown, and a GitHub-style activity heatmap.
 
 | Dark | Light |
 |---|---|
@@ -83,7 +109,7 @@ Auto-refresh runs only while the tab is visible (`Off` / `30s` / `60s` / `120s`,
 
 Auto-detected on first run — no manual plugin or hook wiring:
 
-> **Claude Code · Codex CLI · Cursor · Gemini CLI · GitHub Copilot · Antigravity · Kiro · OpenCode · OpenClaw · Every Code · Hermes · Kimi Code · CodeBuddy · Grok Build · oh-my-pi · pi · Craft Agents · Kilo CLI · Kilo Code · Roo Code · Zed Agent · Goose**
+> **Claude Code · Codex CLI · Cursor · Gemini CLI · GitHub Copilot · Antigravity · Kiro · OpenCode · OpenClaw · Every Code · Hermes · Kimi Code · CodeBuddy · Grok Build · Droid · oh-my-pi · pi · Craft Agents · Kilo CLI · Kilo Code · Roo Code · Zed Agent · Goose**
 
 Each tool is connected one of three ways, all automatic: a **SessionEnd/notify hook** (Claude Code, Codex, Gemini, Every Code, CodeBuddy, Grok Build), a **bundled plugin** linked via the tool's own CLI (OpenCode, OpenClaw), or a **passive reader** that only reads files the tool already writes — SQLite, JSONL, OTEL exports (Cursor, Kiro, Copilot, Zed, Goose, and the rest).
 
@@ -96,16 +122,16 @@ Rate-limit providers are auto-detected where possible. For Z.AI / GLM Coding Pla
 ## 🏗️ How it works
 
 ```
-AI CLI tools  →  hooks / passive readers  →  local SQLite  →  dashboard
-   (logs)         (token counts only)       (30-min buckets)   (your browser)
+AI CLI tools  →  hooks / passive readers  →  local queue file  →  dashboard
+   (logs)         (token counts only)        (30-min buckets)     (your browser)
 ```
 
 1. Your AI tools write logs during normal use.
-2. Lightweight hooks (or passive file readers) pick up token counts locally — never prompt or response content.
-3. Counts are aggregated into 30-minute UTC buckets in a local SQLite snapshot.
-4. The dashboard reads that snapshot and renders it in your browser's timezone.
+2. Lightweight hooks (or passive file readers) pick up token counts locally — never prompt or response content. Some tools keep their logs in SQLite (Cursor, Kiro, Zed and friends); TokenTracker only ever *reads* those.
+3. Counts are aggregated into 30-minute UTC buckets and appended to one plain-text file: `~/.tokentracker/tracker/queue.jsonl`.
+4. The dashboard reads that file and renders it in your browser's timezone.
 
-Nothing leaves your machine. There is no account, no upload, and no server to sign in to.
+No account, no upload of your usage, and no server to sign in to.
 
 ---
 
@@ -114,9 +140,20 @@ Nothing leaves your machine. There is no account, no upload, and no server to si
 | Protection | What it means |
 |---|---|
 | **No content** | Only token counts and timestamps. Never prompts, responses, or files. |
-| **Local only** | All data stays on your machine. There is no upload path at all. |
-| **Auditable** | Open source — read [`src/lib/rollout.js`](src/lib/rollout.js); it's just numbers and timestamps. |
-| **No telemetry** | No analytics, no crash reporting, no phone-home. |
+| **Your usage stays local** | Every count TokenTracker collects is written to one file on your disk and read back by a server on your own machine. There is no endpoint it uploads usage to. |
+| **Auditable in one command** | You don't have to take our word for it — the store is an append-only text file you can open yourself: `cat ~/.tokentracker/tracker/queue.jsonl`. It's numbers and timestamps. |
+| **No telemetry** | No analytics, no crash reporting, no phone-home, no account. |
+
+**Outbound calls, on your behalf only.** TokenTracker is local-first, not network-free. It talks to the internet in exactly these cases, and none of them carry your usage data:
+
+| When | Where | Why |
+|---|---|---|
+| Pricing refresh (daily) | `raw.githubusercontent.com` | Downloads the public [LiteLLM](https://github.com/BerriAI/litellm) price list. Anonymous — no credentials, nothing sent. Works offline from a bundled snapshot. |
+| Quota chips + Limits page | `api.anthropic.com`, `chatgpt.com`, `cursor.com`, `cloudcode-pa.googleapis.com`, `api.kimi.com`, `api.z.ai`, `api.github.com` | Asks *your* provider about *your* plan limits, using credentials already on your machine. Only for providers you actually use. |
+| Token refresh | `auth.openai.com`, `oauth2.googleapis.com`, `auth.kimi.com` | Renews those same provider credentials when they expire. |
+| Profile avatars | Allowlisted avatar CDNs | Fetched server-side so your browser doesn't contact them directly. |
+| IP check page | `ip.net.coffee` | Only if you open that page. |
+| `npx` startup | npm registry | How `npx` works — it downloads the package. A global install avoids it. |
 
 ---
 
@@ -147,29 +184,30 @@ Browser auto-open is opt-in: `tokentracker serve --open`. Background services an
 
 ---
 
-## 🛠️ Development
+## ⏱️ Always-on, without a terminal (macOS)
+
+If you want the dashboard up all the time but don't want the desktop app, the repo ships a launchd installer. It registers two LaunchAgents — the dashboard on port `7680`, and a periodic background sync — both pinned to a specific published version:
 
 ```bash
 git clone https://github.com/pitimon/TokenTracker.git
 cd TokenTracker
-npm install
-
-# build the dashboard, then run the CLI
-npm run dashboard:build
-node bin/tracker.js
-
-npm test          # root tests
-npm run ci:local  # full local gate (build + tests + validators)
+./scripts/install-local-service.sh          # remove later with ./scripts/uninstall-local-service.sh
 ```
 
-## 📚 Code Documentation
+macOS only; it uses `launchd` directly. On Linux, the same effect is a small systemd user unit running `tokentracker serve --sync --no-open`.
 
-Source-backed engineering documentation starts at
-[`openwiki/README.md`](openwiki/README.md). Regenerate the local fact
-ledger with `npm run docs:openwiki:extract`, validate it with
-`npm run docs:openwiki:check`, and use `npm run docs:openwiki:verify` for the
-independent read-only review. The model-backed update command expects credentials
-from the caller's environment and never reads them from this repository.
+---
+
+## 🛠️ Development
+
+```bash
+git clone https://github.com/pitimon/TokenTracker.git
+cd TokenTracker && npm install
+npm run dashboard:build && node bin/tracker.js
+npm run ci:local     # the full gate: build + tests + validators
+```
+
+Setup details, the test layout, and how to add a new tool integration are in [CONTRIBUTING.md](CONTRIBUTING.md). Source-backed engineering documentation starts at [`openwiki/README.md`](openwiki/README.md).
 
 ---
 
@@ -185,7 +223,7 @@ tokentracker status      # see each integration's state
 tokentracker doctor      # deeper health check
 ```
 
-If a tool you use shows as not configured, run `tokentracker activate-if-needed` to re-run detection. Still missing? [Open an issue](https://github.com/pitimon/TokenTracker/issues/new) with the `doctor` output.
+If a tool you use shows as not configured, run `tokentracker init` — it re-runs detection and installs anything missing. Still missing? [Open an issue](https://github.com/pitimon/TokenTracker/issues/new) with the `doctor` output.
 
 </details>
 
@@ -260,6 +298,14 @@ tokentracker uninstall
 ```
 
 Removes every hook TokenTracker installed across all detected tools, plus local config and data. Safe to re-run.
+
+One thing it does **not** touch: if you set up the always-on macOS service yourself with `scripts/install-local-service.sh`, that LaunchAgent is installed outside the CLI and keeps restarting the dashboard. Remove it first:
+
+```bash
+./scripts/uninstall-local-service.sh
+```
+
+(The CLI never installs a LaunchAgent, so if you have only ever run `npx`/`tokentracker`, there is nothing extra to clean up.)
 
 </details>
 

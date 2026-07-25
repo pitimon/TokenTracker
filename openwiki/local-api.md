@@ -30,6 +30,56 @@ The mutation endpoint checks local authorization. The skills endpoint has its ow
 method-specific behavior. Do not expose either endpoint beyond the local server
 without re-evaluating that security model.
 
+## Pricing diagnostics
+
+`/functions/tokentracker-usage-model-breakdown` is the one endpoint that reports
+how much to trust its own numbers. Each model in `sources[].models[]` carries a
+`pricing_tier`, and the response's `pricing` object carries a snapshot of what
+the pricing layer knows it guessed at or missed. Both come from
+`getPricingDiagnostics()` in `src/lib/pricing/index.js`; read that function
+before relying on the exact field set.
+
+The tiers come from the resolution ladder in `src/lib/pricing/matcher.js` — that
+function is the authority; the grouping below is what each rung means for
+trusting the number. The distinctions matter because three different situations
+all produce a `$0` cost, and because a *guessed* price is never `$0` and so
+cannot be spotted by looking for zeros.
+
+**Resolved exactly** — the id matched, trust the price:
+
+| Tier | Rung |
+| --- | --- |
+| `curated:exact` | Matched a key in `curated-overrides.json`. Curated always wins over LiteLLM. |
+| `curated:exact-dot`, `litellm:exact-dot` | Matched exactly after rejoining dash-separated numerics (`glm-5-1` → `glm-5.1`), for providers that dash-normalize version numbers. |
+| `litellm:exact` | Matched a LiteLLM key. |
+| `curated:alias` | A deliberate curated mapping, e.g. Cursor's `auto` → `composer-1`. Intentional, not inferred. |
+| `litellm:strip` | Matched the base model after removing a reasoning-effort suffix (`-high`, `-xhigh`, `-fast`, …). Reasoning effort changes how many tokens you spend, not the per-token rate, so the base price is the right one. |
+
+**Guessed** — plausible, possibly another model's price. These are what
+`fuzzy_priced_models` reports:
+
+| Tier | Rung |
+| --- | --- |
+| `curated:fuzzy` | A curated substring rule matched. |
+| `litellm:prefix-strip` | A provider-qualified key ended with the bare model name. Where several providers expose the same model, the lexicographically smallest key wins — deterministic, but the chosen provider's rate may not be yours. |
+| `litellm:fuzzy` | Reverse substring, longest key first: the model id *contains* a known key. |
+
+**Not priced** — all cost `$0`, for three different reasons:
+
+| Tier | Rung |
+| --- | --- |
+| `miss` | Nothing matched. Needs an entry in `curated-overrides.json`; this is what `unpriced_models` lists. |
+| `unattributed` | The row had no model id and is stored under the placeholder `unknown`. Also `$0`, but there is nothing to add a price for — deliberately excluded from `unpriced_models`. |
+| `empty` | No model id passed at all. |
+
+`unpriced_models` lists only `miss` models — it is a work list of ids needing a
+curated price, so placeholders are deliberately excluded from it.
+`fuzzy_priced_models` lists the guessed ones. A `miss`, or a snapshot older than
+its TTL, triggers a single-flight background refresh; `refreshing`, `stale`, and
+`last_refresh_error` report that machinery. A refresh that cannot reach upstream
+is discarded rather than installed, so a failed refresh never replaces good
+prices with an older snapshot's.
+
 ## Related modules
 
 - `src/lib/pricing/` resolves model pricing used by local aggregations.

@@ -6,7 +6,7 @@ Guidance for Claude Code working in this repository. Every line here is loaded i
 
 Token Tracker is a local-first AI token usage tracker.
 
-- **CLI** (`src/`, CommonJS, Node ≥20) — entry `bin/tracker.js` → `src/cli.js`. `serve` runs a local HTTP server on `:7680`, `sync` parses logs into `~/.tokentracker/queue.jsonl`.
+- **CLI** (`src/`, CommonJS, Node ≥20) — entry `bin/tracker.js` → `src/cli.js`. `serve` runs a local HTTP server on `:7680`, `sync` parses logs into `~/.tokentracker/tracker/queue.jsonl`.
 - **Dashboard** (`dashboard/`, React 18 + Vite 7 + TS strict + Tailwind) — built to `dashboard/dist/`, served by the CLI on localhost. Local-only: there is no hosted deployment.
 - **macOS app** (`TokenTrackerBar/`, Swift 5.9, XcodeGen) — menu bar + WidgetKit. `EmbeddedServer/` bundles the CLI runtime + built dashboard so the `.app` is self-contained.
 - **Windows app** (`TokenTrackerWin/`, .NET 8 WinForms + WPF + WebView2) — system-tray counterpart of the macOS app. Launches the bundled CLI `serve` on a dynamic loopback port (avoids the DoSvc-held `:7680`), hosts the dashboard in WebView2, registers the `tokentracker://` deep-link for OAuth. Built `EmbeddedServer/` (Node + CLI + dashboard) is bundled by `scripts/bundle-node.ps1` so the `.exe` is self-contained. Dashboard adaptations are gated behind `isNativeWindowsApp()` (`dashboard/src/lib/native-bridge.js`) so macOS/web paths are untouched.
@@ -18,7 +18,7 @@ For the canonical list of supported providers, grep `parse*Incremental` in `src/
 ## Frequently used commands
 
 ```bash
-npm test                                  # node --test test/*.test.js  (97 files)
+npm test                                  # node --test test/*.test.js
 node --test test/<name>.test.js           # single test file
 npm run ci:local                          # tests + validations + builds
 npm run dashboard:dev                     # Vite dev server with local API mock (port 5173)

@@ -5,7 +5,7 @@ Thanks for considering a contribution! TokenTracker is a small project, so the p
 ## Setup
 
 ```bash
-git clone https://github.com/mm7894215/TokenTracker.git
+git clone https://github.com/pitimon/TokenTracker.git
 cd TokenTracker
 npm install
 
@@ -25,7 +25,7 @@ node bin/tracker.js doctor       # Health check
 ## Tests
 
 ```bash
-npm test                                     # Full suite (96 test files, node --test)
+npm test                                     # Full suite (node --test over test/*.test.js)
 node --test test/rollout-parser.test.js      # A single test file
 npm run ci:local                             # Tests + validations + builds (everything CI runs)
 ```
@@ -50,11 +50,11 @@ npm run validate:copy                        # Validate copy registry completene
 
 This is the most common kind of contribution. The pattern:
 
-1. **Add a parser to `src/lib/rollout.js`** — most tools write JSONL or SQLite logs. The parser should normalize tokens into the canonical shape: `{input_tokens, output_tokens, cached_input_tokens, cache_creation_input_tokens, total_tokens, model, source, hour_start}`.
+1. **Add a parser to `src/lib/rollout.js`** — most tools write JSONL or SQLite logs. The parser should normalize tokens into the canonical shape: `{input_tokens, output_tokens, cached_input_tokens, cache_creation_input_tokens, total_tokens, model, source, hour_start}`. This file is large; don't read it top to bottom — find the closest existing tool (`parseDroidIncremental`, `parseZedIncremental`, …) and copy its shape. Each parser exports a `resolve*`/`list*` pair for finding the tool's files and a `parse*Incremental` for reading them.
 2. **Add a hook installer in `src/commands/init.js`** — most tools support a config file or hook script you can patch. Make it idempotent (safe to re-run).
 3. **Add a status check in `src/commands/status.js`** — show whether the hook is installed and whether data has been collected.
-4. **Add a parser test in `test/rollout-parser.test.js`** — use a real (anonymized) sample log fixture.
-5. **Update `README.md` Supported AI Tools table** with the new row.
+4. **Add a parser test in its own `test/<tool>-parser.test.js`** — use a real (anonymized) sample log fixture. Recent tools each got their own file (`droid-parser.test.js`, `zed-parser.test.js`, `goose-parser.test.js`); only the older ones share `rollout-parser.test.js`.
+5. **Add the tool to the Supported tools list in `README.md`** — the blockquote under "🔌 Supported tools". Leave the "20+" count alone; a hard number in prose has no validator and goes stale silently.
 
 Look at how Claude Code, Codex, or Gemini are wired in for reference — they're the simplest examples.
 

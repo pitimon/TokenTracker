@@ -21,7 +21,12 @@ function findLine(content, index) {
   return content.slice(0, index).split("\n").length;
 }
 
-function collectFindings({ facts, files, root = ROOT }) {
+// `files` are scanned for references that must resolve (an unknown command in
+// any doc is a defect). `coverageFiles` are the subset that must *also* be
+// complete — every real command/endpoint/route documented somewhere. Only
+// openwiki/ carries that obligation: the README is a front door, not a manifest,
+// and requiring it to list every endpoint would be the wrong kind of pressure.
+function collectFindings({ facts, files, coverageFiles = files, root = ROOT }) {
   const findings = [];
   const commandNames = new Set(facts.cli.commands.map((command) => command.name));
   const endpointNames = new Set(facts.local_api.endpoints.map((endpoint) => endpoint.path));
@@ -30,14 +35,16 @@ function collectFindings({ facts, files, root = ROOT }) {
   const documentedCommands = new Set();
   const documentedEndpoints = new Set();
   const documentedRoutes = new Set();
+  const coveragePaths = new Set(coverageFiles.map((file) => file.path));
 
   for (const file of files) {
     const relative = path.relative(root, file.path);
+    const countsForCoverage = coveragePaths.has(file.path);
     for (const match of file.content.matchAll(/(?:npx --yes @ipv9\/tokentracker-cli|(?<![@\w/-])tokentracker(?:-cli)?)[ \t]+([a-z-]+)/g)) {
       const command = match[1];
       if (!commandNames.has(command)) {
         findings.push(`${relative}:${findLine(file.content, match.index)} unknown CLI command '${command}'`);
-      } else {
+      } else if (countsForCoverage) {
         documentedCommands.add(command);
       }
     }
@@ -45,7 +52,7 @@ function collectFindings({ facts, files, root = ROOT }) {
       const endpoint = match[0];
       if (!endpointNames.has(endpoint)) {
         findings.push(`${relative}:${findLine(file.content, match.index)} unknown local endpoint '${endpoint}'`);
-      } else {
+      } else if (countsForCoverage) {
         documentedEndpoints.add(endpoint);
       }
     }
@@ -53,7 +60,7 @@ function collectFindings({ facts, files, root = ROOT }) {
       const route = match[0].slice(1, -1);
       if (!routeNames.has(route)) {
         findings.push(`${relative}:${findLine(file.content, match.index)} unknown dashboard route '${route}'`);
-      } else {
+      } else if (countsForCoverage) {
         documentedRoutes.add(route);
       }
     }
@@ -64,7 +71,7 @@ function collectFindings({ facts, files, root = ROOT }) {
     }
   }
 
-  const allDocumentation = files.map((file) => file.content).join("\n");
+  const allDocumentation = coverageFiles.map((file) => file.content).join("\n");
   for (const route of routeNames) {
     if (allDocumentation.includes(`\`${route}\``)) documentedRoutes.add(route);
   }
@@ -92,12 +99,25 @@ function checkFacts({ root = ROOT } = {}) {
   if (JSON.stringify(saved) !== JSON.stringify(current)) {
     findings.push("openwiki-facts/source-facts.json is stale; run npm run docs:openwiki:extract");
   }
-  const files = readMarkdownFiles(path.join(root, "openwiki"));
-  if (files.length === 0) {
+  const coverageFiles = readMarkdownFiles(path.join(root, "openwiki"));
+  if (coverageFiles.length === 0) {
     findings.push("openwiki/ contains no Markdown documentation");
     return findings;
   }
-  return findings.concat(collectFindings({ facts: current, files, root }));
+  // The front-door docs are checked for unresolvable references too. They are
+  // what users actually run commands from: README.md told broken installs to run
+  // `tokentracker activate-if-needed`, a command that has never existed, and
+  // this check would have caught it on the day it was written had it been
+  // looking. Scoped to the two root docs a reader is told to follow.
+  const files = coverageFiles.concat(readRootDocs(root));
+  return findings.concat(collectFindings({ facts: current, files, coverageFiles, root }));
+}
+
+function readRootDocs(root) {
+  return ["README.md", "CONTRIBUTING.md"]
+    .map((name) => path.join(root, name))
+    .filter((filePath) => fs.existsSync(filePath))
+    .map((filePath) => ({ path: filePath, content: fs.readFileSync(filePath, "utf8") }));
 }
 
 function main() {
@@ -109,4 +129,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { checkFacts, collectFindings };
+module.exports = { checkFacts, collectFindings, readRootDocs };
