@@ -5,6 +5,11 @@ const path = require("node:path");
 
 const { readJsonStrict } = require("./fs");
 
+// Stands in for a check whose `id` is missing or not a usable string, so that such
+// a check can still be counted rather than silently dropped. See rule 2 in
+// `listDegradedChecks`.
+const UNNAMED_CHECK_ID = "(unnamed)";
+
 async function buildDoctorReport({
   runtime = {},
   diagnostics = null,
@@ -59,12 +64,19 @@ async function buildDoctorReport({
     // machine-readable half of that distinction: automation can alert on it
     // without any existing caller's exit code changing.
     //
-    // It counts non-advisory warns and fails only. A first version counted every
-    // warn, which made it useless on the one machine it was written for: that box
-    // carries a standing `queue.row_invariant` warn about two malformed rows, so
-    // `degraded` read true on a perfectly healthy day and an alert wired to it
-    // could never clear. An always-on alert and an alert that never fires fail
-    // the same way. See `advisory` in `queueCheck` for what earns the flag.
+    // It counts every warn and fail except a warn whose check marked itself
+    // `advisory`. A first version counted every warn, which made it useless on the
+    // one machine it was written for: that box carries a standing
+    // `queue.row_invariant` warn about two malformed rows, so `degraded` read true
+    // on a perfectly healthy day and an alert wired to it could never clear. An
+    // always-on alert and an alert that never fires fail the same way.
+    // `listDegradedChecks` holds the exact rule including its two fail-closed
+    // clauses; `queueCheck` shows what earns the flag and what does not.
+    //
+    // Not yet true of every standing warn: `browser.opener` still warns
+    // permanently on a headless host, so `degraded` pins there. Left as-is
+    // deliberately rather than guessed at — auditing the remaining checks is
+    // tracked separately.
     degraded: degradedChecks.length > 0,
     // Which checks put it there. Without this, `degraded: true` is unactionable —
     // a consumer has to re-derive the reason by walking `checks` itself, and a
@@ -82,12 +94,27 @@ async function buildDoctorReport({
 // and still appears in `summary.warn`: the report does not become quieter, only
 // the alert signal becomes specific. Anything that does not opt in counts, so a
 // new check is alert-worthy by default and has to argue its way out.
+//
+// Two rules here are deliberately fail-CLOSED, because the failure this field
+// exists to prevent is a real problem reading as silence, and both were live
+// holes in the first version of this function:
+//
+//   1. `advisory` suppresses a `warn` and NOTHING ELSE. The rationale for the
+//      flag is about standing warnings; nothing argues for muting a `fail` on the
+//      same id, so a `fail` degrades the report whatever the flag says.
+//   2. A check with a missing or malformed `id` is still counted, under
+//      UNNAMED_CHECK_ID. The earlier version mapped to `check.id` and then
+//      dropped non-strings, so an id typo silently removed a genuine warn from
+//      `degraded` altogether — it rendered as `[WARN] unknown` to a human and as
+//      nothing at all to automation. A placeholder keeps `degraded` and
+//      `degraded_checks` honest and in agreement.
 function listDegradedChecks(checks = []) {
   return checks
     .filter((check) => check && (check.status === "warn" || check.status === "fail"))
-    .filter((check) => check.advisory !== true)
-    .map((check) => check.id)
-    .filter((id) => typeof id === "string" && id.length > 0)
+    .filter((check) => !(check.status === "warn" && check.advisory === true))
+    .map((check) =>
+      typeof check.id === "string" && check.id.length > 0 ? check.id : UNNAMED_CHECK_ID,
+    )
     .sort();
 }
 
@@ -463,16 +490,26 @@ function summarizeChecks(checks = []) {
 // and how many.
 const QUEUE_VIOLATIONS_SHOWN = 5;
 
-// `advisory: true` keeps this check out of `degraded` and `degraded_checks` while
-// leaving it a full `warn` in `checks` and in `summary.warn`. It earns the flag on
-// the same reasoning the comment above gives for warning rather than failing: the
-// rows are already written and already being rendered, so there is no action the
-// operator can take at the moment they read the report. A standing condition like
-// that cannot double as an alert trigger — wired to one, it fires forever and
-// teaches the reader to ignore it, which is how the green report in #128 got its
-// authority in the first place.
-function queueCheck(status, detail, meta) {
-  return { id: "queue.row_invariant", status, detail, critical: false, advisory: true, meta };
+// `advisory: true` keeps a warn out of `degraded` and `degraded_checks` while
+// leaving it a full `warn` in `checks` and in `summary.warn`. The flag is decided
+// PER CALL SITE, not once for this check id, because the two warns this check can
+// emit are not the same kind of thing:
+//
+//   - the row-invariant / malformed-row warn IS advisory, on the same reasoning
+//     the comment above gives for warning rather than failing: the rows are
+//     already written and already being rendered, so there is nothing the
+//     operator can do at the moment they read the report.
+//   - "queue unreadable" is NOT. A queue that cannot be read is new, actionable
+//     (permissions, disk), and plausibly means ingestion has stopped — exactly
+//     the #128 class this whole field exists to surface.
+//
+// An earlier version of this function stamped `advisory: true` on everything it
+// returned, which silenced the unreadable case: `warn` in `checks`,
+// `degraded: false` on the wire. Default is NOT advisory, so a new call site has
+// to argue its way out rather than inherit silence.
+function queueCheck(status, detail, meta, { advisory = false } = {}) {
+  const check = { id: "queue.row_invariant", status, detail, critical: false, meta };
+  return advisory ? { ...check, advisory: true } : check;
 }
 
 async function readQueueRowsForDoctor(queuePath) {
@@ -513,19 +550,29 @@ async function checkQueueRows(queuePath) {
   const parts = [];
   if (violations.length > 0) parts.push(`${violations.length} row problem(s)`);
   if (malformed > 0) parts.push(`${malformed} unparseable line(s)`);
-  return queueCheck("warn", `${parts.join(", ")} in ${rows.length + malformed} line(s)`, {
-    path: queuePath,
-    rows: rows.length,
-    malformed,
-    violations: violations.length,
-    examples: violations.slice(0, QUEUE_VIOLATIONS_SHOWN),
-  });
+  // Advisory: the offending rows are already on disk and already aggregated into
+  // what the dashboard renders, so this warn tells the operator something true
+  // that they cannot act on in this moment. It is the one standing condition in
+  // this check.
+  return queueCheck(
+    "warn",
+    `${parts.join(", ")} in ${rows.length + malformed} line(s)`,
+    {
+      path: queuePath,
+      rows: rows.length,
+      malformed,
+      violations: violations.length,
+      examples: violations.slice(0, QUEUE_VIOLATIONS_SHOWN),
+    },
+    { advisory: true },
+  );
 }
 
 module.exports = {
   buildDoctorReport,
   buildTranscriptSuppressionCheck,
   listDegradedChecks,
+  UNNAMED_CHECK_ID,
   checkQueueRows,
   buildBrowserOpenerCheck,
   buildNodeVersionCheck,

@@ -4,7 +4,11 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { buildDoctorReport, listDegradedChecks } = require("../src/lib/doctor");
+const {
+  buildDoctorReport,
+  listDegradedChecks,
+  UNNAMED_CHECK_ID,
+} = require("../src/lib/doctor");
 const { cmdDoctor } = require("../src/commands/doctor");
 
 // Inverted: doctor used to report a cloud base_url and device token. Those
@@ -360,6 +364,73 @@ test("a queue row violation warns and is counted, but does not degrade the repor
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
+});
+
+// --- the three fail-open holes an independent review found in the first cut ----
+
+// The advisory rationale is about a STANDING condition. An unreadable queue is
+// new, actionable (permissions, disk), and plausibly means ingestion has stopped —
+// the #128 class. The first version stamped `advisory` per check id rather than per
+// call site, so this warn went out as `degraded: false`.
+test("an unreadable queue is actionable, so it degrades the report", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-queue-unreadable-"));
+  // A directory where a file is expected: reading it throws EISDIR, which is a
+  // non-ENOENT read error and therefore takes the "queue unreadable" path. A
+  // chmod-based fixture was avoided deliberately — CI runs as root, where an
+  // unreadable-by-permission file is still readable.
+  const queuePath = path.join(tmp, "queue.jsonl");
+  try {
+    await fs.mkdir(queuePath);
+
+    const report = await buildDoctorReport({ runtime: {}, paths: { queuePath } });
+    const check = report.checks.find((c) => c.id === "queue.row_invariant");
+
+    assert.equal(check.status, "warn");
+    assert.match(check.detail, /queue unreadable/);
+    assert.notEqual(check.advisory, true, "an actionable warn must not be marked advisory");
+    assert.equal(report.degraded, true);
+    assert.deepEqual(report.degraded_checks, ["queue.row_invariant"]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+// The first version mapped to `check.id` and then dropped non-strings, so an id
+// typo removed a genuine warn from `degraded` entirely — `[WARN] unknown` to a
+// human, nothing at all to automation.
+test("a warn with a missing or malformed id still degrades, under a placeholder", () => {
+  for (const id of [undefined, null, "", 42, {}]) {
+    const result = listDegradedChecks([{ id, status: "warn" }]);
+    assert.deepEqual(
+      result,
+      [UNNAMED_CHECK_ID],
+      `id=${JSON.stringify(id)} must still be counted, not dropped`,
+    );
+  }
+});
+
+// `advisory` is argued for standing WARNINGS. Nothing argues for muting a fail on
+// the same id, and the first version's filter muted both.
+test("advisory never suppresses a fail", () => {
+  assert.deepEqual(
+    listDegradedChecks([{ id: "x.fail", status: "fail", advisory: true }]),
+    ["x.fail"],
+  );
+  assert.deepEqual(listDegradedChecks([{ id: "x.warn", status: "warn", advisory: true }]), []);
+});
+
+// The docs and the comments both say "sorted". Nothing pinned it: the only
+// multi-element expectation happened to be in sorted input order already, so
+// deleting `.sort()` survived the whole suite.
+test("degraded_checks is sorted regardless of check order", () => {
+  assert.deepEqual(
+    listDegradedChecks([
+      { id: "z.last", status: "warn" },
+      { id: "a.first", status: "fail" },
+      { id: "m.middle", status: "warn" },
+    ]),
+    ["a.first", "m.middle", "z.last"],
+  );
 });
 
 test("a standing queue warn does not mask a real one arriving beside it", async () => {
