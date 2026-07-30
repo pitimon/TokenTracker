@@ -60,6 +60,18 @@ that as a clean result. The detector lives in
 `src/lib/transcript-suppression.js` and caches for 30 seconds, so polling this
 endpoint does not spawn a process per request.
 
+**The scan is scoped to the user running TokenTracker.** `PS_ARGS` in
+`src/lib/process-list.js` is `-x`, not `-ax`: `-a` would widen `ps` to every
+account on the machine, and since this endpoint answers unauthenticated loopback
+GETs, on a shared host that would let any local user ask it about someone else's
+Claude sessions. Nothing is lost by narrowing it — a session TokenTracker could
+have recorded is by definition one this user started. `test/process-list.test.js`
+asserts the literal argv, because a real `ps` run on a single-user machine looks
+identical either way.
+
+Note that `src/lib/usage-limits.js` performs a separate, unrelated `ps` scan and
+still passes `-ax`; it is not reached from this endpoint.
+
 The same detector backs the `ingest.transcript_suppressed` check in
 `tokentracker doctor`. That check is **omitted entirely** where the platform
 cannot answer it, rather than printed as `[OK]`.
