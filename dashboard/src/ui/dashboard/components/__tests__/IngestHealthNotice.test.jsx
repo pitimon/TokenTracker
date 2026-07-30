@@ -21,7 +21,7 @@ describe("IngestHealthNotice", () => {
   it("renders the notice when suppressed sessions were found", () => {
     render(<IngestHealthNotice ingestHealth={makeIngestHealth()} />);
 
-    expect(screen.getByRole("note")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.getByText(copy("dashboard.ingestHealth.suppressed.title"))).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -39,7 +39,7 @@ describe("IngestHealthNotice", () => {
     );
 
     expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("renders nothing when checked is false", () => {
@@ -50,7 +50,7 @@ describe("IngestHealthNotice", () => {
     );
 
     expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("renders nothing when ingestHealth is null", () => {
@@ -64,7 +64,7 @@ describe("IngestHealthNotice", () => {
   it("uses the no-model sentence when no model could be identified", () => {
     render(<IngestHealthNotice ingestHealth={makeIngestHealth({ count: 1, models: [] })} />);
 
-    const note = screen.getByRole("note");
+    const note = screen.getByRole("status");
     expect(note.textContent).toContain("1 running Claude CLI session(s) write no session transcript");
     expect(note.textContent).not.toContain("()");
   });
@@ -77,8 +77,21 @@ describe("IngestHealthNotice", () => {
   it("renders the remedy sentence past its comma", () => {
     render(<IngestHealthNotice ingestHealth={makeIngestHealth()} />);
 
-    expect(screen.getByRole("note").textContent).toContain(
+    expect(screen.getByRole("status").textContent).toContain(
       "The tool that launched Claude chose this, not TokenTracker. Run tokentracker doctor for details.",
     );
+  });
+
+  // The notice appears after an async fetch resolves — no user action, no focus
+  // move. A static `role="note"` is announced only if the user navigates onto
+  // it, so a screen-reader user would never learn their tokens are going
+  // uncounted. Guarding the live-region attributes, not just the role, because
+  // `role="status"` alone is what regressed here once.
+  it("announces itself as a polite live region", () => {
+    render(<IngestHealthNotice ingestHealth={makeIngestHealth()} />);
+
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveAttribute("aria-live", "polite");
+    expect(notice).not.toHaveAttribute("role", "note");
   });
 });
