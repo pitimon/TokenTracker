@@ -17,7 +17,20 @@ const PS_BINARY = "/bin/ps";
 // that endpoint answer questions about other people's sessions. Scoping the scan
 // itself is the narrow fix: a session TokenTracker could not have recorded
 // anyway is one this user is not running.
-const PS_ARGS = ["-x", "-o", "pid=,command="];
+//
+// Verified on both supported platforms rather than assumed from documented
+// semantics, because Linux `ps` is procps and parses dash-prefixed options as
+// UNIX-style, where `-x` is not an option at all. It does accept this as the BSD
+// `x`: on Debian 12 / procps-ng 4.0.2, `ps -x -o pid=,command=` exits 0 and
+// lists one user, while `-ax` on the same box lists seven. macOS/BSD `ps` is the
+// native case. Had procps rejected it, every Linux host would have fallen into
+// `process_list_failed` — a permanent non-advisory warn, which would pin
+// `degraded` for a whole platform.
+//
+// Frozen because two modules now share this array. Importing one constant stops
+// the two scans from drifting apart editorially; freezing is what stops a caller
+// pushing `-a` onto it at runtime.
+const PS_ARGS = Object.freeze(["-x", "-o", "pid=,command="]);
 const PS_TIMEOUT_MS = 4000;
 const PS_MAX_BUFFER = 10 * 1024 * 1024;
 
