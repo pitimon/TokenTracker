@@ -39,11 +39,29 @@ new report field or command option.
 
 The JSON report carries two separate verdicts. `ok` answers "should this exit
 non-zero", and only a `critical` check moves it — that is the existing exit-code
-contract and it is unchanged. `degraded` is true whenever any check is `warn` or
-`fail`. It exists because a warning otherwise leaves an entirely green-looking
-report: automation can alert on `degraded` without any caller's exit code
-changing. A check that could not be run on this platform is **omitted** from
-`checks` rather than reported as `ok`.
+contract and it is unchanged. `degraded` exists because a warning otherwise
+leaves an entirely green-looking report, which is how a source that had stopped
+being recorded stayed invisible for two days.
+
+`degraded` is true when at least one check is `warn` or `fail` **and is not
+marked `advisory`**. `degraded_checks` lists the ids that put it there, sorted,
+so `degraded: true` says which condition rather than only that one exists.
+
+A check sets `advisory: true` when its warn describes a standing condition the
+operator cannot act on at the moment they read the report — `queue.row_invariant`
+is the one that does today, because the offending rows are already written and
+already being rendered. An advisory check is still a full `warn` in `checks` and
+still counts in `summary.warn`; the report is not quieter, the alert signal is
+narrower. Not opting in is the default, so a new check is alert-worthy unless it
+argues otherwise.
+
+That distinction is the whole point of the field: an earlier version counted
+every warn, and on a machine carrying one standing row-invariant warning it read
+`true` on a healthy day. An alert that can never clear and an alert that never
+fires are the same defect.
+
+A check that could not be run on this platform is **omitted** from `checks`
+rather than reported as `ok`.
 
 ## Service and release operations
 

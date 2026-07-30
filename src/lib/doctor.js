@@ -47,6 +47,7 @@ async function buildDoctorReport({
   }
 
   const summary = summarizeChecks(checks);
+  const degradedChecks = listDegradedChecks(checks);
 
   return {
     version: 1,
@@ -57,11 +58,37 @@ async function buildDoctorReport({
     // exactly how a source going unrecorded stayed invisible. `degraded` is the
     // machine-readable half of that distinction: automation can alert on it
     // without any existing caller's exit code changing.
-    degraded: summary.warn > 0 || summary.fail > 0,
+    //
+    // It counts non-advisory warns and fails only. A first version counted every
+    // warn, which made it useless on the one machine it was written for: that box
+    // carries a standing `queue.row_invariant` warn about two malformed rows, so
+    // `degraded` read true on a perfectly healthy day and an alert wired to it
+    // could never clear. An always-on alert and an alert that never fires fail
+    // the same way. See `advisory` in `queueCheck` for what earns the flag.
+    degraded: degradedChecks.length > 0,
+    // Which checks put it there. Without this, `degraded: true` is unactionable —
+    // a consumer has to re-derive the reason by walking `checks` itself, and a
+    // human reading the JSON cannot tell a new problem from the standing one.
+    degraded_checks: degradedChecks,
     summary,
     checks,
     diagnostics,
   };
+}
+
+// A check is advisory when its warn describes a standing condition the operator
+// cannot act on in the moment — true of the queue row invariant, whose rows are
+// already written and already being rendered. Such a check still reports `warn`
+// and still appears in `summary.warn`: the report does not become quieter, only
+// the alert signal becomes specific. Anything that does not opt in counts, so a
+// new check is alert-worthy by default and has to argue its way out.
+function listDegradedChecks(checks = []) {
+  return checks
+    .filter((check) => check && (check.status === "warn" || check.status === "fail"))
+    .filter((check) => check.advisory !== true)
+    .map((check) => check.id)
+    .filter((id) => typeof id === "string" && id.length > 0)
+    .sort();
 }
 
 // Reports Claude CLI processes that were started with `--no-session-persistence`.
@@ -436,8 +463,16 @@ function summarizeChecks(checks = []) {
 // and how many.
 const QUEUE_VIOLATIONS_SHOWN = 5;
 
+// `advisory: true` keeps this check out of `degraded` and `degraded_checks` while
+// leaving it a full `warn` in `checks` and in `summary.warn`. It earns the flag on
+// the same reasoning the comment above gives for warning rather than failing: the
+// rows are already written and already being rendered, so there is no action the
+// operator can take at the moment they read the report. A standing condition like
+// that cannot double as an alert trigger — wired to one, it fires forever and
+// teaches the reader to ignore it, which is how the green report in #128 got its
+// authority in the first place.
 function queueCheck(status, detail, meta) {
-  return { id: "queue.row_invariant", status, detail, critical: false, meta };
+  return { id: "queue.row_invariant", status, detail, critical: false, advisory: true, meta };
 }
 
 async function readQueueRowsForDoctor(queuePath) {
@@ -490,6 +525,7 @@ async function checkQueueRows(queuePath) {
 module.exports = {
   buildDoctorReport,
   buildTranscriptSuppressionCheck,
+  listDegradedChecks,
   checkQueueRows,
   buildBrowserOpenerCheck,
   buildNodeVersionCheck,
