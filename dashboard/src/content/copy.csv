@@ -684,3 +684,7 @@ app.meta.description,app,*,*,meta_description,See how many tokens your AI coding
 app.meta.og_site_name,app,*,*,meta_og_site_name,TokenTracker,,active
 app.meta.og_type,app,*,*,meta_og_type,website,,active
 app.meta.twitter_card,app,*,*,meta_twitter_card,summary,,active
+dashboard.ingestHealth.suppressed.title,dashboard,DashboardPage,IngestHealthNotice,title,Some Claude usage is not being recorded,,active
+dashboard.ingestHealth.suppressed.body,dashboard,DashboardPage,IngestHealthNotice,body,"{{count}} running Claude CLI session(s) ({{models}}) write no session transcript. TokenTracker reads Claude usage from transcript files, so tokens from these sessions are not counted.",,active
+dashboard.ingestHealth.suppressed.bodyNoModel,dashboard,DashboardPage,IngestHealthNotice,body_no_model,"{{count}} running Claude CLI session(s) write no session transcript. TokenTracker reads Claude usage from transcript files, so tokens from these sessions are not counted.",,active
+dashboard.ingestHealth.suppressed.remedy,dashboard,DashboardPage,IngestHealthNotice,remedy,"The tool that launched Claude chose this, not TokenTracker. Run tokentracker doctor for details.",,active

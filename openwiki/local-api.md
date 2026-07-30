@@ -25,10 +25,56 @@ them in a client or document.
 | GET | `/functions/tokentracker-usage-monthly` |
 | GET and POST | `/functions/tokentracker-skills` |
 | GET | `/functions/tokentracker-usage-limits` |
+| GET | `/functions/tokentracker-ingest-health` |
 
 The mutation endpoint checks local authorization. The skills endpoint has its own
 method-specific behavior. Do not expose either endpoint beyond the local server
 without re-evaluating that security model.
+
+## Ingest health
+
+`/functions/tokentracker-ingest-health` reports collection problems that make a
+source under-report *without producing an error*. Today it carries one signal:
+Claude CLI sessions started with `--no-session-persistence`. That flag tells the
+CLI to write no session transcript, and transcripts under `~/.claude/projects`
+are the only thing `parseClaudeIncremental` can read, so those tokens are
+unobservable — indistinguishable, from the queue alone, from a quiet day.
+
+The payload is deliberately narrow, because this endpoint answers
+unauthenticated loopback GETs:
+
+```json
+{
+  "transcript_suppressed": {
+    "supported": true, "checked": true,
+    "count": 2, "models": ["glm-5-turbo"], "reason": null
+  },
+  "checked_at": "2026-07-29T23:40:00.000Z"
+}
+```
+
+No pid, argv, or environment value is returned. `checked: false` means the
+question could not be answered — `reason` is `unsupported_platform` (no
+`/bin/ps`, i.e. Windows) or `process_list_failed` — and a client must not render
+that as a clean result. The detector lives in
+`src/lib/transcript-suppression.js` and caches for 30 seconds, so polling this
+endpoint does not spawn a process per request.
+
+**The scan is scoped to the user running TokenTracker.** `PS_ARGS` in
+`src/lib/process-list.js` is `-x`, not `-ax`: `-a` would widen `ps` to every
+account on the machine, and since this endpoint answers unauthenticated loopback
+GETs, on a shared host that would let any local user ask it about someone else's
+Claude sessions. Nothing is lost by narrowing it — a session TokenTracker could
+have recorded is by definition one this user started. `test/process-list.test.js`
+asserts the literal argv, because a real `ps` run on a single-user machine looks
+identical either way.
+
+Note that `src/lib/usage-limits.js` performs a separate, unrelated `ps` scan and
+still passes `-ax`; it is not reached from this endpoint.
+
+The same detector backs the `ingest.transcript_suppressed` check in
+`tokentracker doctor`. That check is **omitted entirely** where the platform
+cannot answer it, rather than printed as `[OK]`.
 
 ## Pricing diagnostics
 

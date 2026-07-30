@@ -193,6 +193,94 @@ test("doctor tolerates null config.json payload", async () => {
   }
 });
 
+test("doctor warns on transcript-suppressed sessions and marks the report degraded", async () => {
+  const report = await buildDoctorReport({
+    runtime: { baseUrl: "https://example" },
+    ingest: {
+      transcriptSuppression: {
+        supported: true,
+        checked: true,
+        count: 2,
+        models: ["glm-5-turbo"],
+        reason: null,
+      },
+    },
+  });
+
+  const check = report.checks.find((c) => c.id === "ingest.transcript_suppressed");
+  assert.equal(check.status, "warn");
+  assert.equal(check.critical, false);
+  assert.equal(check.meta.count, 2);
+  assert.deepEqual(check.meta.models, ["glm-5-turbo"]);
+  assert.match(check.detail, /--no-session-persistence/);
+
+  // The warning must be machine-readable without changing the exit contract:
+  // `ok` still governs the exit code, `degraded` is the new signal.
+  assert.equal(report.degraded, true);
+  assert.equal(report.ok, true);
+});
+
+test("doctor omits the suppression check where the platform cannot answer it", async () => {
+  const report = await buildDoctorReport({
+    runtime: {},
+    ingest: {
+      transcriptSuppression: {
+        supported: false,
+        checked: false,
+        count: 0,
+        models: [],
+        reason: "unsupported_platform",
+      },
+    },
+  });
+
+  // Absent, not [OK] — a check that never ran must not read as one that passed.
+  assert.equal(
+    report.checks.find((c) => c.id === "ingest.transcript_suppressed"),
+    undefined,
+  );
+  assert.equal(report.degraded, false);
+});
+
+test("doctor warns when the process list could not be read at all", async () => {
+  const report = await buildDoctorReport({
+    runtime: {},
+    ingest: {
+      transcriptSuppression: {
+        supported: true,
+        checked: false,
+        count: 0,
+        models: [],
+        reason: "process_list_failed",
+      },
+    },
+  });
+
+  const check = report.checks.find((c) => c.id === "ingest.transcript_suppressed");
+  assert.equal(check.status, "warn");
+  assert.equal(check.meta.checked, false);
+  assert.equal(check.meta.reason, "process_list_failed");
+});
+
+test("doctor reports a clean suppression check and stays undegraded", async () => {
+  const report = await buildDoctorReport({
+    runtime: {},
+    ingest: {
+      transcriptSuppression: {
+        supported: true,
+        checked: true,
+        count: 0,
+        models: [],
+        reason: null,
+      },
+    },
+  });
+
+  const check = report.checks.find((c) => c.id === "ingest.transcript_suppressed");
+  assert.equal(check.status, "ok");
+  assert.equal(report.degraded, false);
+});
+
 function createWriteCapture() {
   let out = "";
   return {

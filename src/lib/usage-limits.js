@@ -21,6 +21,7 @@ const {
   extractCursorSessionToken,
   fetchCursorUsageSummary,
 } = require("./cursor-config");
+const { parseProcessLine } = require("./process-list");
 
 // 2-minute in-memory cache
 let cache = { data: null, fetchedAt: 0 };
@@ -1330,17 +1331,6 @@ function fetchKiroLimits({ commandRunner, now = new Date() } = {}) {
       error: error?.message || "Unknown error",
     };
   }
-}
-
-function parseProcessLine(line) {
-  const match = String(line || "")
-    .trim()
-    .match(/^(\d+)\s+(.*)$/);
-  if (!match) return null;
-  return {
-    pid: Number(match[1]),
-    command: match[2],
-  };
 }
 
 function isAntigravityCommandLine(command) {

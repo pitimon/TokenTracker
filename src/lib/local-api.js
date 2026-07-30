@@ -1733,6 +1733,36 @@ function createLocalApiHandler({ queuePath }) {
       return true;
     }
 
+    // --- ingest-health ---
+    // Reports collection problems that make a source under-report without any
+    // error: right now, Claude CLI sessions started with
+    // `--no-session-persistence`, which write no transcript for the parser to
+    // read. Served from the module's short TTL cache so that a dashboard poll
+    // cannot turn into a process spawn per request.
+    //
+    // The payload is deliberately narrow — a count, model ids, and a coarse
+    // reason. No pid, argv, or environment value is returned, because this
+    // endpoint answers unauthenticated loopback GETs.
+    if (p === "/functions/tokentracker-ingest-health") {
+      const { detectTranscriptSuppression } = require("./transcript-suppression");
+      try {
+        const suppression = detectTranscriptSuppression({ platform: process.platform });
+        json(res, {
+          transcript_suppressed: {
+            supported: suppression.supported,
+            checked: suppression.checked,
+            count: suppression.count,
+            models: suppression.models,
+            reason: suppression.reason,
+          },
+          checked_at: suppression.checked_at,
+        });
+      } catch (e) {
+        json(res, { error: e?.message || "Unknown error" }, 500);
+      }
+      return true;
+    }
+
     return false;
   };
 }
