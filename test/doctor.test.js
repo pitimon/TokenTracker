@@ -4,7 +4,11 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { buildDoctorReport } = require("../src/lib/doctor");
+const {
+  buildDoctorReport,
+  listDegradedChecks,
+  UNNAMED_CHECK_ID,
+} = require("../src/lib/doctor");
 const { cmdDoctor } = require("../src/commands/doctor");
 
 // Inverted: doctor used to report a cloud base_url and device token. Those
@@ -279,6 +283,198 @@ test("doctor reports a clean suppression check and stays undegraded", async () =
   const check = report.checks.find((c) => c.id === "ingest.transcript_suppressed");
   assert.equal(check.status, "ok");
   assert.equal(report.degraded, false);
+  assert.deepEqual(report.degraded_checks, []);
+});
+
+// --- #130: `degraded` counts non-advisory warns only -------------------------
+//
+// The first version counted every warn. On the machine that reported #128 that
+// made it useless: a standing `queue.row_invariant` warning about two malformed
+// rows meant `degraded` read true on a healthy day, so an alert wired to it could
+// never clear. These pin the narrowed contract.
+
+test("listDegradedChecks counts a plain warn or fail and names it", () => {
+  assert.deepEqual(
+    listDegradedChecks([
+      { id: "a.ok", status: "ok" },
+      { id: "b.warn", status: "warn" },
+      { id: "c.fail", status: "fail" },
+    ]),
+    ["b.warn", "c.fail"],
+  );
+});
+
+test("listDegradedChecks skips a check that opted out via advisory", () => {
+  assert.deepEqual(
+    listDegradedChecks([
+      { id: "standing.warn", status: "warn", advisory: true },
+      { id: "real.warn", status: "warn" },
+    ]),
+    ["real.warn"],
+  );
+});
+
+// Opting out must be explicit. A future check that forgets the flag has to show
+// up in the alert signal, not vanish from it — the failure this whole field
+// exists to prevent is a problem that reads as silence.
+test("listDegradedChecks treats anything but advisory:true as alert-worthy", () => {
+  for (const advisory of [undefined, null, false, 0, "true", "yes", 1]) {
+    assert.deepEqual(
+      listDegradedChecks([{ id: "x.warn", status: "warn", advisory }]),
+      ["x.warn"],
+      `advisory=${JSON.stringify(advisory)} must not suppress the check`,
+    );
+  }
+});
+
+test("a queue row violation warns and is counted, but does not degrade the report", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-degraded-advisory-"));
+  const queuePath = path.join(tmp, "queue.jsonl");
+  try {
+    // total_tokens disagrees with the column sum (1 + 1 = 2, not 999), which is
+    // exactly the invariant `queue.row_invariant` exists to catch.
+    await fs.writeFile(
+      queuePath,
+      `${JSON.stringify({
+        source: "claude",
+        model: "m",
+        hour_start: "2026-07-30T00:00:00.000Z",
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cached_input_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 999,
+      })}\n`,
+      "utf8",
+    );
+
+    const report = await buildDoctorReport({ runtime: {}, paths: { queuePath } });
+    const check = report.checks.find((c) => c.id === "queue.row_invariant");
+
+    // The report does not get quieter: still a warn, still counted.
+    assert.equal(check.status, "warn");
+    assert.equal(check.advisory, true);
+    assert.ok(report.summary.warn >= 1, "an advisory warn still counts in summary.warn");
+
+    // Only the alert signal narrows.
+    assert.equal(report.degraded, false);
+    assert.deepEqual(report.degraded_checks, []);
+    assert.equal(report.ok, true);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+// --- the three fail-open holes an independent review found in the first cut ----
+
+// The advisory rationale is about a STANDING condition. An unreadable queue is
+// new, actionable (permissions, disk), and plausibly means ingestion has stopped —
+// the #128 class. The first version stamped `advisory` per check id rather than per
+// call site, so this warn went out as `degraded: false`.
+test("an unreadable queue is actionable, so it degrades the report", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-queue-unreadable-"));
+  // A directory where a file is expected: reading it throws EISDIR, which is a
+  // non-ENOENT read error and therefore takes the "queue unreadable" path. A
+  // chmod-based fixture was avoided deliberately — CI runs as root, where an
+  // unreadable-by-permission file is still readable.
+  const queuePath = path.join(tmp, "queue.jsonl");
+  try {
+    await fs.mkdir(queuePath);
+
+    const report = await buildDoctorReport({ runtime: {}, paths: { queuePath } });
+    const check = report.checks.find((c) => c.id === "queue.row_invariant");
+
+    assert.equal(check.status, "warn");
+    assert.match(check.detail, /queue unreadable/);
+    assert.notEqual(check.advisory, true, "an actionable warn must not be marked advisory");
+    assert.equal(report.degraded, true);
+    assert.deepEqual(report.degraded_checks, ["queue.row_invariant"]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+// The first version mapped to `check.id` and then dropped non-strings, so an id
+// typo removed a genuine warn from `degraded` entirely — `[WARN] unknown` to a
+// human, nothing at all to automation.
+test("a warn with a missing or malformed id still degrades, under a placeholder", () => {
+  for (const id of [undefined, null, "", 42, {}]) {
+    const result = listDegradedChecks([{ id, status: "warn" }]);
+    assert.deepEqual(
+      result,
+      [UNNAMED_CHECK_ID],
+      `id=${JSON.stringify(id)} must still be counted, not dropped`,
+    );
+  }
+});
+
+// `advisory` is argued for standing WARNINGS. Nothing argues for muting a fail on
+// the same id, and the first version's filter muted both.
+test("advisory never suppresses a fail", () => {
+  assert.deepEqual(
+    listDegradedChecks([{ id: "x.fail", status: "fail", advisory: true }]),
+    ["x.fail"],
+  );
+  assert.deepEqual(listDegradedChecks([{ id: "x.warn", status: "warn", advisory: true }]), []);
+});
+
+// The docs and the comments both say "sorted". Nothing pinned it: the only
+// multi-element expectation happened to be in sorted input order already, so
+// deleting `.sort()` survived the whole suite.
+test("degraded_checks is sorted regardless of check order", () => {
+  assert.deepEqual(
+    listDegradedChecks([
+      { id: "z.last", status: "warn" },
+      { id: "a.first", status: "fail" },
+      { id: "m.middle", status: "warn" },
+    ]),
+    ["a.first", "m.middle", "z.last"],
+  );
+});
+
+test("a standing queue warn does not mask a real one arriving beside it", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-degraded-both-"));
+  const queuePath = path.join(tmp, "queue.jsonl");
+  try {
+    await fs.writeFile(
+      queuePath,
+      `${JSON.stringify({
+        source: "claude",
+        model: "m",
+        hour_start: "2026-07-30T00:00:00.000Z",
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cached_input_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 999,
+      })}\n`,
+      "utf8",
+    );
+
+    const report = await buildDoctorReport({
+      runtime: {},
+      paths: { queuePath },
+      ingest: {
+        transcriptSuppression: {
+          supported: true,
+          checked: true,
+          count: 1,
+          models: ["glm-5-turbo"],
+          reason: null,
+        },
+      },
+    });
+
+    // Two warns present; only the actionable one reaches the alert signal, and
+    // `degraded_checks` says which — the whole point of #130.
+    assert.equal(report.summary.warn, 2);
+    assert.equal(report.degraded, true);
+    assert.deepEqual(report.degraded_checks, ["ingest.transcript_suppressed"]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
 });
 
 function createWriteCapture() {
