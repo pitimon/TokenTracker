@@ -26,6 +26,7 @@ const PATHS = {
   userStatus: "tokentracker-user-status",
   localSync: "tokentracker-local-sync",
   usageLimits: "tokentracker-usage-limits",
+  ingestHealth: "tokentracker-ingest-health",
 };
 
 async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRecord) {
@@ -234,6 +235,10 @@ export async function getUsageLimits(opts: { refresh?: boolean } = {}) {
   }
   const params = opts?.refresh ? { refresh: "1" } : undefined;
   return fetchLocalJson(PATHS.usageLimits, params);
+}
+
+export async function getIngestHealth(_opts: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.ingestHealth);
 }
 
 export async function getUsageHeatmap({

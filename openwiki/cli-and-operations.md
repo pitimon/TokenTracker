@@ -37,6 +37,14 @@ and integration state. `diagnostics` writes a diagnostics report when given its
 output option. Read the relevant command implementation before documenting a
 new report field or command option.
 
+The JSON report carries two separate verdicts. `ok` answers "should this exit
+non-zero", and only a `critical` check moves it — that is the existing exit-code
+contract and it is unchanged. `degraded` is true whenever any check is `warn` or
+`fail`. It exists because a warning otherwise leaves an entirely green-looking
+report: automation can alert on `degraded` without any caller's exit code
+changing. A check that could not be run on this platform is **omitted** from
+`checks` rather than reported as `ok`.
+
 ## Service and release operations
 
 Local service installers live under `scripts/`. The authoritative release and

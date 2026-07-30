@@ -12,6 +12,7 @@ async function buildDoctorReport({
   now = () => new Date(),
   paths = {},
   system = null,
+  ingest = null,
 } = {}) {
   const checks = [];
 
@@ -36,6 +37,11 @@ async function buildDoctorReport({
   // No cloud reachability check: TokenTracker is local-only, so there is no
   // remote endpoint whose availability could affect anything here.
 
+  if (ingest) {
+    const suppression = buildTranscriptSuppressionCheck(ingest.transcriptSuppression);
+    if (suppression) checks.push(suppression);
+  }
+
   if (diagnostics) {
     checks.push(...buildDiagnosticsChecks(diagnostics));
   }
@@ -46,9 +52,61 @@ async function buildDoctorReport({
     version: 1,
     generated_at: now().toISOString(),
     ok: summary.critical === 0,
+    // `ok` answers "should this exit non-zero", and only `critical` moves it.
+    // A warning therefore leaves an entirely green-looking report, which is
+    // exactly how a source going unrecorded stayed invisible. `degraded` is the
+    // machine-readable half of that distinction: automation can alert on it
+    // without any existing caller's exit code changing.
+    degraded: summary.warn > 0 || summary.fail > 0,
     summary,
     checks,
     diagnostics,
+  };
+}
+
+// Reports Claude CLI processes that were started with `--no-session-persistence`.
+// Those sessions write no transcript, and transcripts are the only thing the
+// Claude parser can read, so their tokens are unobservable to TokenTracker.
+//
+// Returns null when the platform cannot answer the question at all. A check that
+// was never run must not be printed as `[OK]` — absence is honest, a green line
+// would not be.
+function buildTranscriptSuppressionCheck(detection) {
+  if (!detection || detection.supported === false) return null;
+
+  const id = "ingest.transcript_suppressed";
+
+  if (!detection.checked) {
+    return {
+      id,
+      status: "warn",
+      detail: "Could not read the process list, so transcript-suppressed sessions were not checked",
+      critical: false,
+      meta: { checked: false, reason: detection.reason || "process_list_failed" },
+    };
+  }
+
+  const count = Number(detection.count) || 0;
+  if (count === 0) {
+    return {
+      id,
+      status: "ok",
+      detail: "No Claude CLI process is running with --no-session-persistence",
+      critical: false,
+      meta: { checked: true, count: 0, models: [] },
+    };
+  }
+
+  const models = Array.isArray(detection.models) ? detection.models : [];
+  const modelSuffix = models.length ? ` (${models.join(", ")})` : "";
+  return {
+    id,
+    status: "warn",
+    detail:
+      `${count} Claude CLI process${count === 1 ? "" : "es"} running with --no-session-persistence${modelSuffix}`
+      + " - these sessions write no transcript, so their token usage cannot be recorded",
+    critical: false,
+    meta: { checked: true, count, models },
   };
 }
 
@@ -431,6 +489,7 @@ async function checkQueueRows(queuePath) {
 
 module.exports = {
   buildDoctorReport,
+  buildTranscriptSuppressionCheck,
   checkQueueRows,
   buildBrowserOpenerCheck,
   buildNodeVersionCheck,

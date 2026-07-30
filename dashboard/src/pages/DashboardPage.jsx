@@ -37,10 +37,12 @@ import {
   getLocalDayKey,
 } from "../lib/timezone";
 import {
+  getIngestHealth,
   getUserStatus,
   triggerLocalSync,
 } from "../lib/api";
 import { ActivityHeatmap } from "../ui/dashboard/components/ActivityHeatmap.jsx";
+import { IngestHealthNotice } from "../ui/dashboard/components/IngestHealthNotice.jsx";
 import { DashboardView } from "../ui/dashboard/views/DashboardView.jsx";
 
 const PERIODS = ["day", "24h", "week", "month", "total", "custom"];
@@ -135,6 +137,7 @@ export function DashboardPage({
   const { currency, rate } = useCurrency();
   const [costModalOpen, setCostModalOpen] = useState(false);
   const [userStatus, setUserStatus] = useState(null);
+  const [ingestHealth, setIngestHealth] = useState(null);
   const [compactSummary, setCompactSummary] = useState(() => {
     if (typeof window === "undefined" || !window.matchMedia) return false;
     return window.matchMedia("(max-width: 640px)").matches;
@@ -184,6 +187,31 @@ export function DashboardPage({
       active = false;
     };
   }, [baseUrl, isLocalMode, mockEnabled]);
+
+  // Local-CLI-only check: no cloud equivalent, no mock data, so it's skipped
+  // outside local mode. Failure must never surface as an error box — the
+  // notice itself renders nothing unless the check actually found suppressed
+  // sessions, so a failed fetch and "nothing to report" look identical here.
+  useEffect(() => {
+    if (!isLocalMode) {
+      setIngestHealth(null);
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const data = await getIngestHealth();
+        if (!active) return;
+        setIngestHealth(data && typeof data === "object" ? data : null);
+      } catch (_err) {
+        if (!active) return;
+        setIngestHealth(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isLocalMode]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -1090,94 +1118,97 @@ export function DashboardPage({
   }, [onMainContentVisible, usageLoadingState]);
 
   return (
-    <DashboardView
-      copy={copy}
-      screenshotMode={screenshotMode}
-      screenshotTitleLine1={screenshotTitleLine1}
-      screenshotTitleLine2={screenshotTitleLine2}
-      identityDisplayName={identityDisplayName}
-      identityStartDate={identityStartDate}
-      activeDays={activeDays}
-      identitySubscriptions={identitySubscriptions}
-      identityScrambleDurationMs={identityScrambleDurationMs}
-      projectUsageEntries={projectUsageEntries}
-      planPrices={planPrices}
-      onPlanPriceChange={setPlanPrice}
-      modelBreakdown={modelBreakdown}
-      projectUnattributedSources={projectUnattributedSources}
-      projectUsageLimit={projectUsageLimit}
-      setProjectUsageLimit={setProjectUsageLimit}
-      pulse={pulse}
-      pulseComparedAtLabel={pulseComparedAtLabel}
-      isLocalMode={isLocalMode}
-      trendRowsForDisplay={trendRowsForDisplay}
-      trendFromForDisplay={trendFromForDisplay}
-      trendToForDisplay={trendToForDisplay}
-      trendZoomConfig={trendZoomConfig}
-      usageFrom={from}
-      usageTo={to}
-      period={period}
-      trendTimeZoneLabel={trendTimeZoneLabel}
-      activityHeatmapBlock={activityHeatmapBlock}
-      periodsForDisplay={periodsForDisplay}
-      setSelectedPeriod={handlePeriodChange}
-      autoRefreshOptions={AUTO_REFRESH_OPTIONS}
-      autoRefreshIntervalMs={autoRefreshIntervalMs}
-      onAutoRefreshIntervalChange={handleAutoRefreshIntervalChange}
-      customFrom={customFrom}
-      customTo={customTo}
-      onCustomRangeApply={handleCustomRangeApply}
-      customRangeOpen={customRangeOpen}
-      onCustomRangeOpenChange={handleCustomRangeOpenChange}
-      metricsRows={metricsRows}
-      summaryLabel={summaryLabel}
-      summaryValue={summaryValue}
-      summaryUpdatedAtLabel={summaryUpdatedAtLabel}
-      summaryCostValue={summaryCostValue}
-      usageInsights={usageInsights}
-      costInfoEnabled={costInfoEnabled}
-      openCostModal={openCostModal}
-      allowBreakdownToggle={allowBreakdownToggle}
-      coreIndexCollapsed={coreIndexCollapsed}
-      setCoreIndexCollapsed={setCoreIndexCollapsed}
-      coreIndexCollapseLabel={coreIndexCollapseLabel}
-      coreIndexExpandLabel={coreIndexExpandLabel}
-      coreIndexCollapseAria={coreIndexCollapseAria}
-      coreIndexExpandAria={coreIndexExpandAria}
-      refreshAll={handleManualRefresh}
-      usageLoadingState={usageLoadingState}
-      usageError={usageError}
-      dataHealthMessage={dataHealthMessage}
-      rangeLabel={rangeLabel}
-      timeZoneRangeLabel={timeZoneRangeLabel}
-      usageSourceLabel={usageSourceLabel}
-      fleetData={fleetData}
-      usageLimits={usageLimits}
-      limitDisplayMode={limitDisplayMode}
-      hasDetailsActual={hasDetailsActual}
-      dailyEmptyPrefix={dailyEmptyPrefix}
-      installSyncCmd={installSyncCmd}
-      dailyEmptySuffix={dailyEmptySuffix}
-      detailsColumns={detailsColumns}
-      ariaSortFor={ariaSortFor}
-      toggleSort={toggleSort}
-      sortIconFor={sortIconFor}
-      pagedDetails={pagedDetails}
-      dailyBreakdownRows={sortedDailyBreakdownRows}
-      dailyBreakdownColumns={dailyBreakdownColumns}
-      dailyBreakdownAriaSortFor={dailyAriaSortFor}
-      dailyBreakdownSortIconFor={dailySortIconFor}
-      dailyBreakdownDateKey={dailyBreakdownDateKey}
-      detailsDateKey={detailsDateKey}
-      renderDetailDate={renderDetailDate}
-      renderDailyBreakdownDate={renderDailyBreakdownDate}
-      renderDetailCell={renderDetailCell}
-      DETAILS_PAGED_PERIODS={DETAILS_PAGED_PERIODS}
-      detailsPageCount={detailsPageCount}
-      detailsPage={detailsPage}
-      setDetailsPage={setDetailsPage}
-      costModalOpen={costModalOpen}
-      closeCostModal={closeCostModal}
-    />
+    <>
+      <IngestHealthNotice ingestHealth={ingestHealth} />
+      <DashboardView
+        copy={copy}
+        screenshotMode={screenshotMode}
+        screenshotTitleLine1={screenshotTitleLine1}
+        screenshotTitleLine2={screenshotTitleLine2}
+        identityDisplayName={identityDisplayName}
+        identityStartDate={identityStartDate}
+        activeDays={activeDays}
+        identitySubscriptions={identitySubscriptions}
+        identityScrambleDurationMs={identityScrambleDurationMs}
+        projectUsageEntries={projectUsageEntries}
+        planPrices={planPrices}
+        onPlanPriceChange={setPlanPrice}
+        modelBreakdown={modelBreakdown}
+        projectUnattributedSources={projectUnattributedSources}
+        projectUsageLimit={projectUsageLimit}
+        setProjectUsageLimit={setProjectUsageLimit}
+        pulse={pulse}
+        pulseComparedAtLabel={pulseComparedAtLabel}
+        isLocalMode={isLocalMode}
+        trendRowsForDisplay={trendRowsForDisplay}
+        trendFromForDisplay={trendFromForDisplay}
+        trendToForDisplay={trendToForDisplay}
+        trendZoomConfig={trendZoomConfig}
+        usageFrom={from}
+        usageTo={to}
+        period={period}
+        trendTimeZoneLabel={trendTimeZoneLabel}
+        activityHeatmapBlock={activityHeatmapBlock}
+        periodsForDisplay={periodsForDisplay}
+        setSelectedPeriod={handlePeriodChange}
+        autoRefreshOptions={AUTO_REFRESH_OPTIONS}
+        autoRefreshIntervalMs={autoRefreshIntervalMs}
+        onAutoRefreshIntervalChange={handleAutoRefreshIntervalChange}
+        customFrom={customFrom}
+        customTo={customTo}
+        onCustomRangeApply={handleCustomRangeApply}
+        customRangeOpen={customRangeOpen}
+        onCustomRangeOpenChange={handleCustomRangeOpenChange}
+        metricsRows={metricsRows}
+        summaryLabel={summaryLabel}
+        summaryValue={summaryValue}
+        summaryUpdatedAtLabel={summaryUpdatedAtLabel}
+        summaryCostValue={summaryCostValue}
+        usageInsights={usageInsights}
+        costInfoEnabled={costInfoEnabled}
+        openCostModal={openCostModal}
+        allowBreakdownToggle={allowBreakdownToggle}
+        coreIndexCollapsed={coreIndexCollapsed}
+        setCoreIndexCollapsed={setCoreIndexCollapsed}
+        coreIndexCollapseLabel={coreIndexCollapseLabel}
+        coreIndexExpandLabel={coreIndexExpandLabel}
+        coreIndexCollapseAria={coreIndexCollapseAria}
+        coreIndexExpandAria={coreIndexExpandAria}
+        refreshAll={handleManualRefresh}
+        usageLoadingState={usageLoadingState}
+        usageError={usageError}
+        dataHealthMessage={dataHealthMessage}
+        rangeLabel={rangeLabel}
+        timeZoneRangeLabel={timeZoneRangeLabel}
+        usageSourceLabel={usageSourceLabel}
+        fleetData={fleetData}
+        usageLimits={usageLimits}
+        limitDisplayMode={limitDisplayMode}
+        hasDetailsActual={hasDetailsActual}
+        dailyEmptyPrefix={dailyEmptyPrefix}
+        installSyncCmd={installSyncCmd}
+        dailyEmptySuffix={dailyEmptySuffix}
+        detailsColumns={detailsColumns}
+        ariaSortFor={ariaSortFor}
+        toggleSort={toggleSort}
+        sortIconFor={sortIconFor}
+        pagedDetails={pagedDetails}
+        dailyBreakdownRows={sortedDailyBreakdownRows}
+        dailyBreakdownColumns={dailyBreakdownColumns}
+        dailyBreakdownAriaSortFor={dailyAriaSortFor}
+        dailyBreakdownSortIconFor={dailySortIconFor}
+        dailyBreakdownDateKey={dailyBreakdownDateKey}
+        detailsDateKey={detailsDateKey}
+        renderDetailDate={renderDetailDate}
+        renderDailyBreakdownDate={renderDailyBreakdownDate}
+        renderDetailCell={renderDetailCell}
+        DETAILS_PAGED_PERIODS={DETAILS_PAGED_PERIODS}
+        detailsPageCount={detailsPageCount}
+        detailsPage={detailsPage}
+        setDetailsPage={setDetailsPage}
+        costModalOpen={costModalOpen}
+        closeCostModal={closeCostModal}
+      />
+    </>
   );
 }

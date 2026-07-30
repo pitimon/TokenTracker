@@ -6,6 +6,7 @@ const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { collectTrackerDiagnostics } = require("../lib/diagnostics");
 const { resolveRuntimeConfig } = require("../lib/runtime-config");
 const { buildDoctorReport } = require("../lib/doctor");
+const { detectTranscriptSuppression } = require("../lib/transcript-suppression");
 
 async function cmdDoctor(argv = []) {
   const opts = parseArgs(argv);
@@ -38,6 +39,11 @@ async function cmdDoctor(argv = []) {
       configPath,
       cliPath,
       queuePath,
+    },
+    ingest: {
+      // A one-shot read of the process list. `doctor` is not long-lived, so the
+      // module's TTL cache is bypassed here to keep the answer current.
+      transcriptSuppression: detectTranscriptSuppression({ useCache: false }),
     },
   });
 

@@ -143,6 +143,14 @@
         ],
         "evidence": "src/lib/local-api.js:1717",
         "mutation": false
+      },
+      {
+        "path": "/functions/tokentracker-ingest-health",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1746",
+        "mutation": false
       }
     ]
   },
