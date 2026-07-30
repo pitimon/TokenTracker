@@ -1271,6 +1271,33 @@ lang      123 me    23u  IPv4 0x124                0t0  TCP 127.0.0.1:51235 (LIS
     assert.equal(result.extensionPort, 42427);
   });
 
+  // The scan must stay scoped to the user running TokenTracker. Under `-ax` this
+  // walked every account on the box and attached to whichever Antigravity
+  // matched first — authenticating with that person's CSRF token and then
+  // serving their `account_email`, plan and quota at
+  // `/functions/tokentracker-usage-limits` as if they were the local user's,
+  // and caching it to disk.
+  //
+  // Asserted on the literal argv rather than on observed output, because a real
+  // `ps` run on a single-user machine returns the same lines either way and
+  // cannot catch the regression.
+  it("scans only the current user's processes", () => {
+    let invocation = null;
+    const commandRunner = (command, args) => {
+      invocation = { command, args };
+      return { stdout: "", status: 0 };
+    };
+
+    detectAntigravityProcess({ commandRunner });
+
+    assert.equal(invocation.command, "/bin/ps");
+    assert.deepEqual(invocation.args, ["-x", "-o", "pid=,command="]);
+    assert.ok(
+      !invocation.args.some((arg) => /^-[a-z]*a/.test(arg)),
+      "ps must not be invoked with the all-users flag",
+    );
+  });
+
   it("persists live Antigravity quota for use after the process exits", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-antigravity-cache-write-"));
     try {

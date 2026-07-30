@@ -21,7 +21,7 @@ const {
   extractCursorSessionToken,
   fetchCursorUsageSummary,
 } = require("./cursor-config");
-const { parseProcessLine } = require("./process-list");
+const { PS_ARGS, PS_BINARY, parseProcessLine } = require("./process-list");
 
 // 2-minute in-memory cache
 let cache = { data: null, fetchedAt: 0 };
@@ -1350,8 +1350,26 @@ function extractCommandFlag(command, flag) {
   return match?.[1] || null;
 }
 
+// Scans for the local Antigravity language server and reads its `--csrf_token`
+// out of the command line, so that the quota request below can authenticate to
+// it.
+//
+// The scan is scoped to the current user, and must stay that way. Under the
+// previous `-ax` this walked every account on the box and attached to whichever
+// Antigravity matched first. The token itself never reached an HTTP response —
+// `processInfo` is read field by field and never spread into a return value —
+// but what the token *fetches* does: `normalizeAntigravityResponse` returns
+// `account_email` and `account_plan`, `finalize` spreads them into the result,
+// and `getUsageLimits` serves that at `/functions/tokentracker-usage-limits`.
+// On a shared host this meant showing another person's email, plan and quota as
+// the local user's, and `writeAntigravityLimitsCache` persisted it to disk,
+// where the `!configured` branch would keep serving it after their process
+// exited.
+//
+// Sharing PS_ARGS with process-list.js is deliberate: two scans that must both
+// stay own-user should not be able to drift apart.
 function detectAntigravityProcess({ commandRunner } = {}) {
-  const result = runCommand(commandRunner, "/bin/ps", ["-ax", "-o", "pid=,command="], {
+  const result = runCommand(commandRunner, PS_BINARY, PS_ARGS, {
     timeout: 4000,
   });
   const lines = String(result?.stdout || "").split("\n");
