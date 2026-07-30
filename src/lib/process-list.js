@@ -11,7 +11,13 @@ const cp = require("node:child_process");
 // file paths from user code") is what it exists to satisfy.
 
 const PS_BINARY = "/bin/ps";
-const PS_ARGS = ["-ax", "-o", "pid=,command="];
+// `-x` (own user, including processes with no controlling terminal) rather than
+// `-ax` (every user on the box). The suppression check reports its findings over
+// an unauthenticated loopback endpoint, and on a multi-user host `-a` would make
+// that endpoint answer questions about other people's sessions. Scoping the scan
+// itself is the narrow fix: a session TokenTracker could not have recorded
+// anyway is one this user is not running.
+const PS_ARGS = ["-x", "-o", "pid=,command="];
 const PS_TIMEOUT_MS = 4000;
 const PS_MAX_BUFFER = 10 * 1024 * 1024;
 
