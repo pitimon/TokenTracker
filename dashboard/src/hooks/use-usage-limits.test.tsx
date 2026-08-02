@@ -35,6 +35,16 @@ const freshLimits = {
   },
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("useUsageLimits", () => {
   beforeEach(() => {
     vi.mocked(getUsageLimits).mockReset();
@@ -123,5 +133,157 @@ describe("useUsageLimits", () => {
     expect(publishUsageLimitsPreloadState).toHaveBeenCalledWith(freshLimits, {
       source: "manual-refresh",
     });
+  });
+
+  it("revalidates through the cache-aware endpoint and retains the last good data on failure", async () => {
+    vi.mocked(getUsageLimits)
+      .mockResolvedValueOnce(freshLimits)
+      .mockRejectedValueOnce(new Error("network down"));
+
+    const { result } = renderHook(() =>
+      useUsageLimits({
+        initialRefresh: false,
+        initialState: { data: existingLimits },
+        publishToPreloadCache: true,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.revalidate();
+    });
+
+    expect(getUsageLimits).toHaveBeenCalledTimes(1);
+    expect(getUsageLimits).not.toHaveBeenCalledWith({ refresh: true });
+    expect(result.current.data).toEqual(freshLimits);
+    expect(result.current.error).toBeNull();
+    expect(publishUsageLimitsPreloadState).toHaveBeenCalledWith(freshLimits, {
+      source: "page-load",
+    });
+
+    await act(async () => {
+      await result.current.revalidate();
+    });
+
+    expect(getUsageLimits).toHaveBeenCalledTimes(2);
+    expect(getUsageLimits).not.toHaveBeenNthCalledWith(2, { refresh: true });
+    expect(result.current.data).toEqual(freshLimits);
+    expect(result.current.error).toBe("network down");
+    expect(result.current.isLoading).toBe(false);
+    expect(publishUsageLimitsPreloadState).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets manual refresh supersede an in-flight revalidation", async () => {
+    const revalidation = deferred<typeof existingLimits>();
+    const manualRefresh = deferred<typeof freshLimits>();
+    vi.mocked(getUsageLimits)
+      .mockReturnValueOnce(revalidation.promise)
+      .mockReturnValueOnce(manualRefresh.promise);
+
+    const { result } = renderHook(() =>
+      useUsageLimits({
+        initialRefresh: false,
+        initialState: { data: existingLimits },
+        publishToPreloadCache: true,
+      }),
+    );
+
+    let revalidatePromise: Promise<void> | undefined;
+    let refreshPromise: Promise<void> | undefined;
+    act(() => {
+      revalidatePromise = result.current.revalidate();
+      refreshPromise = result.current.refresh();
+    });
+
+    expect(getUsageLimits).toHaveBeenCalledTimes(2);
+    expect(getUsageLimits).not.toHaveBeenNthCalledWith(1, { refresh: true });
+    expect(getUsageLimits).toHaveBeenNthCalledWith(2, { refresh: true });
+
+    await act(async () => {
+      manualRefresh.resolve(freshLimits);
+      await refreshPromise;
+    });
+
+    await act(async () => {
+      revalidation.reject(new Error("stale background failure"));
+      await revalidatePromise;
+    });
+
+    expect(result.current.data).toEqual(freshLimits);
+    expect(result.current.error).toBeNull();
+    expect(publishUsageLimitsPreloadState).toHaveBeenCalledTimes(1);
+    expect(publishUsageLimitsPreloadState).toHaveBeenCalledWith(freshLimits, {
+      source: "manual-refresh",
+    });
+  });
+
+  it("does not start revalidation while a manual refresh is in flight", async () => {
+    const manualRefresh = deferred<typeof freshLimits>();
+    vi.mocked(getUsageLimits).mockReturnValueOnce(manualRefresh.promise);
+
+    const { result } = renderHook(() =>
+      useUsageLimits({
+        initialRefresh: false,
+        initialState: { data: existingLimits },
+      }),
+    );
+
+    let refreshPromise: Promise<void> | undefined;
+    act(() => {
+      refreshPromise = result.current.refresh();
+    });
+
+    await act(async () => {
+      await result.current.revalidate();
+    });
+
+    expect(getUsageLimits).toHaveBeenCalledTimes(1);
+    expect(getUsageLimits).toHaveBeenCalledWith({ refresh: true });
+
+    await act(async () => {
+      manualRefresh.resolve(freshLimits);
+      await refreshPromise;
+    });
+
+    expect(result.current.data).toEqual(freshLimits);
+  });
+
+  it("keeps the manual guard while a later manual refresh is still in flight", async () => {
+    const firstManualRefresh = deferred<typeof existingLimits>();
+    const secondManualRefresh = deferred<typeof freshLimits>();
+    vi.mocked(getUsageLimits)
+      .mockReturnValueOnce(firstManualRefresh.promise)
+      .mockReturnValueOnce(secondManualRefresh.promise);
+
+    const { result } = renderHook(() =>
+      useUsageLimits({
+        initialRefresh: false,
+        initialState: { data: existingLimits },
+      }),
+    );
+
+    let firstRefreshPromise: Promise<void> | undefined;
+    let secondRefreshPromise: Promise<void> | undefined;
+    act(() => {
+      firstRefreshPromise = result.current.refresh();
+      secondRefreshPromise = result.current.refresh();
+    });
+
+    await act(async () => {
+      firstManualRefresh.resolve(existingLimits);
+      await firstRefreshPromise;
+    });
+
+    await act(async () => {
+      await result.current.revalidate();
+    });
+
+    expect(getUsageLimits).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      secondManualRefresh.resolve(freshLimits);
+      await secondRefreshPromise;
+    });
+
+    expect(result.current.data).toEqual(freshLimits);
   });
 });
