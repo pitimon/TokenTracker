@@ -27,6 +27,18 @@ test("the process scan is scoped to the current user", () => {
   );
 });
 
+// Both `ps` call sites import this one array, which stops them drifting apart
+// when someone edits one of them. It does not stop a caller mutating the shared
+// object at runtime, and "cannot drift apart" is only true of a frozen one.
+test("the shared argv cannot be widened at runtime", () => {
+  assert.equal(Object.isFrozen(PS_ARGS), true);
+  assert.throws(() => {
+    "use strict";
+    PS_ARGS.push("-a");
+  }, TypeError);
+  assert.deepEqual(PS_ARGS, ["-x", "-o", "pid=,command="]);
+});
+
 test("parseProcessLine splits a pid from a command and rejects junk", () => {
   assert.deepEqual(parseProcessLine("  4211 /usr/local/bin/claude --model x"), {
     pid: 4211,
