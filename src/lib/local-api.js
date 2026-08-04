@@ -1715,10 +1715,9 @@ function createLocalApiHandler({ queuePath }) {
 
     // --- usage-limits ---
     if (p === "/functions/tokentracker-usage-limits") {
-      const { getUsageLimits, resetUsageLimitsCache } = require("./usage-limits");
+      const { getUsageLimits, isForcedRefresh, resetUsageLimitsCache } = require("./usage-limits");
       try {
-        const forceRefresh = url.searchParams.get("refresh");
-        if (forceRefresh === "1" || forceRefresh === "true") {
+        if (isForcedRefresh(url.searchParams.get("refresh"))) {
           resetUsageLimitsCache();
         }
         const data = await getUsageLimits({
