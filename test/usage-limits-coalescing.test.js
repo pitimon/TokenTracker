@@ -14,6 +14,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 
 const MODULE_PATH = require.resolve("../src/lib/usage-limits");
+const { REFRESH_ENDPOINT } = require("../src/lib/codex-token-refresh");
 
 // The module memoises in module scope — both the completed cache and the
 // in-flight slot. Every scenario needs its own instance or it inherits the
@@ -157,4 +158,64 @@ test("a force against a completed cache does start a new fan-out", async () => {
     counts.total > afterFirst,
     "the force made no provider calls — the cache was served through it",
   );
+});
+
+test("a hung Codex token refresh is aborted, releases joined callers, and allows a retry", async () => {
+  const { getUsageLimits, resetUsageLimitsCache } = freshModule();
+  const home = credentialedHome();
+  const authPath = path.join(home, ".codex", "auth.json");
+  const auth = JSON.parse(fs.readFileSync(authPath, "utf8"));
+  auth.last_refresh = "2020-01-01T00:00:00.000Z";
+  fs.writeFileSync(authPath, JSON.stringify(auth));
+
+  let refreshCalls = 0;
+  let refreshAborts = 0;
+  const fetchImpl = (url, options = {}) => {
+    if (url === REFRESH_ENDPOINT) {
+      refreshCalls += 1;
+      if (refreshCalls === 1) {
+        return new Promise((_resolve, reject) => {
+          options.signal?.addEventListener("abort", () => {
+            refreshAborts += 1;
+            reject(options.signal.reason || new Error("aborted"));
+          }, { once: true });
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: "retry-access", refresh_token: "retry-refresh" }),
+      });
+    }
+    return Promise.reject(new Error("network unavailable in test"));
+  };
+  const options = {
+    home,
+    env: { HOME: home },
+    platform: "linux",
+    fetchImpl,
+    commandRunner: () => ({ code: 127, status: 127, stdout: "", stderr: "not found" }),
+    securityRunner: () => ({ status: 1, stdout: "" }),
+    requestFn: async () => {
+      throw new Error("antigravity unavailable in test");
+    },
+    providerTimeoutMs: 20,
+  };
+
+  const first = getUsageLimits(options);
+  const joined = getUsageLimits(options);
+  const outcome = await Promise.race([
+    Promise.all([first, joined]),
+    new Promise((resolve) => setTimeout(() => resolve("timed-out"), 100)),
+  ]);
+
+  assert.notEqual(outcome, "timed-out", "the raw Codex refresh held the shared flight forever");
+  assert.equal(outcome[0], outcome[1], "joined caller did not receive the shared result");
+  assert.equal(refreshCalls, 1);
+  assert.equal(refreshAborts, 1, "the hanging fetch settled without being aborted");
+
+  resetUsageLimitsCache();
+  const retry = await getUsageLimits(options);
+  assert.notEqual(retry, outcome[0], "the released slot replayed the first result");
+  assert.equal(refreshCalls, 2, "a later request could not start a new Codex refresh");
 });

@@ -1942,6 +1942,10 @@ async function fetchUsageLimits({
   providerTimeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS,
 } = {}) {
   const nowMs = Date.now();
+  // The stale-Codex refresh is part of the same provider sweep and must share
+  // its abort bound. Creating this before the serial prelude prevents one raw
+  // OAuth fetch from holding the process-wide single-flight slot forever.
+  const providerFetch = withFetchTimeout(fetchImpl, providerTimeoutMs);
 
   const [claudeToken, claudeSubscription, codexAuth] = await Promise.all([
     Promise.resolve().then(() => readClaudeCodeAccessToken({ platform, securityRunner, home })),
@@ -1961,7 +1965,7 @@ async function fetchUsageLimits({
     try {
       const newTokens = await refreshCodexTokens({
         refreshToken: codexAuth.refreshToken,
-        fetchImpl,
+        fetchImpl: providerFetch,
       });
       const updatedAuth = await persistRefreshedAuth(
         codexAuth.authPath,
@@ -1984,7 +1988,6 @@ async function fetchUsageLimits({
   const codexAccountId = codexAuthRefreshed?.accountId || null;
   const codexPlanType = codexAuthRefreshed?.planType || null;
 
-  const providerFetch = withFetchTimeout(fetchImpl, providerTimeoutMs);
   const [claudeResult, codexResult, cursor, kimi, zai, gemini, kiro, antigravity, copilot] = await Promise.all([
     claudeToken
       ? withProviderTimeout(fetchClaudeUsageLimits(claudeToken, { fetchImpl: providerFetch, maxAttempts: 1 }), "Claude", providerTimeoutMs).then(
