@@ -3398,8 +3398,11 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
       // Skip if delta is zero (session unchanged since last sync)
       if (dInput === 0 && dOutput === 0 && dCacheRead === 0 && dCacheWrite === 0 && dReasoning === 0) continue;
 
-      // Prefer ended_at for bucket placement; fall back to started_at
-      const epochSec = endedAt ?? startedAt;
+      // A first observation has only the session start as a usable timestamp.
+      // Attribute later active-session deltas to this sync so cross-day usage
+      // does not keep growing the day on which the session originally started.
+      // Once Hermes records completion, ended_at is authoritative for the final delta.
+      const epochSec = endedAt ?? (prev ? Date.parse(updatedAt) / 1000 : startedAt);
       if (!epochSec || !Number.isFinite(epochSec)) continue;
       const tsIso = new Date(epochSec * 1000).toISOString();
       const bucketStart = toUtcHalfHourStart(tsIso);

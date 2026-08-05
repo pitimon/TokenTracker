@@ -3119,17 +3119,21 @@ test("parseHermesIncremental tracks real-time token growth for active sessions (
     assert.equal(second.recordsProcessed, 2); // cursor-boundary completed session plus active session are re-read
     assert.equal(second.eventsAggregated, 1);
 
-    // Verify the delta was computed correctly
-    // queue.jsonl accumulates lines per sync; the last line for this model
-    // holds the running total (first full + subsequent deltas).
+    // Verify the delta was computed correctly across the latest value of each
+    // bucket. Active-session growth may move to a later observation bucket.
     const queued2 = await readJsonLines(queuePath);
     const activeBuckets = queued2.filter((b) => b.source === "hermes" && b.model === "claude-sonnet-4-6");
-    const activeBucket = activeBuckets[activeBuckets.length - 1];
-    assert.ok(activeBucket);
-    assert.equal(activeBucket.input_tokens, 8000);
-    assert.equal(activeBucket.output_tokens, 400);
-    assert.equal(activeBucket.cached_input_tokens, 2000);
-    assert.equal(activeBucket.conversation_count, 10);
+    const latestActiveBuckets = new Map(activeBuckets.map((bucket) => [bucket.hour_start, bucket]));
+    const activeTotals = [...latestActiveBuckets.values()].reduce(
+      (totals, bucket) => ({
+        input: totals.input + bucket.input_tokens,
+        output: totals.output + bucket.output_tokens,
+        cached: totals.cached + bucket.cached_input_tokens,
+        conversations: totals.conversations + bucket.conversation_count,
+      }),
+      { input: 0, output: 0, cached: 0, conversations: 0 },
+    );
+    assert.deepEqual(activeTotals, { input: 8000, output: 400, cached: 2000, conversations: 10 });
 
     // Snapshot should be updated
     assert.equal(cursors.hermes.snapshots["sess_active"].in, 8000);
@@ -3151,6 +3155,120 @@ test("parseHermesIncremental tracks real-time token growth for active sessions (
 
     // Now cursor should advance past the ended session
     assert.equal(cursors.hermes.lastCompletedStartedAt, epoch1 + 200);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseHermesIncremental attributes later active-session deltas to the observation bucket", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-cross-day-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const startedAt = 1775993779.0; // 2026-04-12T11:36:19Z
+
+    createHermesDb(dbPath, [
+      {
+        id: "sess_cross_day",
+        model: "gpt-5.6-sol",
+        started_at: startedAt,
+        ended_at: null,
+        input_tokens: 5000,
+        output_tokens: 200,
+        cache_read_tokens: 1000,
+        cache_write_tokens: 300,
+        reasoning_tokens: 100,
+        message_count: 5,
+      },
+    ]);
+
+    await parseHermesIncremental({ dbPath, cursors, queuePath });
+
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      "UPDATE sessions SET input_tokens = 8000, output_tokens = 400, cache_read_tokens = 2000, cache_write_tokens = 500, reasoning_tokens = 150, message_count = 10 WHERE id = 'sess_cross_day';",
+    ]);
+
+    await parseHermesIncremental({ dbPath, cursors, queuePath });
+
+    const observation = new Date(cursors.hermes.updatedAt);
+    observation.setUTCMinutes(observation.getUTCMinutes() < 30 ? 0 : 30, 0, 0);
+    const observationBucketStart = observation.toISOString();
+    const startBucketStart = "2026-04-12T11:30:00.000Z";
+    const endedAt = startedAt + 3600;
+    const endBucketStart = "2026-04-12T12:30:00.000Z";
+
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      `UPDATE sessions SET ended_at = ${endedAt}, input_tokens = 9000, output_tokens = 500, cache_read_tokens = 2500, cache_write_tokens = 700, reasoning_tokens = 200, message_count = 12 WHERE id = 'sess_cross_day';`,
+    ]);
+
+    await parseHermesIncremental({ dbPath, cursors, queuePath });
+
+    const queued = await readJsonLines(queuePath);
+    const latestByBucket = new Map(
+      queued
+        .filter((bucket) => bucket.source === "hermes" && bucket.model === "gpt-5.6-sol")
+        .map((bucket) => [bucket.hour_start, bucket]),
+    );
+    const columns = (bucket) => ({
+      input: bucket?.input_tokens,
+      output: bucket?.output_tokens,
+      cached: bucket?.cached_input_tokens,
+      cacheWrite: bucket?.cache_creation_input_tokens,
+      reasoning: bucket?.reasoning_output_tokens,
+      total: bucket?.total_tokens,
+      conversations: bucket?.conversation_count,
+    });
+
+    assert.notEqual(observationBucketStart, startBucketStart);
+    assert.notEqual(observationBucketStart, endBucketStart);
+    assert.deepEqual(columns(latestByBucket.get(startBucketStart)), {
+      input: 5000,
+      output: 200,
+      cached: 1000,
+      cacheWrite: 300,
+      reasoning: 100,
+      total: 6600,
+      conversations: 5,
+    });
+    assert.deepEqual(columns(latestByBucket.get(observationBucketStart)), {
+      input: 3000,
+      output: 200,
+      cached: 1000,
+      cacheWrite: 200,
+      reasoning: 50,
+      total: 4450,
+      conversations: 5,
+    });
+    assert.deepEqual(columns(latestByBucket.get(endBucketStart)), {
+      input: 1000,
+      output: 100,
+      cached: 500,
+      cacheWrite: 200,
+      reasoning: 50,
+      total: 1850,
+      conversations: 2,
+    });
+
+    const conserved = [...latestByBucket.values()].reduce(
+      (totals, bucket) => {
+        const values = columns(bucket);
+        for (const key of Object.keys(totals)) totals[key] += values[key];
+        return totals;
+      },
+      { input: 0, output: 0, cached: 0, cacheWrite: 0, reasoning: 0, total: 0, conversations: 0 },
+    );
+    assert.deepEqual(conserved, {
+      input: 9000,
+      output: 500,
+      cached: 2500,
+      cacheWrite: 700,
+      reasoning: 200,
+      total: 12900,
+      conversations: 12,
+    });
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
