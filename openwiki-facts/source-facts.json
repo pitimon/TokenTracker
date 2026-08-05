@@ -292,35 +292,35 @@
       },
       {
         "name": "parseDroidIncremental",
-        "evidence": "src/lib/rollout.js:6489"
+        "evidence": "src/lib/rollout.js:6496"
       },
       {
         "name": "parseKilocodeIncremental",
-        "evidence": "src/lib/rollout.js:6736"
+        "evidence": "src/lib/rollout.js:6743"
       },
       {
         "name": "parseOmpIncremental",
-        "evidence": "src/lib/rollout.js:6872"
+        "evidence": "src/lib/rollout.js:6879"
       },
       {
         "name": "parsePiIncremental",
-        "evidence": "src/lib/rollout.js:7125"
+        "evidence": "src/lib/rollout.js:7132"
       },
       {
         "name": "parseCraftIncremental",
-        "evidence": "src/lib/rollout.js:7409"
+        "evidence": "src/lib/rollout.js:7416"
       },
       {
         "name": "parseCopilotIncremental",
-        "evidence": "src/lib/rollout.js:7759"
+        "evidence": "src/lib/rollout.js:7766"
       },
       {
         "name": "parseGrokBuildIncremental",
-        "evidence": "src/lib/rollout.js:8225"
+        "evidence": "src/lib/rollout.js:8232"
       },
       {
         "name": "parseAntigravityIncremental",
-        "evidence": "src/lib/rollout.js:8397"
+        "evidence": "src/lib/rollout.js:8404"
       }
     ]
   }

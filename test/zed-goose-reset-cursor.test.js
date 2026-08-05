@@ -190,11 +190,9 @@ test("Goose: cumulative reset is emitted as a fresh-start delta", async () => {
   const res = await parseGooseIncremental({ dbPath, cursors, queuePath });
   assert.equal(res.eventsAggregated, 1, "reset must produce a fresh-start emit (not 0-delta skip)");
 
-  // Goose's bucket is keyed on created_at, which doesn't change on reset.
-  // So the same bucket gets two deltas: 8000/2000 (run 1) + 250/50 (reset
-  // emit). Latest cumulative: 8250/2050. Legacy (clamp-to-0) path would
-  // leave the bucket frozen at 8000/2000 and silently lose 250 tokens of
-  // post-reset usage.
+  // The initial observation stays in created_at; the reset delta is observed
+  // now and may land in a later bucket. Sum the latest value per bucket to
+  // prove the fresh-start reset emit is conserved regardless of placement.
   const rows = fs
     .readFileSync(queuePath, "utf8")
     .trim()
@@ -202,9 +200,15 @@ test("Goose: cumulative reset is emitted as a fresh-start delta", async () => {
     .filter(Boolean)
     .map(JSON.parse)
     .filter((r) => r.source === "goose");
-  const last = rows[rows.length - 1];
-  assert.equal(last.input_tokens, 8000 + 250);
-  assert.equal(last.output_tokens, 2000 + 50);
+  const latestByBucket = new Map(rows.map((row) => [row.hour_start, row]));
+  const totals = [...latestByBucket.values()].reduce(
+    (sum, row) => ({
+      input: sum.input + row.input_tokens,
+      output: sum.output + row.output_tokens,
+    }),
+    { input: 0, output: 0 },
+  );
+  assert.deepEqual(totals, { input: 8000 + 250, output: 2000 + 50 });
 
   fs.rmSync(dir, { recursive: true, force: true });
 });

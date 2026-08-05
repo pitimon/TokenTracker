@@ -6116,8 +6116,10 @@ async function parseGooseIncremental({
   onProgress,
   env,
   sqliteOptions,
+  now = () => new Date(),
 } = {}) {
   await ensureDir(path.dirname(queuePath));
+  const observedAt = now().toISOString();
   const resolvedDb = dbPath || resolveGooseDbPath(env || process.env);
   const gooseState =
     cursors.goose && typeof cursors.goose === "object" ? cursors.goose : {};
@@ -6132,7 +6134,7 @@ async function parseGooseIncremental({
     currentMtime = fssync.statSync(resolvedDb).mtimeMs;
   } catch (e) {
     if (e && e.code === "ENOENT") {
-      cursors.goose = { ...gooseState, sessionTotals, updatedAt: new Date().toISOString() };
+      cursors.goose = { ...gooseState, sessionTotals, updatedAt: observedAt };
       return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     }
     throw e;
@@ -6140,7 +6142,7 @@ async function parseGooseIncremental({
   // mtime short-circuit: skip the full sessions table scan when the DB
   // hasn't been touched since the last sync.
   if (currentMtime > 0 && currentMtime === cursorDbMtime) {
-    cursors.goose = { ...gooseState, sessionTotals, updatedAt: new Date().toISOString() };
+    cursors.goose = { ...gooseState, sessionTotals, updatedAt: observedAt };
     return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
   }
 
@@ -6155,7 +6157,7 @@ async function parseGooseIncremental({
   }
 
   if (rows.length === 0) {
-    cursors.goose = { ...gooseState, sessionTotals, updatedAt: new Date().toISOString() };
+    cursors.goose = { ...gooseState, sessionTotals, updatedAt: observedAt };
     return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
   }
 
@@ -6188,6 +6190,7 @@ async function parseGooseIncremental({
     );
     if (totalNow === 0 && inputNow === 0 && outputNow === 0) continue;
 
+    const hadPreviousSnapshot = Object.prototype.hasOwnProperty.call(sessionTotals, row.id);
     const prev = sessionTotals[row.id] || { input: 0, output: 0, total: 0 };
     // Goose can wipe a session and re-create with the same id during
     // database migration. Treat shrinking cumulative as a reset and emit
@@ -6213,7 +6216,12 @@ async function parseGooseIncremental({
     const accountedDelta = dInput + dOutput;
     const reasoningDelta = Math.max(0, dTotal - accountedDelta);
 
-    const tsIso = parseGooseCreatedAt(row.created_at) || new Date().toISOString();
+    // The first observation has only created_at as a trustworthy timestamp.
+    // Later cumulative deltas belong to this sync's observation bucket so a
+    // long-lived session does not keep growing the day on which it started.
+    const tsIso = hadPreviousSnapshot
+      ? observedAt
+      : parseGooseCreatedAt(row.created_at) || observedAt;
     const bucketStart = toUtcHalfHourStart(tsIso);
     if (!bucketStart) continue;
 
@@ -6257,14 +6265,13 @@ async function parseGooseIncremental({
   }
 
   const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
-  const updatedAt = new Date().toISOString();
-  hourlyState.updatedAt = updatedAt;
+  hourlyState.updatedAt = observedAt;
   cursors.hourly = hourlyState;
   cursors.goose = {
     ...gooseState,
     sessionTotals,
     lastDbMtimeMs: currentMtime,
-    updatedAt,
+    updatedAt: observedAt,
   };
 
   return { recordsProcessed, eventsAggregated, bucketsQueued };
