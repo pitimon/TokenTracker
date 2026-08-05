@@ -442,6 +442,7 @@ export function DashboardPage({
   const {
     data: usageLimits,
     refresh: refreshUsageLimits,
+    revalidate: revalidateUsageLimits,
   } = useUsageLimits();
   const { displayMode: limitDisplayMode } = useLimitsDisplayPrefs();
 
@@ -704,7 +705,11 @@ export function DashboardPage({
     }
   }, [selectedPeriod, customFrom, prevPeriod]);
 
-  const refreshAll = useCallback(async () => {
+  // Every panel but usage limits refetches the same way whoever asked. Quota
+  // limits are the exception: a forced fetch clears the CLI's two-minute cache
+  // and fans out to every configured provider, so only an explicit user action
+  // gets to pay that cost. Scheduled work revalidates through the cache.
+  const refreshAll = useCallback(async ({ forceUsageLimits = true } = {}) => {
     const nowMs = Date.now();
     setDashboardNowMs(nowMs);
     await Promise.all([
@@ -714,7 +719,7 @@ export function DashboardPage({
       refreshModelBreakdown(),
       refreshProjectUsage(),
       refreshDailyBreakdown(),
-      refreshUsageLimits(),
+      forceUsageLimits ? refreshUsageLimits() : revalidateUsageLimits(),
       refreshPulse(),
     ]);
     setLastUpdatedAtMs(nowMs);
@@ -726,6 +731,7 @@ export function DashboardPage({
     refreshTrend,
     refreshUsage,
     refreshUsageLimits,
+    revalidateUsageLimits,
     refreshPulse,
   ]);
 
@@ -771,7 +777,7 @@ export function DashboardPage({
       if (isLocalMode) {
         await triggerLocalSync();
       }
-      await refreshAll();
+      await refreshAll({ forceUsageLimits: true });
     } catch (error) {
       console.error("[DashboardPage] Refresh failed:", error);
     } finally {
@@ -794,14 +800,17 @@ export function DashboardPage({
       });
   }, [isLocalMode]);
 
+  // Both passes here are scheduled work — the interval tick and the follow-up
+  // that runs when the background sync queued new buckets. Neither is a user
+  // asking for fresh quota numbers, so both stay cache-aware.
   const handleAutoRefresh = useCallback(async () => {
     const syncPromise = startAutoSync();
     try {
-      await refreshAll();
+      await refreshAll({ forceUsageLimits: false });
       if (syncPromise) {
         void syncPromise.then((queuedBuckets) => {
           if (!queuedBuckets) return undefined;
-          return refreshAll();
+          return refreshAll({ forceUsageLimits: false });
         });
       }
     } catch (error) {

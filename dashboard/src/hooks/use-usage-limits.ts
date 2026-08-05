@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getUsageLimits } from "../lib/api";
 import { publishUsageLimitsPreloadState } from "../lib/dashboard-preload.js";
 
@@ -26,6 +26,13 @@ interface UseUsageLimitsOptions {
   publishToPreloadCache?: boolean;
 }
 
+interface LoadUsageLimitsOptions {
+  force: boolean;
+  source: "page-load" | "manual-refresh";
+  isManual?: boolean;
+  shouldApply?: () => boolean;
+}
+
 export function useUsageLimits(options?: UseUsageLimitsOptions) {
   const hasInitialState = Boolean(options?.initialState);
   const [data, setData] = useState<UsageLimitsData | null>(() => (
@@ -37,6 +44,8 @@ export function useUsageLimits(options?: UseUsageLimitsOptions) {
   const [isLoading, setIsLoading] = useState(!hasInitialState);
   const initialRefresh = Boolean(options?.initialRefresh);
   const publishToPreloadCache = Boolean(options?.publishToPreloadCache);
+  const latestRequestId = useRef(0);
+  const activeManualRequestIds = useRef(new Set<number>());
 
   const publishSuccessfulState = useCallback(
     (value: UsageLimitsData | null, source: "page-load" | "manual-refresh") => {
@@ -46,40 +55,56 @@ export function useUsageLimits(options?: UseUsageLimitsOptions) {
     [publishToPreloadCache],
   );
 
-  const refresh = useCallback(async () => {
+  const loadUsageLimits = useCallback(async ({
+    force,
+    source,
+    isManual = false,
+    shouldApply = () => true,
+  }: LoadUsageLimitsOptions) => {
+    if (!isManual && activeManualRequestIds.current.size > 0) return;
+
+    const requestId = ++latestRequestId.current;
+    if (isManual) activeManualRequestIds.current.add(requestId);
+
     try {
-      const res = await getUsageLimits({ refresh: true });
+      const res = await getUsageLimits(force ? { refresh: true } : {});
+      if (!shouldApply() || requestId !== latestRequestId.current) return;
       const nextData = res && typeof res === "object" ? res as UsageLimitsData : null;
       setData(nextData);
       setError(null);
-      publishSuccessfulState(nextData, "manual-refresh");
+      publishSuccessfulState(nextData, source);
     } catch (err) {
+      if (!shouldApply() || requestId !== latestRequestId.current) return;
       setError((err as Error)?.message || String(err));
+    } finally {
+      if (isManual) activeManualRequestIds.current.delete(requestId);
     }
   }, [publishSuccessfulState]);
+
+  const refresh = useCallback(
+    () => loadUsageLimits({ force: true, source: "manual-refresh", isManual: true }),
+    [loadUsageLimits],
+  );
+
+  const revalidate = useCallback(
+    () => loadUsageLimits({ force: false, source: "page-load" }),
+    [loadUsageLimits],
+  );
 
   useEffect(() => {
     if (hasInitialState && !initialRefresh) return;
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await getUsageLimits(initialRefresh ? { refresh: true } : {});
-        if (cancelled) return;
-        const nextData = res && typeof res === "object" ? res as UsageLimitsData : null;
-        setData(nextData);
-        setError(null);
-        publishSuccessfulState(nextData, "page-load");
-      } catch (err) {
-        if (cancelled) return;
-        setError((err as Error)?.message || String(err));
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
+    void loadUsageLimits({
+      force: initialRefresh,
+      source: "page-load",
+      shouldApply: () => !cancelled,
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
     return () => {
       cancelled = true;
     };
-  }, [hasInitialState, initialRefresh, publishSuccessfulState]);
+  }, [hasInitialState, initialRefresh, loadUsageLimits]);
 
-  return { data, error, isLoading, refresh };
+  return { data, error, isLoading, refresh, revalidate };
 }

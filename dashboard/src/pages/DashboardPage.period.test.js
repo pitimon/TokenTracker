@@ -64,8 +64,12 @@ describe("DashboardPage period defaults", () => {
     expect(text.slice(autoSyncStart, autoStart)).toContain("return triggerLocalSync()");
     expect(text.slice(autoSyncStart, autoStart)).toContain(".then(didLocalSyncQueueBuckets)");
     expect(text.slice(autoStart, optionsStart)).toContain("const syncPromise = startAutoSync();");
-    expect(text.slice(autoStart, optionsStart)).toContain("await refreshAll();");
-    expect(text.slice(autoStart, optionsStart)).toContain("return refreshAll();");
+    expect(text.slice(autoStart, optionsStart)).toContain(
+      "await refreshAll({ forceUsageLimits: false });",
+    );
+    expect(text.slice(autoStart, optionsStart)).toContain(
+      "return refreshAll({ forceUsageLimits: false });",
+    );
   });
 
   it("surfaces data-health copy for empty selected periods with recent usage", () => {
