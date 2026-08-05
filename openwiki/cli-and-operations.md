@@ -51,33 +51,38 @@ is missing or unusable is still counted, under `(unnamed)`, rather than dropped.
 `listDegradedChecks` in `src/lib/doctor.js` is the rule — read it rather than
 this paragraph if the two ever disagree.
 
-`advisory` is decided **per warn, not per check**. It marks a warn describing a
-standing condition the operator cannot act on at the moment they read the
-report. Today exactly one warn carries it: `queue.row_invariant`'s
-row-invariant/malformed-row warn, because the offending rows are already written
-and already being rendered. The *same check* also emits a `queue unreadable`
-warn, and that one is **not** advisory — an unreadable queue is new, actionable,
-and plausibly means ingestion has stopped. An advisory warn is still a full
-`warn` in `checks` and still counts in `summary.warn`; the report is not
-quieter, the alert signal is narrower. Not opting in is the default, so a new
-warn is alert-worthy unless it argues otherwise.
+`advisory` is decided **per emitted warn, not per check id**. It marks a standing
+condition that cannot be cleared by operator action at report time. An advisory
+warn remains in `checks` and `summary.warn`; only `degraded` and
+`degraded_checks` ignore it. The opt-in is the literal boolean `true`, and only
+for status `warn`: a fail always degrades, malformed or missing ids are named
+`(unnamed)`, and every new/unclassified warn is alert-worthy by default.
 
-That distinction is the point of the field: an earlier version counted every
+The current warning-path audit is:
+
+| Check and emitted condition | Classification | Reason |
+| --- | --- | --- |
+| `browser.opener`: headless/session environment | Advisory | Headlessness is a standing host/session property; `--no-open` or manually opening the URL does not clear it. |
+| `browser.opener`: `open`/`xdg-open` missing on a non-headless host | Actionable | Install the opener (`xdg-utils` on Linux) or deliberately use `--no-open`. |
+| `notify.configured`: no supported notify/hook integration configured | Advisory | The integrations are optional and provider-specific; `init` skips absent provider configs, and passive readers do not require hooks. This aggregate check has no fail path. |
+| `queue.row_invariant`: parseable rows violating the column invariant | Advisory | The rows are already on disk and already rendered; the warning remains visible for diagnosis. |
+| `queue.row_invariant`: unparseable lines | Actionable | Local API readers skip malformed lines, so their usage is absent; corruption or a partial write must degrade the report. |
+| `queue.row_invariant`: queue unreadable | Actionable | Permissions, disk, or file-type problems can stop ingestion. The shared check id does not inherit the advisory flag. |
+| `ingest.transcript_suppressed`: process list could not be read | Actionable | Doctor could not verify whether unrecordable Claude sessions are running. |
+| `ingest.transcript_suppressed`: one or more `--no-session-persistence` sessions | Actionable | Those sessions write no transcript, so their token usage cannot be recorded. |
+| `fs.tracker_dir`: tracker directory missing | Actionable | Initialization can create the required local state. Permission and type errors are fails, not warns. |
+| `fs.config_json`: config missing | Actionable | Initialization can create it. Invalid or unreadable config is a fail, not a warn. |
+
+The remaining doctor checks have no warning path: `runtime.node_version` and
+`cli.entrypoint` fail closed; `runtime.dashboard_url`,
+`runtime.http_timeout_ms`, and `runtime.debug` are informational `ok` checks.
+`buildDiagnosticsChecks` currently emits only `notify.configured`. A check that
+cannot run on an unsupported platform is omitted rather than reported as `ok`.
+
+This distinction is the point of the field: an earlier version counted every
 warn, and on a machine carrying one standing row-invariant warning it read
 `true` on a healthy day. An alert that can never clear and an alert that never
 fires are the same defect.
-
-**Known limit — `degraded` still pins on a headless host.** `browser.opener`
-warns permanently where no browser can be opened (`CI=true`, or Linux with no
-`DISPLAY`/`WAYLAND_DISPLAY`), and that warn is not marked advisory. On such a
-machine `degraded` reads `true` on a healthy day, which is the very failure the
-field was narrowed to remove — so the alert-wiring advice above holds on a
-desktop and not yet on a headless server. Only the queue warn has been
-classified so far; auditing the remaining checks for standing conditions is
-tracked as its own piece of work rather than guessed at here.
-
-A check that could not be run on this platform is **omitted** from `checks`
-rather than reported as `ok`.
 
 ## Service and release operations
 

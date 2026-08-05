@@ -67,16 +67,14 @@ async function buildDoctorReport({
     // It counts every warn and fail except a warn whose check marked itself
     // `advisory`. A first version counted every warn, which made it useless on the
     // one machine it was written for: that box carries a standing
-    // `queue.row_invariant` warn about two malformed rows, so `degraded` read true
+    // `queue.row_invariant` warn about two parseable invariant violations, so
+    // `degraded` read true
     // on a perfectly healthy day and an alert wired to it could never clear. An
     // always-on alert and an alert that never fires fail the same way.
     // `listDegradedChecks` holds the exact rule including its two fail-closed
-    // clauses; `queueCheck` shows what earns the flag and what does not.
-    //
-    // Not yet true of every standing warn: `browser.opener` still warns
-    // permanently on a headless host, so `degraded` pins there. Left as-is
-    // deliberately rather than guessed at — auditing the remaining checks is
-    // tracked separately.
+    // clauses. Advisory is assigned at the individual warning return site: a
+    // standing condition can opt out without muting an actionable warning from
+    // the same check id.
     degraded: degradedChecks.length > 0,
     // Which checks put it there. Without this, `degraded: true` is unactionable —
     // a consumer has to re-derive the reason by walking `checks` itself, and a
@@ -89,11 +87,10 @@ async function buildDoctorReport({
 }
 
 // A check is advisory when its warn describes a standing condition the operator
-// cannot act on in the moment — true of the queue row invariant, whose rows are
-// already written and already being rendered. Such a check still reports `warn`
-// and still appears in `summary.warn`: the report does not become quieter, only
-// the alert signal becomes specific. Anything that does not opt in counts, so a
-// new check is alert-worthy by default and has to argue its way out.
+// cannot act on in the moment. Such a check still reports `warn` and still appears
+// in `summary.warn`: the report does not become quieter, only the alert signal
+// becomes specific. Anything that does not opt in counts, so a new check is
+// alert-worthy by default and has to argue its way out.
 //
 // Two rules here are deliberately fail-CLOSED, because the failure this field
 // exists to prevent is a real problem reading as silence, and both were live
@@ -111,9 +108,17 @@ async function buildDoctorReport({
 function listDegradedChecks(checks = []) {
   return checks
     .filter((check) => check && (check.status === "warn" || check.status === "fail"))
-    .filter((check) => !(check.status === "warn" && check.advisory === true))
+    // A malformed id overrides advisory suppression. Advisory is an explicit
+    // classification made at a known warning call site; if that identity is
+    // lost, fail closed under the placeholder rather than silently dropping it.
+    .filter((check) => !(
+      check.status === "warn"
+      && check.advisory === true
+      && typeof check.id === "string"
+      && check.id.trim().length > 0
+    ))
     .map((check) =>
-      typeof check.id === "string" && check.id.length > 0 ? check.id : UNNAMED_CHECK_ID,
+      typeof check.id === "string" && check.id.trim().length > 0 ? check.id : UNNAMED_CHECK_ID,
     )
     .sort();
 }
@@ -194,11 +199,14 @@ function buildNodeVersionCheck(nodeVersion) {
 async function buildBrowserOpenerCheck({ platform = process.platform, env = process.env, commandExists }) {
   const headless = isHeadlessEnvironment({ platform, env });
   if (headless) {
+    // Standing environment property: neither --no-open nor opening the printed
+    // URL manually can make a headless session acquire a browser opener.
     return {
       id: "browser.opener",
       status: "warn",
       detail: "headless/session environment detected; use --no-open or open the printed URL manually",
       critical: false,
+      advisory: true,
       meta: { platform, command: null, headless: true },
     };
   }
@@ -444,14 +452,21 @@ function buildDiagnosticsChecks(diagnostics) {
     notify.claude_hook_configured ||
     notify.gemini_hook_configured ||
     notify.opencode_plugin_configured ||
-    notify.openclaw_hook_configured,
+    notify.openclaw_hook_configured ||
+    notify.openclaw_session_plugin_configured ||
+    notify.grok_hook_configured,
   );
 
+  // This aggregate describes an optional integration preference, not whether
+  // passive log ingestion works. `init` also skips hooks for providers whose
+  // config is absent, so "none configured" can be a stable, intentional state.
+  // Keep only that warn advisory; this check currently has no fail path.
   checks.push({
     id: "notify.configured",
     status: notifyConfigured ? "ok" : "warn",
     detail: notifyConfigured ? "notify configured" : "notify not configured",
     critical: false,
+    ...(notifyConfigured ? {} : { advisory: true }),
     meta: { configured: notifyConfigured },
   });
 
@@ -495,13 +510,10 @@ const QUEUE_VIOLATIONS_SHOWN = 5;
 // PER CALL SITE, not once for this check id, because the two warns this check can
 // emit are not the same kind of thing:
 //
-//   - the row-invariant / malformed-row warn IS advisory, on the same reasoning
-//     the comment above gives for warning rather than failing: the rows are
-//     already written and already being rendered, so there is nothing the
-//     operator can do at the moment they read the report.
-//   - "queue unreadable" is NOT. A queue that cannot be read is new, actionable
-//     (permissions, disk), and plausibly means ingestion has stopped — exactly
-//     the #128 class this whole field exists to surface.
+//   - a parseable row-invariant violation IS advisory: the row is already written
+//     and rendered, so there is nothing the operator can do at report time.
+//   - an unparseable line or unreadable queue is NOT. Those conditions omit usage
+//     or can stop ingestion and are actionable (corruption, permissions, disk).
 //
 // An earlier version of this function stamped `advisory: true` on everything it
 // returned, which silenced the unreadable case: `warn` in `checks`,
@@ -550,10 +562,10 @@ async function checkQueueRows(queuePath) {
   const parts = [];
   if (violations.length > 0) parts.push(`${violations.length} row problem(s)`);
   if (malformed > 0) parts.push(`${malformed} unparseable line(s)`);
-  // Advisory: the offending rows are already on disk and already aggregated into
-  // what the dashboard renders, so this warn tells the operator something true
-  // that they cannot act on in this moment. It is the one standing condition in
-  // this check.
+  // Parseable invariant violations are already on disk and already aggregated
+  // into what the dashboard renders, so they are advisory. Malformed lines are
+  // skipped by local-api readers and their usage is absent; corruption or a
+  // partial write is actionable and must degrade the report.
   return queueCheck(
     "warn",
     `${parts.join(", ")} in ${rows.length + malformed} line(s)`,
@@ -564,7 +576,7 @@ async function checkQueueRows(queuePath) {
       violations: violations.length,
       examples: violations.slice(0, QUEUE_VIOLATIONS_SHOWN),
     },
-    { advisory: true },
+    { advisory: malformed === 0 },
   );
 }
 

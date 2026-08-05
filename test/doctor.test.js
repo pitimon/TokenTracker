@@ -68,6 +68,58 @@ test("doctor warns for headless browser opener even when Node is supported", asy
   assert.equal(openerCheck.status, "warn");
   assert.equal(openerCheck.meta.headless, true);
   assert.match(openerCheck.detail, /--no-open/);
+  assert.equal(openerCheck.advisory, true);
+  assert.equal(report.summary.warn, 1, "the advisory opener stays visible in summary.warn");
+  assert.equal(report.degraded, false);
+  assert.deepEqual(report.degraded_checks, []);
+});
+
+test("doctor degrades when a non-headless browser opener is missing", async () => {
+  const report = await buildDoctorReport({
+    runtime: {},
+    system: {
+      nodeVersion: "v20.11.1",
+      platform: "linux",
+      env: { PATH: "/usr/bin", DISPLAY: ":0" },
+      commandExists: async () => false,
+    },
+  });
+  const openerCheck = report.checks.find((c) => c.id === "browser.opener");
+
+  assert.equal(openerCheck.status, "warn");
+  assert.equal(openerCheck.meta.headless, false);
+  assert.notEqual(openerCheck.advisory, true, "a missing opener is actionable");
+  assert.equal(report.summary.warn, 1);
+  assert.equal(report.degraded, true);
+  assert.deepEqual(report.degraded_checks, ["browser.opener"]);
+});
+
+test("doctor keeps an unconfigured notify preference visible without degrading", async () => {
+  const report = await buildDoctorReport({
+    runtime: {},
+    diagnostics: { notify: {} },
+  });
+  const notifyCheck = report.checks.find((c) => c.id === "notify.configured");
+
+  assert.equal(notifyCheck.status, "warn");
+  assert.equal(notifyCheck.advisory, true);
+  assert.equal(report.summary.warn, 1, "the advisory preference stays visible in summary.warn");
+  assert.equal(report.degraded, false);
+  assert.deepEqual(report.degraded_checks, []);
+});
+
+test("doctor recognizes every supported notify integration as configured", async () => {
+  for (const field of ["openclaw_session_plugin_configured", "grok_hook_configured"]) {
+    const report = await buildDoctorReport({
+      runtime: {},
+      diagnostics: { notify: { [field]: true } },
+    });
+    const notifyCheck = report.checks.find((c) => c.id === "notify.configured");
+
+    assert.equal(notifyCheck.status, "ok", `${field} is a supported integration`);
+    assert.notEqual(notifyCheck.advisory, true, "an ok result must not carry advisory");
+    assert.equal(report.degraded, false);
+  }
 });
 
 test("doctor marks invalid config.json as critical", async () => {
@@ -289,9 +341,9 @@ test("doctor reports a clean suppression check and stays undegraded", async () =
 // --- #130: `degraded` counts non-advisory warns only -------------------------
 //
 // The first version counted every warn. On the machine that reported #128 that
-// made it useless: a standing `queue.row_invariant` warning about two malformed
-// rows meant `degraded` read true on a healthy day, so an alert wired to it could
-// never clear. These pin the narrowed contract.
+// made it useless: a standing `queue.row_invariant` warning about two parseable
+// invariant violations meant `degraded` read true on a healthy day, so an alert
+// wired to it could never clear. These pin the narrowed contract.
 
 test("listDegradedChecks counts a plain warn or fail and names it", () => {
   assert.deepEqual(
@@ -366,6 +418,25 @@ test("a queue row violation warns and is counted, but does not degrade the repor
   }
 });
 
+test("a malformed queue line is actionable because it is omitted from dashboard totals", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-degraded-malformed-"));
+  const queuePath = path.join(tmp, "queue.jsonl");
+  try {
+    await fs.writeFile(queuePath, "{not valid json}\n", "utf8");
+
+    const report = await buildDoctorReport({ runtime: {}, paths: { queuePath } });
+    const check = report.checks.find((c) => c.id === "queue.row_invariant");
+
+    assert.equal(check.status, "warn");
+    assert.equal(check.meta.malformed, 1);
+    assert.notEqual(check.advisory, true, "unparseable usage is not already rendered");
+    assert.equal(report.degraded, true);
+    assert.deepEqual(report.degraded_checks, ["queue.row_invariant"]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 // --- the three fail-open holes an independent review found in the first cut ----
 
 // The advisory rationale is about a STANDING condition. An unreadable queue is
@@ -399,12 +470,22 @@ test("an unreadable queue is actionable, so it degrades the report", async () =>
 // typo removed a genuine warn from `degraded` entirely — `[WARN] unknown` to a
 // human, nothing at all to automation.
 test("a warn with a missing or malformed id still degrades, under a placeholder", () => {
-  for (const id of [undefined, null, "", 42, {}]) {
+  for (const id of [undefined, null, "", "   ", 42, {}]) {
     const result = listDegradedChecks([{ id, status: "warn" }]);
     assert.deepEqual(
       result,
       [UNNAMED_CHECK_ID],
       `id=${JSON.stringify(id)} must still be counted, not dropped`,
+    );
+  }
+});
+
+test("a malformed warning id overrides advisory suppression", () => {
+  for (const id of [undefined, null, "", "   ", 42, {}]) {
+    assert.deepEqual(
+      listDegradedChecks([{ id, status: "warn", advisory: true }]),
+      [UNNAMED_CHECK_ID],
+      `advisory cannot hide malformed id=${JSON.stringify(id)}`,
     );
   }
 });
