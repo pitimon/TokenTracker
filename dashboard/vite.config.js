@@ -1053,9 +1053,8 @@ async function handleLocalApi(req, res, url) {
   if (pathname === "/functions/tokentracker-usage-limits") {
     try {
       const esmRequire = createRequire(import.meta.url);
-      const { getUsageLimits, resetUsageLimitsCache } = esmRequire("../src/lib/usage-limits");
-      const forceRefresh = url.searchParams.get("refresh");
-      if (forceRefresh === "1" || forceRefresh === "true") {
+      const { getUsageLimits, isForcedRefresh, resetUsageLimitsCache } = esmRequire("../src/lib/usage-limits");
+      if (isForcedRefresh(url.searchParams.get("refresh"))) {
         resetUsageLimitsCache();
       }
       const data = await getUsageLimits({

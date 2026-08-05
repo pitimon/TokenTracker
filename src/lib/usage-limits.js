@@ -22,9 +22,13 @@ const {
   fetchCursorUsageSummary,
 } = require("./cursor-config");
 const { PS_ARGS, PS_BINARY, parseProcessLine } = require("./process-list");
+const { createSingleFlight } = require("./single-flight");
 
 // 2-minute in-memory cache
 let cache = { data: null, fetchedAt: 0 };
+// One slot per module instance, not a shared singleton: `delete require.cache[…]`
+// is how the tests get a clean cache, and a shared instance would survive it.
+const runUsageLimitsFetch = createSingleFlight();
 const CACHE_TTL_MS = 2 * 60 * 1000;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 15_000;
 const ANTIGRAVITY_LIMITS_CACHE_FILE = "usage-limits-cache.json";
@@ -1907,7 +1911,20 @@ function withPlanLabel(obj, raw, brand) {
   return { ...obj, plan_label: normalizePlanLabel(raw, brand) };
 }
 
-async function getUsageLimits({
+async function getUsageLimits(options = {}) {
+  const nowMs = Date.now();
+  if (cache.data && nowMs - cache.fetchedAt < CACHE_TTL_MS) {
+    return cache.data;
+  }
+  // Past the cache there is exactly one thing to do, and it is expensive: sweep
+  // every configured provider. Concurrent tabs, route mounts and revalidations
+  // land here together on a cold cache, and a forced refresh clears the cache
+  // first (local-api.js, the `refresh` param) — so "no cached data" is a common
+  // state for several callers at once, not a rare one. They share one sweep.
+  return runUsageLimitsFetch(() => fetchUsageLimits(options));
+}
+
+async function fetchUsageLimits({
   home,
   env,
   platform,
@@ -1919,9 +1936,6 @@ async function getUsageLimits({
   providerTimeoutMs = DEFAULT_PROVIDER_TIMEOUT_MS,
 } = {}) {
   const nowMs = Date.now();
-  if (cache.data && nowMs - cache.fetchedAt < CACHE_TTL_MS) {
-    return cache.data;
-  }
 
   const [claudeToken, claudeSubscription, codexAuth] = await Promise.all([
     Promise.resolve().then(() => readClaudeCodeAccessToken({ platform, securityRunner, home })),
@@ -2065,8 +2079,20 @@ function resetUsageLimitsCache() {
   cache = { data: null, fetchedAt: 0 };
 }
 
+// The force protocol for the quota cache, in one place because two handlers
+// speak it: the CLI local API and the Vite dev middleware. They used to carry
+// their own copy of the same comparison, which is how one of them quietly stops
+// honouring a spelling — and a force that is silently downgraded to a cached
+// read looks exactly like a working one. `1` is what the dashboard client sends
+// (dashboard/src/lib/api.ts); `true` is what a human types into the URL bar.
+// Deliberately exact: no trimming, no case folding, no truthiness.
+function isForcedRefresh(value) {
+  return value === "1" || value === "true";
+}
+
 module.exports = {
   getUsageLimits,
+  isForcedRefresh,
   normalizePlanLabel,
   resetUsageLimitsCache,
   extractGeminiOauthClientCredentials,
