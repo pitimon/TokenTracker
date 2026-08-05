@@ -1352,6 +1352,7 @@ lang 123 me 22u IPv4 0x123 0t0 TCP 127.0.0.1:51234 (LISTEN)
 
       const cachedPath = path.join(tmp, ".tokentracker", "tracker", "usage-limits-cache.json");
       const cached = JSON.parse(fs.readFileSync(cachedPath, "utf8"));
+      assert.equal(cached.antigravity.process_scope, "current-user-v1");
       assert.equal(cached.antigravity.primary_window.used_percent, 75);
       assert.equal(cached.antigravity.cached_at, "2026-05-21T00:00:00.000Z");
     } finally {
@@ -1368,6 +1369,7 @@ lang 123 me 22u IPv4 0x123 0t0 TCP 127.0.0.1:51234 (LISTEN)
         path.join(trackerDir, "usage-limits-cache.json"),
         JSON.stringify({
           antigravity: {
+            process_scope: "current-user-v1",
             primary_window: {
               used_percent: 42,
               reset_at: "2026-05-22T00:00:00.000Z",
@@ -1393,6 +1395,43 @@ lang 123 me 22u IPv4 0x123 0t0 TCP 127.0.0.1:51234 (LISTEN)
     }
   });
 
+  it("does not serve Antigravity cache with missing or unknown current-user provenance", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-antigravity-cache-legacy-"));
+    try {
+      const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+      fs.mkdirSync(trackerDir, { recursive: true });
+      const commandRunner = () => ({ stdout: "", stderr: "", status: 1 });
+
+      for (const processScope of [undefined, "current-user-v2"]) {
+        const antigravity = {
+          account_email: "another-user@example.com",
+          account_plan: "Pro",
+          primary_window: {
+            used_percent: 42,
+            reset_at: "2026-05-22T00:00:00.000Z",
+          },
+          cached_at: "2026-05-21T00:00:00.000Z",
+        };
+        if (processScope !== undefined) antigravity.process_scope = processScope;
+        fs.writeFileSync(
+          path.join(trackerDir, "usage-limits-cache.json"),
+          JSON.stringify({ antigravity }),
+          "utf8",
+        );
+
+        const result = await fetchAntigravityLimits({
+          home: tmp,
+          commandRunner,
+          nowMs: Date.parse("2026-05-21T01:00:00.000Z"),
+        });
+
+        assert.deepEqual(result, { configured: false });
+      }
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("does not use cached Antigravity quota after all cached windows reset", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-antigravity-cache-expired-"));
     try {
@@ -1402,6 +1441,7 @@ lang 123 me 22u IPv4 0x123 0t0 TCP 127.0.0.1:51234 (LISTEN)
         path.join(trackerDir, "usage-limits-cache.json"),
         JSON.stringify({
           antigravity: {
+            process_scope: "current-user-v1",
             primary_window: {
               used_percent: 42,
               reset_at: "2026-05-21T00:00:00.000Z",

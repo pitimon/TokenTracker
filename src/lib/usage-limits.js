@@ -32,6 +32,10 @@ const runUsageLimitsFetch = createSingleFlight();
 const CACHE_TTL_MS = 2 * 60 * 1000;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 15_000;
 const ANTIGRAVITY_LIMITS_CACHE_FILE = "usage-limits-cache.json";
+// Trust marker, not a user identity: only cache blocks written after the
+// current-user process-scan fix may be served. Missing/unknown markers fail
+// closed so a legacy multi-user cache cannot disclose another account.
+const ANTIGRAVITY_CACHE_PROCESS_SCOPE = "current-user-v1";
 const ANTIGRAVITY_LIMITS_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const ANTIGRAVITY_LIMITS_CACHE_UNKNOWN_RESET_TTL_MS = 12 * 60 * 60 * 1000;
 const CLAUDE_LIMITS_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -1447,6 +1451,7 @@ function hasAntigravityWindow(limits) {
 }
 
 function normalizeAntigravityCachedLimits(raw, { nowMs = Date.now() } = {}) {
+  if (raw?.process_scope !== ANTIGRAVITY_CACHE_PROCESS_SCOPE) return null;
   const cachedAtMs = parseTimeMs(raw?.cached_at);
   if (!Number.isFinite(cachedAtMs)) return null;
   if (cachedAtMs > nowMs + 60_000) return null;
@@ -1475,6 +1480,7 @@ function writeAntigravityLimitsCache(limits, { home, nowMs = Date.now() } = {}) 
   if (!limits?.configured || limits.error || !hasAntigravityWindow(limits)) return;
   const payload = {
     antigravity: {
+      process_scope: ANTIGRAVITY_CACHE_PROCESS_SCOPE,
       account_email: limits.account_email || null,
       account_plan: limits.account_plan || null,
       primary_window: limits.primary_window || null,
