@@ -174,6 +174,92 @@ test("parseGooseIncremental: cumulative-delta across runs (no double-count)", as
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("parseGooseIncremental: later cumulative deltas use the observation bucket across midnight", async () => {
+  const { dir, dbPath } = makeGooseDb({
+    rows: [
+      {
+        id: "sess-cross-day",
+        model_config_json: '{"model_name":"gpt-5.6-sol"}',
+        provider_name: "openai",
+        created_at: "2026-05-21T23:55:00Z",
+        accumulated_total_tokens: 1000,
+        accumulated_input_tokens: 800,
+        accumulated_output_tokens: 150,
+      },
+    ],
+  });
+  const queuePath = path.join(dir, "queue.jsonl");
+  const cursors = {};
+
+  await parseGooseIncremental({
+    dbPath,
+    cursors,
+    queuePath,
+    now: () => new Date("2026-05-21T23:59:00Z"),
+  });
+
+  cp.execFileSync("sqlite3", [
+    dbPath,
+    "UPDATE sessions SET accumulated_total_tokens=3000, accumulated_input_tokens=2300, accumulated_output_tokens=600 WHERE id='sess-cross-day';",
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+
+  await parseGooseIncremental({
+    dbPath,
+    cursors,
+    queuePath,
+    now: () => new Date("2026-05-22T00:05:00Z"),
+  });
+
+  const rows = fs
+    .readFileSync(queuePath, "utf8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map(JSON.parse)
+    .filter((row) => row.source === "goose" && row.model === "gpt-5.6-sol");
+  const latestByBucket = new Map(rows.map((row) => [row.hour_start, row]));
+  const columns = (row) => ({
+    input: row?.input_tokens,
+    output: row?.output_tokens,
+    reasoning: row?.reasoning_output_tokens,
+    total: row?.total_tokens,
+    conversations: row?.conversation_count,
+  });
+
+  assert.deepEqual(columns(latestByBucket.get("2026-05-21T23:30:00.000Z")), {
+    input: 800,
+    output: 150,
+    reasoning: 50,
+    total: 1000,
+    conversations: 1,
+  });
+  assert.deepEqual(columns(latestByBucket.get("2026-05-22T00:00:00.000Z")), {
+    input: 1500,
+    output: 450,
+    reasoning: 50,
+    total: 2000,
+    conversations: 1,
+  });
+
+  const conserved = [...latestByBucket.values()].reduce(
+    (totals, row) => {
+      const values = columns(row);
+      for (const key of Object.keys(totals)) totals[key] += values[key];
+      return totals;
+    },
+    { input: 0, output: 0, reasoning: 0, total: 0, conversations: 0 },
+  );
+  assert.deepEqual(conserved, {
+    input: 2300,
+    output: 600,
+    reasoning: 100,
+    total: 3000,
+    conversations: 2,
+  });
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("parseGooseIncremental: falls back to single-turn when accumulated_* absent (older schema)", async () => {
   const { dir, dbPath } = makeGooseDb({
     withAccumulated: false,
