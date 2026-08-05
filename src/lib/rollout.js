@@ -3237,21 +3237,48 @@ function isUncPath(p) {
   return typeof p === "string" && (p.startsWith("\\\\") || p.startsWith("//"));
 }
 
+function sqliteDbChangeFingerprint(dbPath) {
+  const parts = [];
+  for (const suffix of ["", "-wal", "-shm", "-journal"]) {
+    const filePath = dbPath + suffix;
+    const label = suffix || "main";
+    try {
+      const stat = fssync.statSync(filePath, { bigint: true });
+      parts.push(`${label}:${stat.size}:${stat.mtimeNs}`);
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        parts.push(`${label}:missing`);
+        continue;
+      }
+      // A partial fingerprint must never authorize the no-change fast path.
+      // Retry the read instead of treating repeated stat failures as stable.
+      return null;
+    }
+  }
+  return parts.join("|");
+}
+
 function snapshotSqliteDb(dbPath) {
   const tmpRoot = fssync.mkdtempSync(
     path.join(require("node:os").tmpdir(), "tokentracker-hermes-snap-"),
   );
   const target = path.join(tmpRoot, path.basename(dbPath));
   fssync.copyFileSync(dbPath, target);
-  // Best-effort copy of SQLite sidecars; missing -wal/-shm/-journal is fine.
+  // Copy SQLite sidecars as one logical snapshot. A missing sidecar is normal,
+  // but any other copy failure makes the snapshot incomplete and must prevent
+  // callers from advancing a change fingerprint based on stale main-DB data.
+  let sidecarsComplete = true;
   for (const suffix of ["-wal", "-shm", "-journal"]) {
     const src = dbPath + suffix;
     try {
-      if (fssync.existsSync(src)) fssync.copyFileSync(src, target + suffix);
-    } catch (_e) { }
+      fssync.copyFileSync(src, target + suffix);
+    } catch (error) {
+      if (!error || error.code !== "ENOENT") sidecarsComplete = false;
+    }
   }
   return {
     path: target,
+    sidecarsComplete,
     cleanup() {
       try { fssync.rmSync(tmpRoot, { recursive: true, force: true }); } catch (_e) { }
     },
@@ -6128,7 +6155,8 @@ async function parseGooseIncremental({
       ? { ...gooseState.sessionTotals }
       : {};
 
-  const cursorDbMtime = Number.isFinite(gooseState.lastDbMtimeMs) ? gooseState.lastDbMtimeMs : 0;
+  const cursorDbFingerprint =
+    typeof gooseState.lastDbFingerprint === "string" ? gooseState.lastDbFingerprint : null;
   let currentMtime = 0;
   try {
     currentMtime = fssync.statSync(resolvedDb).mtimeMs;
@@ -6139,9 +6167,12 @@ async function parseGooseIncremental({
     }
     throw e;
   }
-  // mtime short-circuit: skip the full sessions table scan when the DB
-  // hasn't been touched since the last sync.
-  if (currentMtime > 0 && currentMtime === cursorDbMtime) {
+  const currentDbFingerprint = sqliteDbChangeFingerprint(resolvedDb);
+  // Goose commonly commits active-session writes only to SQLite's WAL. Skip
+  // the table scan only when the main DB and every sidecar are unchanged.
+  // Legacy cursors without a fingerprint intentionally perform one read to
+  // establish the sidecar-aware baseline.
+  if (cursorDbFingerprint && currentDbFingerprint === cursorDbFingerprint) {
     cursors.goose = { ...gooseState, sessionTotals, updatedAt: observedAt };
     return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
   }
@@ -6151,6 +6182,15 @@ async function parseGooseIncremental({
   const snap = snapshotSqliteDb(resolvedDb);
   let rows = [];
   try {
+    if (!snap.sidecarsComplete) {
+      cursors.goose = {
+        ...gooseState,
+        sessionTotals,
+        lastDbFingerprint: null,
+        updatedAt: observedAt,
+      };
+      return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    }
     rows = readGooseSessionsFromSqlite(snap.path, sqliteOptions);
   } finally {
     snap.cleanup();
@@ -6271,6 +6311,7 @@ async function parseGooseIncremental({
     ...gooseState,
     sessionTotals,
     lastDbMtimeMs: currentMtime,
+    lastDbFingerprint: currentDbFingerprint,
     updatedAt: observedAt,
   };
 

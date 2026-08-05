@@ -260,6 +260,143 @@ test("parseGooseIncremental: later cumulative deltas use the observation bucket 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("parseGooseIncremental: WAL-only database growth invalidates the change fingerprint", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "goose-wal-test-"));
+  const dbPath = path.join(dir, "sessions.db");
+  const queuePath = path.join(dir, "queue.jsonl");
+  const db = cp.spawn("sqlite3", [dbPath], { stdio: ["pipe", "pipe", "pipe"] });
+  const lineReader = require("node:readline").createInterface({ input: db.stdout });
+  const pending = new Map();
+  let commandId = 0;
+  let dbStderr = "";
+  lineReader.on("line", (line) => {
+    const resolve = pending.get(line);
+    if (!resolve) return;
+    pending.delete(line);
+    resolve();
+  });
+  db.stderr.on("data", (chunk) => { dbStderr += chunk; });
+  const failPending = (error) => {
+    for (const [, resolve] of pending) resolve(error);
+    pending.clear();
+  };
+  db.on("exit", (code) => {
+    failPending(new Error(`sqlite3 exited ${code}: ${dbStderr}`));
+  });
+  db.on("error", failPending);
+  db.stdin.on("error", failPending);
+  const execInOpenDb = (sql) => new Promise((resolve, reject) => {
+    const marker = `goose-wal-ready-${++commandId}`;
+    pending.set(marker, (error) => (error ? reject(error) : resolve()));
+    db.stdin.write(`${sql.trim()}\n.print ${marker}\n`);
+  });
+
+  try {
+    await execInOpenDb(`
+      .bail on
+      PRAGMA journal_mode=WAL;
+      PRAGMA wal_autocheckpoint=0;
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        model_config_json TEXT,
+        provider_name TEXT,
+        created_at TEXT NOT NULL,
+        total_tokens INTEGER,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        accumulated_total_tokens INTEGER,
+        accumulated_input_tokens INTEGER,
+        accumulated_output_tokens INTEGER
+      );
+      INSERT INTO sessions (
+        id, model_config_json, provider_name, created_at,
+        accumulated_total_tokens, accumulated_input_tokens, accumulated_output_tokens
+      ) VALUES (
+        'sess-wal', '{"model_name":"gpt-5.6-sol"}', 'openai', '2026-05-21T23:55:00Z',
+        1000, 800, 150
+      );
+    `);
+
+    const cursors = {};
+    await parseGooseIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      now: () => new Date("2026-05-21T23:59:00Z"),
+    });
+
+    assert.equal(db.exitCode, null, `sqlite3 writer exited early: ${dbStderr}`);
+    const mainMtimeBefore = fs.statSync(dbPath).mtimeMs;
+    const walBefore = fs.statSync(`${dbPath}-wal`);
+    await execInOpenDb(
+      "UPDATE sessions SET accumulated_total_tokens=3000, accumulated_input_tokens=2300, accumulated_output_tokens=600 WHERE id='sess-wal';",
+    );
+    const mainMtimeAfter = fs.statSync(dbPath).mtimeMs;
+    const walAfter = fs.statSync(`${dbPath}-wal`);
+
+    assert.equal(mainMtimeAfter, mainMtimeBefore, "fixture must isolate the update in the WAL");
+    assert.ok(
+      walAfter.mtimeMs !== walBefore.mtimeMs || walAfter.size !== walBefore.size,
+      "WAL fingerprint must change after the committed update",
+    );
+
+    const originalCopyFileSync = fs.copyFileSync;
+    let failedSnapshotResult;
+    try {
+      fs.copyFileSync = (source, destination, ...args) => {
+        if (source === `${dbPath}-wal`) {
+          const error = new Error("simulated WAL copy failure");
+          error.code = "EACCES";
+          throw error;
+        }
+        return originalCopyFileSync(source, destination, ...args);
+      };
+      failedSnapshotResult = await parseGooseIncremental({
+        dbPath,
+        cursors,
+        queuePath,
+        now: () => new Date("2026-05-22T00:04:00Z"),
+      });
+    } finally {
+      fs.copyFileSync = originalCopyFileSync;
+    }
+    assert.equal(failedSnapshotResult.eventsAggregated, 0, "incomplete snapshot must not emit");
+    assert.equal(
+      cursors.goose.lastDbFingerprint,
+      null,
+      "incomplete snapshot must invalidate the fast-path fingerprint",
+    );
+
+    const result = await parseGooseIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      now: () => new Date("2026-05-22T00:05:00Z"),
+    });
+    assert.equal(result.eventsAggregated, 1, "WAL-only growth must not be skipped");
+
+    const rows = fs
+      .readFileSync(queuePath, "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map(JSON.parse)
+      .filter((row) => row.source === "goose" && row.model === "gpt-5.6-sol");
+    const latestByBucket = new Map(rows.map((row) => [row.hour_start, row]));
+    assert.equal(latestByBucket.get("2026-05-21T23:30:00.000Z")?.total_tokens, 1000);
+    assert.equal(latestByBucket.get("2026-05-22T00:00:00.000Z")?.total_tokens, 2000);
+  } finally {
+    if (db.exitCode == null && db.stdin.writable) {
+      await new Promise((resolve) => {
+        db.once("exit", resolve);
+        db.stdin.end(".exit\n");
+      });
+    }
+    lineReader.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("parseGooseIncremental: falls back to single-turn when accumulated_* absent (older schema)", async () => {
   const { dir, dbPath } = makeGooseDb({
     withAccumulated: false,
