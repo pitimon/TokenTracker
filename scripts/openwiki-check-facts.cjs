@@ -21,6 +21,75 @@ function findLine(content, index) {
   return content.slice(0, index).split("\n").length;
 }
 
+function collectLocalApiMethodFindings({ facts, file, root = ROOT }) {
+  const findings = [];
+  const documented = new Map();
+  const relative = path.relative(root, file.path);
+  for (const [lineIndex, rawLine] of file.content.split("\n").entries()) {
+    if (!/\/(?:functions|api|proxy)\//.test(rawLine) || !rawLine.includes("|")) continue;
+
+    const cells = rawLine.trim().split("|").map((cell) => cell.trim());
+    if (cells[0] === "") cells.shift();
+    if (cells.at(-1) === "") cells.pop();
+    if (cells.length < 2) {
+      findings.push(`${relative}:${lineIndex + 1} invalid local API method table row`);
+      continue;
+    }
+
+    const methodCell = cells[0];
+    const pathCell = cells[1];
+    if (!/\/(?:functions|api|proxy)\//.test(pathCell)) continue;
+
+    const line = lineIndex + 1;
+    const pathMatch = pathCell.match(/^`(\/(?:functions|api|proxy)\/[^`]+)`$/);
+    if (!pathMatch) {
+      findings.push(`${relative}:${line} invalid path cell '${pathCell}'`);
+      continue;
+    }
+    const endpointPath = pathMatch[1];
+    if (documented.has(endpointPath)) {
+      findings.push(
+        `${relative}:${line} duplicate method row for '${endpointPath}' `
+        + `(first at line ${documented.get(endpointPath).line})`,
+      );
+      continue;
+    }
+    if (!/^[A-Z]+(?:\s+and\s+[A-Z]+)*$/.test(methodCell)) {
+      findings.push(`${relative}:${line} invalid method cell '${methodCell}' for '${endpointPath}'`);
+      documented.set(endpointPath, { methods: null, line });
+      continue;
+    }
+    documented.set(endpointPath, {
+      methods: methodCell.split(/\s+and\s+/),
+      line,
+    });
+  }
+
+  const sourceEndpoints = new Map(
+    facts.local_api.endpoints.map((endpoint) => [endpoint.path, endpoint.methods]),
+  );
+  for (const [endpointPath, sourceMethods] of sourceEndpoints) {
+    const row = documented.get(endpointPath);
+    if (!row) {
+      findings.push(`${relative} missing method row for '${endpointPath}'`);
+      continue;
+    }
+    if (!row.methods) continue;
+    if (JSON.stringify(row.methods) !== JSON.stringify(sourceMethods)) {
+      findings.push(
+        `${relative}:${row.line} method mismatch for '${endpointPath}': `
+        + `documented ${row.methods.join(", ")}; source ${sourceMethods.join(", ")}`,
+      );
+    }
+  }
+  for (const [endpointPath, row] of documented) {
+    if (!sourceEndpoints.has(endpointPath)) {
+      findings.push(`${relative}:${row.line} unknown local endpoint '${endpointPath}'`);
+    }
+  }
+  return findings;
+}
+
 // `files` are scanned for references that must resolve (an unknown command in
 // any doc is a defect). `coverageFiles` are the subset that must *also* be
 // complete — every real command/endpoint/route documented somewhere. Only
@@ -48,7 +117,7 @@ function collectFindings({ facts, files, coverageFiles = files, root = ROOT }) {
         documentedCommands.add(command);
       }
     }
-    for (const match of file.content.matchAll(/\/functions\/tokentracker-[a-z-]+/g)) {
+    for (const match of file.content.matchAll(/\/(?:functions\/tokentracker-[a-z-]+|api\/(?:local-auth|avatar-proxy)|proxy\/ipcheck)\b/g)) {
       const endpoint = match[0];
       if (!endpointNames.has(endpoint)) {
         findings.push(`${relative}:${findLine(file.content, match.index)} unknown local endpoint '${endpoint}'`);
@@ -110,7 +179,16 @@ function checkFacts({ root = ROOT } = {}) {
   // this check would have caught it on the day it was written had it been
   // looking. Scoped to the two root docs a reader is told to follow.
   const files = coverageFiles.concat(readRootDocs(root));
-  return findings.concat(collectFindings({ facts: current, files, coverageFiles, root }));
+  findings.push(...collectFindings({ facts: current, files, coverageFiles, root }));
+  const localApiFile = coverageFiles.find(
+    (file) => path.relative(root, file.path) === path.join("openwiki", "local-api.md"),
+  );
+  if (!localApiFile) {
+    findings.push("openwiki/local-api.md is missing");
+  } else {
+    findings.push(...collectLocalApiMethodFindings({ facts: current, file: localApiFile, root }));
+  }
+  return findings;
 }
 
 function readRootDocs(root) {
@@ -129,4 +207,9 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { checkFacts, collectFindings, readRootDocs };
+module.exports = {
+  checkFacts,
+  collectFindings,
+  collectLocalApiMethodFindings,
+  readRootDocs,
+};

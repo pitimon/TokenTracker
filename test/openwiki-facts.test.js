@@ -3,15 +3,103 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { extractFacts } = require("../scripts/openwiki-extract-facts.cjs");
-const { checkFacts, collectFindings, readRootDocs } = require("../scripts/openwiki-check-facts.cjs");
+const { extractFacts, extractLocalApiMethodAllowlist } = require("../scripts/openwiki-extract-facts.cjs");
+const {
+  checkFacts,
+  collectFindings,
+  collectLocalApiMethodFindings,
+  readRootDocs,
+} = require("../scripts/openwiki-check-facts.cjs");
 
 test("OpenWiki facts expose TokenTracker's public command, API, route, and parser contracts", () => {
   const facts = extractFacts();
   assert.ok(facts.cli.commands.some((command) => command.name === "serve"));
   assert.ok(facts.local_api.endpoints.some((endpoint) => endpoint.path === "/functions/tokentracker-usage-limits"));
+  assert.ok(facts.local_api.endpoints.some((endpoint) => endpoint.path === "/api/local-auth"));
+  assert.ok(facts.local_api.endpoints.some((endpoint) => endpoint.path === "/api/avatar-proxy"));
+  assert.ok(facts.local_api.endpoints.some((endpoint) => endpoint.path === "/proxy/ipcheck"));
   assert.ok(facts.dashboard.routes.some((route) => route.path === "/limits"));
   assert.ok(facts.providers.parsers.some((parser) => parser.name === "parseClaudeIncremental"));
+});
+
+test("OpenWiki facts derive endpoint methods from the enforced allowlist", () => {
+  const source = `
+    const LOCAL_API_METHODS = new Map([
+      ["/functions/tokentracker-read", ["GET"]],
+      ["/functions/tokentracker-write", ["POST"]],
+      ["/functions/tokentracker-both", ["GET", "POST"]],
+    ]);
+  `;
+  assert.deepEqual(
+    extractLocalApiMethodAllowlist(source),
+    new Map([
+      ["/functions/tokentracker-read", ["GET"]],
+      ["/functions/tokentracker-write", ["POST"]],
+      ["/functions/tokentracker-both", ["GET", "POST"]],
+    ]),
+  );
+});
+
+test("OpenWiki checker rejects a documented endpoint method that differs from source facts", () => {
+  const facts = {
+    local_api: {
+      endpoints: [{ path: "/functions/tokentracker-read", methods: ["GET"] }],
+    },
+  };
+  const file = (content) => ({
+    path: `${process.cwd()}/openwiki/local-api.md`,
+    content,
+  });
+  const findings = collectLocalApiMethodFindings({
+    facts,
+    file: file("| POST | `/functions/tokentracker-read` |\n"),
+    root: process.cwd(),
+  });
+
+  assert.deepEqual(findings, [
+    "openwiki/local-api.md:1 method mismatch for '/functions/tokentracker-read': documented POST; source GET",
+  ]);
+
+  const duplicate = collectLocalApiMethodFindings({
+    facts,
+    file: file([
+      "| POST | `/functions/tokentracker-read` |",
+      "| GET | `/functions/tokentracker-read` |",
+    ].join("\n")),
+    root: process.cwd(),
+  });
+  assert.ok(duplicate.some((finding) => finding.includes("duplicate method row")));
+
+  for (const duplicateRow of [
+    "   | POST | `/functions/tokentracker-read` |",
+    "POST | `/functions/tokentracker-read` |",
+    "\t| POST | `/functions/tokentracker-read` |",
+    "| | `/functions/tokentracker-read` |",
+  ]) {
+    const adversarialDuplicate = collectLocalApiMethodFindings({
+      facts,
+      file: file(`| GET | \`/functions/tokentracker-read\` |\n${duplicateRow}\n`),
+      root: process.cwd(),
+    });
+    assert.ok(
+      adversarialDuplicate.some((finding) => finding.includes("duplicate method row")),
+      `expected duplicate finding for row: ${duplicateRow}`,
+    );
+  }
+
+  const malformedMethod = collectLocalApiMethodFindings({
+    facts,
+    file: file("| get | `/functions/tokentracker-read` |\n"),
+    root: process.cwd(),
+  });
+  assert.ok(malformedMethod.some((finding) => finding.includes("invalid method cell")));
+
+  const malformedPath = collectLocalApiMethodFindings({
+    facts,
+    file: file("| GET | /functions/tokentracker-read |\n"),
+    root: process.cwd(),
+  });
+  assert.ok(malformedPath.some((finding) => finding.includes("invalid path cell")));
 });
 
 test("OpenWiki fact checker rejects unsupported concrete claims", () => {
