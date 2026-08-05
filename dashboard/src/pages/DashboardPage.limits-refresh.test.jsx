@@ -109,7 +109,11 @@ vi.mock("../hooks/useCurrency.js", () => ({
 }));
 
 vi.mock("../ui/dashboard/components/IngestHealthNotice.jsx", () => ({
-  IngestHealthNotice: () => null,
+  IngestHealthNotice: ({ ingestHealth }) => (
+    <output data-testid="ingest-health-state">
+      {ingestHealth?.transcript_suppressed?.count ?? "healthy"}
+    </output>
+  ),
 }));
 
 // The real view is irrelevant here; all it has to do is expose the manual
@@ -164,7 +168,8 @@ describe("DashboardPage usage-limits refresh semantics", () => {
     mocks.refreshProjectUsage.mockClear();
     mocks.refreshPulse.mockClear();
     mocks.getUserStatus.mockClear();
-    mocks.getIngestHealth.mockClear();
+    mocks.getIngestHealth.mockReset();
+    mocks.getIngestHealth.mockResolvedValue(null);
     mocks.triggerLocalSync.mockReset();
     mocks.triggerLocalSync.mockResolvedValue({ stdout: "New 30-min buckets queued: 0" });
     window.localStorage.clear();
@@ -204,6 +209,67 @@ describe("DashboardPage usage-limits refresh semantics", () => {
 
     expect(mocks.refreshUsageLimits).toHaveBeenCalledTimes(1);
     expect(mocks.revalidateUsageLimits).not.toHaveBeenCalled();
+  });
+
+  it("updates ingest health after mount when an existing refresh runs", async () => {
+    await renderDashboard();
+    expect(screen.getByTestId("ingest-health-state")).toHaveTextContent("healthy");
+
+    mocks.getIngestHealth.mockResolvedValue({
+      transcript_suppressed: { checked: true, count: 1, models: ["claude-opus-4-1"] },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("manual-refresh"));
+    });
+
+    expect(screen.getByTestId("ingest-health-state")).toHaveTextContent("1");
+    expect(mocks.getIngestHealth).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores an older local response after the dashboard context changes", async () => {
+    const resolvers = [];
+    mocks.getIngestHealth.mockImplementation(() => new Promise((resolve) => {
+      resolvers.push(resolve);
+    }));
+    const view = render(<DashboardPage baseUrl="http://first.local" />);
+    await act(async () => {});
+
+    view.rerender(<DashboardPage baseUrl="http://second.local" />);
+    await act(async () => {});
+
+    expect(mocks.getIngestHealth).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      resolvers[0]({
+        transcript_suppressed: { checked: true, count: 7, models: ["stale-model"] },
+      });
+    });
+
+    expect(screen.getByTestId("ingest-health-state")).toHaveTextContent("healthy");
+    await act(async () => {
+      resolvers[1](null);
+    });
+  });
+
+  it("does not stack ingest-health requests from overlapping refresh attempts", async () => {
+    await renderDashboard();
+    let resolveIngestHealth;
+    mocks.getIngestHealth.mockImplementation(() => new Promise((resolve) => {
+      resolveIngestHealth = resolve;
+    }));
+
+    fireEvent.click(screen.getByTestId("manual-refresh"));
+    fireEvent.click(screen.getByTestId("manual-refresh"));
+    await act(async () => {});
+
+    expect(mocks.getIngestHealth).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveIngestHealth(null);
+    });
+
+    fireEvent.click(screen.getByTestId("manual-refresh"));
+    await act(async () => {});
+    expect(mocks.getIngestHealth).toHaveBeenCalledTimes(3);
   });
 
   it("still refreshes every dashboard panel when a manual local sync fails", async () => {
