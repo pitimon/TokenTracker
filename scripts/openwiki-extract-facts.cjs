@@ -25,6 +25,20 @@ function extractMatches(source, regex, mapMatch) {
   return results;
 }
 
+function extractLocalApiMethodAllowlist(source) {
+  const declaration = source.match(/const LOCAL_API_METHODS = new Map\(\[([\s\S]*?)\]\);/);
+  if (!declaration) throw new Error("LOCAL_API_METHODS declaration not found");
+
+  return new Map(extractMatches(
+    declaration[1],
+    /\["([^"]+)", \[([^\]]+)\]\]/g,
+    (match) => [
+      match[1],
+      extractMatches(match[2], /"([A-Z]+)"/g, (methodMatch) => methodMatch[1]),
+    ],
+  ));
+}
+
 function extractFacts({ root = ROOT } = {}) {
   const cliPath = "src/cli.js";
   const apiPath = "src/lib/local-api.js";
@@ -35,6 +49,7 @@ function extractFacts({ root = ROOT } = {}) {
   const api = read(root, apiPath);
   const app = read(root, appPath);
   const rollout = read(root, rolloutPath);
+  const methodAllowlist = extractLocalApiMethodAllowlist(api);
 
   const commands = extractMatches(cli, /case "([a-z-]+)":/g, (match) => ({
     name: match[1],
@@ -48,20 +63,29 @@ function extractFacts({ root = ROOT } = {}) {
 
   const endpointMatches = extractMatches(
     api,
-    /if \(p === "(\/functions\/tokentracker-[a-z-]+)"\)/g,
+    /if \(p === "(\/(?:functions\/tokentracker-[a-z-]+|api\/[a-z-]+))"\)/g,
     (match) => ({
       path: match[1],
       index: match.index,
     }),
   );
+  const proxyPrefix = api.match(/const IP_CHECK_PROXY_PREFIX = "([^"]+)"/)?.[1];
+  const proxyIndex = api.indexOf("if (p.startsWith(`${IP_CHECK_PROXY_PREFIX}/`) || p === IP_CHECK_PROXY_PREFIX)");
+  if (!proxyPrefix || proxyIndex < 0) throw new Error("IP-check proxy handler not found");
+  endpointMatches.push({ path: proxyPrefix, index: proxyIndex });
+  endpointMatches.sort((a, b) => a.index - b.index);
+
+  for (const endpointPath of methodAllowlist.keys()) {
+    if (!endpointMatches.some((endpoint) => endpoint.path === endpointPath)) {
+      throw new Error(`No local API handler for LOCAL_API_METHODS entry ${endpointPath}`);
+    }
+  }
+
   const endpoints = endpointMatches.map((endpoint, index) => {
     const next = endpointMatches[index + 1]?.index ?? api.length;
     const block = api.slice(endpoint.index, next);
-    const methods = endpoint.path === "/functions/tokentracker-local-sync"
-      ? ["POST"]
-      : endpoint.path === "/functions/tokentracker-skills"
-        ? ["GET", "POST"]
-        : ["GET"];
+    const methods = methodAllowlist.get(endpoint.path);
+    if (!methods) throw new Error(`No LOCAL_API_METHODS entry for ${endpoint.path}`);
     return {
       path: endpoint.path,
       methods,
@@ -125,4 +149,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { extractFacts, writeFacts };
+module.exports = { extractFacts, extractLocalApiMethodAllowlist, writeFacts };

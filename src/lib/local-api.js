@@ -743,6 +743,40 @@ function json(res, data, status) {
 const IP_CHECK_PROXY_PREFIX = "/proxy/ipcheck";
 const IP_CHECK_TARGET = "https://ip.net.coffee";
 
+const LOCAL_API_METHODS = new Map([
+  ["/api/local-auth", ["GET"]],
+  ["/proxy/ipcheck", ["GET", "HEAD"]],
+  ["/api/avatar-proxy", ["GET", "HEAD"]],
+  ["/functions/tokentracker-local-sync", ["POST"]],
+  ["/functions/tokentracker-wrapped", ["GET"]],
+  ["/functions/tokentracker-usage-summary", ["GET"]],
+  ["/functions/tokentracker-usage-daily", ["GET"]],
+  ["/functions/tokentracker-usage-heatmap", ["GET"]],
+  ["/functions/tokentracker-usage-model-breakdown", ["GET"]],
+  ["/functions/tokentracker-usage-category-breakdown", ["GET"]],
+  ["/functions/tokentracker-project-usage-summary", ["GET"]],
+  ["/functions/tokentracker-user-status", ["GET"]],
+  ["/functions/tokentracker-usage-hourly", ["GET"]],
+  ["/functions/tokentracker-usage-monthly", ["GET"]],
+  ["/functions/tokentracker-skills", ["GET", "POST"]],
+  ["/functions/tokentracker-usage-limits", ["GET"]],
+  ["/functions/tokentracker-ingest-health", ["GET"]],
+]);
+
+// Preserve the established JSON shape for the two mutation-capable endpoints
+// that already returned `{ ok: false, error }` for unsupported methods.
+const LOCAL_API_OK_FALSE_METHOD_ERRORS = new Set([
+  "/functions/tokentracker-local-sync",
+  "/functions/tokentracker-skills",
+]);
+
+function allowedMethodsForLocalApiPath(pathname) {
+  return LOCAL_API_METHODS.get(pathname)
+    || (pathname.startsWith(`${IP_CHECK_PROXY_PREFIX}/`)
+      ? LOCAL_API_METHODS.get(IP_CHECK_PROXY_PREFIX)
+      : null);
+}
+
 // HTTP hop-by-hop headers (RFC 7230 §6.1) plus headers undici/fetch manages
 // internally. Forwarding any of these to `fetch(...)` either silently breaks
 // the request (host being wrong) or, on stricter undici versions like the
@@ -961,12 +995,21 @@ function createLocalApiHandler({ queuePath }) {
 
   return async function handleLocalApi(req, res, url) {
     const p = url.pathname;
+    const allowedMethods = allowedMethodsForLocalApiPath(p);
+    const method = String(req.method || "GET").toUpperCase();
+    if (allowedMethods && !allowedMethods.includes(method)) {
+      const error = "Method Not Allowed";
+      res.writeHead(405, {
+        "Content-Type": "application/json",
+        Allow: allowedMethods.join(", "),
+      });
+      res.end(JSON.stringify(
+        LOCAL_API_OK_FALSE_METHOD_ERRORS.has(p) ? { ok: false, error } : { error },
+      ));
+      return true;
+    }
 
     if (p === "/api/local-auth") {
-      if (String(req.method || "GET").toUpperCase() !== "GET") {
-        json(res, { error: "Method Not Allowed" }, 405);
-        return true;
-      }
       res.writeHead(200, {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
@@ -982,10 +1025,6 @@ function createLocalApiHandler({ queuePath }) {
     // (exfiltrate dashboard cookies, anonymously POST through user IP).
     if (p.startsWith(`${IP_CHECK_PROXY_PREFIX}/`) || p === IP_CHECK_PROXY_PREFIX) {
       const method = String(req.method || "GET").toUpperCase();
-      if (method !== "GET" && method !== "HEAD") {
-        json(res, { error: "Method Not Allowed" }, 405);
-        return true;
-      }
       const targetPath = p === IP_CHECK_PROXY_PREFIX
         ? "/"
         : p.slice(IP_CHECK_PROXY_PREFIX.length) || "/";
@@ -1057,10 +1096,6 @@ function createLocalApiHandler({ queuePath }) {
     // proxy); strip cookies/auth; small in-memory cache.
     if (p === "/api/avatar-proxy") {
       const method = String(req.method || "GET").toUpperCase();
-      if (method !== "GET" && method !== "HEAD") {
-        json(res, { error: "Method Not Allowed" }, 405);
-        return true;
-      }
       const target = url.searchParams.get("url");
       if (!target) {
         json(res, { error: "Missing url" }, 400);
@@ -1164,10 +1199,6 @@ function createLocalApiHandler({ queuePath }) {
 
     // --- local-sync (POST) ---
     if (p === "/functions/tokentracker-local-sync") {
-      if (String(req.method || "GET").toUpperCase() !== "POST") {
-        json(res, { ok: false, error: "Method Not Allowed" }, 405);
-        return true;
-      }
       if (!isAuthorizedLocalMutation(req)) {
         json(res, { ok: false, error: "Unauthorized" }, 401);
         return true;
@@ -1706,7 +1737,6 @@ function createLocalApiHandler({ queuePath }) {
           return true;
         }
 
-        json(res, { ok: false, error: "Method Not Allowed" }, 405);
       } catch (e) {
         json(res, { ok: false, error: e?.message || "Unknown skills error" }, 500);
       }

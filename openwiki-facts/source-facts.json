@@ -40,11 +40,37 @@
   "local_api": {
     "endpoints": [
       {
+        "path": "/api/local-auth",
+        "methods": [
+          "GET"
+        ],
+        "evidence": "src/lib/local-api.js:1012",
+        "mutation": false
+      },
+      {
+        "path": "/proxy/ipcheck",
+        "methods": [
+          "GET",
+          "HEAD"
+        ],
+        "evidence": "src/lib/local-api.js:1026",
+        "mutation": false
+      },
+      {
+        "path": "/api/avatar-proxy",
+        "methods": [
+          "GET",
+          "HEAD"
+        ],
+        "evidence": "src/lib/local-api.js:1097",
+        "mutation": false
+      },
+      {
         "path": "/functions/tokentracker-local-sync",
         "methods": [
           "POST"
         ],
-        "evidence": "src/lib/local-api.js:1166",
+        "evidence": "src/lib/local-api.js:1201",
         "mutation": true
       },
       {
@@ -52,7 +78,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1200",
+        "evidence": "src/lib/local-api.js:1231",
         "mutation": false
       },
       {
@@ -60,7 +86,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1211",
+        "evidence": "src/lib/local-api.js:1242",
         "mutation": false
       },
       {
@@ -68,7 +94,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1296",
+        "evidence": "src/lib/local-api.js:1327",
         "mutation": false
       },
       {
@@ -76,7 +102,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1307",
+        "evidence": "src/lib/local-api.js:1338",
         "mutation": false
       },
       {
@@ -84,7 +110,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1375",
+        "evidence": "src/lib/local-api.js:1406",
         "mutation": false
       },
       {
@@ -92,7 +118,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1454",
+        "evidence": "src/lib/local-api.js:1485",
         "mutation": false
       },
       {
@@ -100,7 +126,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1500",
+        "evidence": "src/lib/local-api.js:1531",
         "mutation": false
       },
       {
@@ -108,7 +134,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1513",
+        "evidence": "src/lib/local-api.js:1544",
         "mutation": false
       },
       {
@@ -116,7 +142,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1523",
+        "evidence": "src/lib/local-api.js:1554",
         "mutation": false
       },
       {
@@ -124,7 +150,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1533",
+        "evidence": "src/lib/local-api.js:1564",
         "mutation": false
       },
       {
@@ -133,7 +159,7 @@
           "GET",
           "POST"
         ],
-        "evidence": "src/lib/local-api.js:1567",
+        "evidence": "src/lib/local-api.js:1598",
         "mutation": true
       },
       {
@@ -141,7 +167,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1717",
+        "evidence": "src/lib/local-api.js:1747",
         "mutation": false
       },
       {
@@ -149,7 +175,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1745",
+        "evidence": "src/lib/local-api.js:1775",
         "mutation": false
       }
     ]

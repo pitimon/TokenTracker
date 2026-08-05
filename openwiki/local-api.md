@@ -4,11 +4,36 @@ The loopback local API is implemented by `src/lib/local-api.js`. The server in
 `src/commands/serve.js` routes `/functions/`, `/api/`, and `/proxy/` requests to
 that handler before static dashboard files.
 
+## Method contract
+
+`createLocalApiHandler` enforces one centralized method allowlist before endpoint
+dispatch. Once a request reaches that handler, a recognized path called with any
+other method returns `405 Method Not Allowed` and an `Allow` header containing
+exactly the methods listed below. The server handles `OPTIONS` first as a global
+CORS preflight and returns `204`; preflight therefore does not reach this
+endpoint-level allowlist.
+
+Unknown paths remain unhandled by `createLocalApiHandler` and continue through
+the server's existing static-file and SPA fallback behavior.
+
+## Local utility and proxy endpoints
+
+| Method | Path |
+| --- | --- |
+| GET | `/api/local-auth` |
+| GET and HEAD | `/api/avatar-proxy` |
+| GET and HEAD | `/proxy/ipcheck` |
+
+The proxy routes intentionally retain `HEAD` support. `/proxy/ipcheck` is also
+the prefix contract for its nested proxy paths. Their target and path allowlists
+still run after the method check.
+
 ## Function endpoints
 
-These endpoint names and methods are generated from source. Query parameters and
-response fields are implementation details: read the handler before relying on
-them in a client or document.
+Every endpoint name and method row in both tables is checked against the
+centralized source allowlist by `npm run docs:openwiki:check`. Query parameters
+and response fields are implementation details: read the handler before relying
+on them in a client or document.
 
 | Method | Path |
 | --- | --- |
@@ -69,8 +94,8 @@ have recorded is by definition one this user started. `test/process-list.test.js
 asserts the literal argv, because a real `ps` run on a single-user machine looks
 identical either way.
 
-Note that `src/lib/usage-limits.js` performs a separate, unrelated `ps` scan and
-still passes `-ax`; it is not reached from this endpoint.
+The Antigravity process detector in `src/lib/usage-limits.js` shares the same
+current-user `PS_ARGS`; it is a separate scan and is not reached from this endpoint.
 
 The same detector backs the `ingest.transcript_suppressed` check in
 `tokentracker doctor`. That check is **omitted entirely** where the platform
