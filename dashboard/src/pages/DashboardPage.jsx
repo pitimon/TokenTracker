@@ -154,6 +154,8 @@ export function DashboardPage({
   const [lastUpdatedAtMs, setLastUpdatedAtMs] = useState(() => Date.now());
   const autoRefreshInFlightRef = useRef(false);
   const autoSyncInFlightRef = useRef(false);
+  const ingestHealthGenerationRef = useRef(0);
+  const ingestHealthInFlightRef = useRef(null);
   const lastAutoRefreshAtRef = useRef(0);
   const lastLocalDayRef = useRef(null);
   const mainContentVisibleNotifiedRef = useRef(false);
@@ -188,30 +190,46 @@ export function DashboardPage({
     };
   }, [baseUrl, isLocalMode, mockEnabled]);
 
+  const refreshIngestHealth = useCallback(async () => {
+    if (!isLocalMode) {
+      setIngestHealth(null);
+      return;
+    }
+    const generation = ingestHealthGenerationRef.current;
+    const activeFlight = ingestHealthInFlightRef.current;
+    if (activeFlight?.generation === generation) return activeFlight.promise;
+    const request = (async () => {
+      try {
+        const data = await getIngestHealth();
+        if (ingestHealthGenerationRef.current !== generation) return;
+        setIngestHealth(data && typeof data === "object" ? data : null);
+      } catch (_err) {
+        if (ingestHealthGenerationRef.current !== generation) return;
+        setIngestHealth(null);
+      } finally {
+        if (ingestHealthInFlightRef.current?.promise === request) {
+          ingestHealthInFlightRef.current = null;
+        }
+      }
+    })();
+    ingestHealthInFlightRef.current = { generation, promise: request };
+    return request;
+  }, [isLocalMode]);
+
   // Local-CLI-only check: no cloud equivalent, no mock data, so it's skipped
   // outside local mode. Failure must never surface as an error box — the
   // notice itself renders nothing unless the check actually found suppressed
   // sessions, so a failed fetch and "nothing to report" look identical here.
   useEffect(() => {
-    if (!isLocalMode) {
-      setIngestHealth(null);
-      return;
-    }
-    let active = true;
-    (async () => {
-      try {
-        const data = await getIngestHealth();
-        if (!active) return;
-        setIngestHealth(data && typeof data === "object" ? data : null);
-      } catch (_err) {
-        if (!active) return;
-        setIngestHealth(null);
-      }
-    })();
+    const generation = ingestHealthGenerationRef.current + 1;
+    ingestHealthGenerationRef.current = generation;
+    void refreshIngestHealth();
     return () => {
-      active = false;
+      if (ingestHealthGenerationRef.current === generation) {
+        ingestHealthGenerationRef.current += 1;
+      }
     };
-  }, [isLocalMode]);
+  }, [baseUrl, refreshIngestHealth]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -719,6 +737,7 @@ export function DashboardPage({
       refreshModelBreakdown(),
       refreshProjectUsage(),
       refreshDailyBreakdown(),
+      refreshIngestHealth(),
       forceUsageLimits ? refreshUsageLimits() : revalidateUsageLimits(),
       refreshPulse(),
     ]);
@@ -726,6 +745,7 @@ export function DashboardPage({
   }, [
     refreshDailyBreakdown,
     refreshHeatmap,
+    refreshIngestHealth,
     refreshModelBreakdown,
     refreshProjectUsage,
     refreshTrend,
