@@ -995,11 +995,22 @@ async function fetchGeminiLimits({ home, env, fetchImpl = fetch, commandRunner }
 
 function runCommand(commandRunner, command, args, options = {}) {
   const runner = typeof commandRunner === "function" ? commandRunner : cp.spawnSync;
-  return runner(command, args, {
+  const result = runner(command, args, {
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
     ...options,
   });
+  // Every consumer reads spawnSync-style fields immediately. An async runner
+  // is therefore a contract error, not supported concurrency. Attach a handler
+  // immediately, then return a synchronous failure shape so the Promise cannot
+  // escape as unhandled process state.
+  if (result && typeof result.then === "function") {
+    Promise.resolve(result).catch(() => {});
+    const error = new TypeError("commandRunner must return synchronously");
+    error.code = "COMMAND_RUNNER_ASYNC_UNSUPPORTED";
+    return { status: 1, stdout: "", stderr: error.message, error };
+  }
+  return result;
 }
 
 function whichBinary(binary, { commandRunner } = {}) {
@@ -1380,6 +1391,12 @@ function detectAntigravityProcess({ commandRunner } = {}) {
   const result = runCommand(commandRunner, PS_BINARY, PS_ARGS, {
     timeout: 4000,
   });
+  if (result?.error?.code === "COMMAND_RUNNER_ASYNC_UNSUPPORTED") {
+    return {
+      configured: true,
+      error: result.error?.message || "Antigravity process detection failed.",
+    };
+  }
   const lines = String(result?.stdout || "").split("\n");
 
   let sawProcess = false;
