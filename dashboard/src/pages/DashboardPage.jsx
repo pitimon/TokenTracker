@@ -775,7 +775,11 @@ export function DashboardPage({
     setManualSyncLoading(true);
     try {
       if (isLocalMode) {
-        await triggerLocalSync();
+        try {
+          await triggerLocalSync();
+        } catch (error) {
+          console.error("[DashboardPage] Manual sync failed:", error);
+        }
       }
       await refreshAll({ forceUsageLimits: true });
     } catch (error) {
