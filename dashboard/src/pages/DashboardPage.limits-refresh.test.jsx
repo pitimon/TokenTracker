@@ -8,6 +8,13 @@ import { DashboardPage } from "./DashboardPage.jsx";
 // scheduled passes — the interval tick and the post-sync follow-up — must go
 // through the cache-aware revalidate instead.
 const mocks = vi.hoisted(() => ({
+  refreshUsage: vi.fn(() => Promise.resolve()),
+  refreshDailyBreakdown: vi.fn(() => Promise.resolve()),
+  refreshModelBreakdown: vi.fn(() => Promise.resolve()),
+  refreshTrend: vi.fn(() => Promise.resolve()),
+  refreshHeatmap: vi.fn(() => Promise.resolve()),
+  refreshProjectUsage: vi.fn(() => Promise.resolve()),
+  refreshPulse: vi.fn(() => Promise.resolve()),
   refreshUsageLimits: vi.fn(() => Promise.resolve()),
   revalidateUsageLimits: vi.fn(() => Promise.resolve()),
   triggerLocalSync: vi.fn(() => Promise.resolve({ stdout: "New 30-min buckets queued: 0" })),
@@ -32,14 +39,16 @@ vi.mock("../lib/api", () => ({
 }));
 
 vi.mock("../hooks/use-usage-data.js", () => ({
-  useUsageData: () => ({
+  useUsageData: ({ cacheKey }) => ({
     daily: [],
     summary: null,
     rolling: null,
     source: null,
     loading: false,
     error: null,
-    refresh: () => Promise.resolve(),
+    refresh: cacheKey.endsWith(".daily-breakdown")
+      ? mocks.refreshDailyBreakdown
+      : mocks.refreshUsage,
   }),
 }));
 
@@ -47,7 +56,7 @@ vi.mock("../hooks/use-usage-model-breakdown.js", () => ({
   useUsageModelBreakdown: () => ({
     breakdown: null,
     loading: false,
-    refresh: () => Promise.resolve(),
+    refresh: mocks.refreshModelBreakdown,
   }),
 }));
 
@@ -57,7 +66,7 @@ vi.mock("../hooks/use-trend-data.js", () => ({
     from: null,
     to: null,
     loading: false,
-    refresh: () => Promise.resolve(),
+    refresh: mocks.refreshTrend,
   }),
 }));
 
@@ -66,7 +75,7 @@ vi.mock("../hooks/use-activity-heatmap.js", () => ({
     daily: [],
     heatmap: null,
     loading: false,
-    refresh: () => Promise.resolve(),
+    refresh: mocks.refreshHeatmap,
   }),
 }));
 
@@ -75,12 +84,12 @@ vi.mock("../hooks/use-project-usage-summary", () => ({
     entries: [],
     unattributedSources: [],
     loading: false,
-    refresh: () => Promise.resolve(),
+    refresh: mocks.refreshProjectUsage,
   }),
 }));
 
 vi.mock("../hooks/use-pulse", () => ({
-  usePulse: () => ({ pulse: null, refresh: () => Promise.resolve() }),
+  usePulse: () => ({ pulse: null, refresh: mocks.refreshPulse }),
 }));
 
 vi.mock("../hooks/use-plan-prices", () => ({
@@ -147,6 +156,13 @@ describe("DashboardPage usage-limits refresh semantics", () => {
     vi.useFakeTimers();
     mocks.refreshUsageLimits.mockClear();
     mocks.revalidateUsageLimits.mockClear();
+    mocks.refreshUsage.mockClear();
+    mocks.refreshDailyBreakdown.mockClear();
+    mocks.refreshModelBreakdown.mockClear();
+    mocks.refreshTrend.mockClear();
+    mocks.refreshHeatmap.mockClear();
+    mocks.refreshProjectUsage.mockClear();
+    mocks.refreshPulse.mockClear();
     mocks.getUserStatus.mockClear();
     mocks.getIngestHealth.mockClear();
     mocks.triggerLocalSync.mockReset();
@@ -188,6 +204,33 @@ describe("DashboardPage usage-limits refresh semantics", () => {
 
     expect(mocks.refreshUsageLimits).toHaveBeenCalledTimes(1);
     expect(mocks.revalidateUsageLimits).not.toHaveBeenCalled();
+  });
+
+  it("still refreshes every dashboard panel when a manual local sync fails", async () => {
+    const syncError = new Error("sync unavailable");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.triggerLocalSync.mockRejectedValue(syncError);
+
+    await renderDashboard();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("manual-refresh"));
+    });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      "[DashboardPage] Manual sync failed:",
+      syncError,
+    );
+    expect(mocks.refreshUsage).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshDailyBreakdown).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshModelBreakdown).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshTrend).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshHeatmap).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshProjectUsage).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshPulse).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshUsageLimits).toHaveBeenCalledTimes(1);
+    expect(mocks.revalidateUsageLimits).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
   });
 
   it("keeps scheduled and manual semantics apart within one session", async () => {
