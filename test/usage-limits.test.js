@@ -1298,6 +1298,26 @@ lang      123 me    23u  IPv4 0x124                0t0  TCP 127.0.0.1:51235 (LIS
     );
   });
 
+  it("turns a rejecting async command runner into a visible error without an unhandled rejection", async () => {
+    const seen = [];
+    const onUnhandled = (reason) => seen.push(reason?.message || String(reason));
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const result = await fetchAntigravityLimits({
+        commandRunner: async () => {
+          throw new Error("commandRunner boom");
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      assert.equal(result.configured, true);
+      assert.match(result.error, /commandRunner must return synchronously/);
+      assert.deepEqual(seen, []);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("persists live Antigravity quota for use after the process exits", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-antigravity-cache-write-"));
     try {
