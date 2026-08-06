@@ -37,8 +37,7 @@ Tool logs and hooks -> src/lib/rollout.js -> local queue files
     -> src/lib/local-api.js -> dashboard/dist -> browser or native WebView
 ```
 
-The data contract uses token counts and timestamps. Do not add prompts, message
-bodies, or other conversation content to the queue or documentation.
+The data contract is usage metadata only — source, model, token and conversation counts, timestamps, and derived cost. Never add prompts, responses, message bodies, private user-code paths, or credentials to the queue or documentation. Derived cost is computed downstream and is not stored in the queue.
 
 ## Common entry points
 

@@ -27,7 +27,7 @@ You can expect an initial response within a few days. Once a fix is ready, it wi
 
 TokenTracker is a local-first tool that reads AI CLI tool logs from your home directory. The most sensitive areas to consider when reviewing security:
 
-- **`src/lib/rollout.js`** — parses logs from 8 different AI CLI tools. Privacy rule: only token counts and timestamps may be extracted, never prompt or response content.
+- **`src/lib/rollout.js`** — parses logs from 8 different AI CLI tools. Privacy rule: usage metadata only — source, model, token and conversation counts, timestamps, and derived cost; never prompts, responses, message bodies, private user-code paths, or credentials.
 - **`src/lib/cursor-config.js`** — reads Cursor's local SQLite to extract auth tokens for the Cursor usage API. Tokens must never leave the user's machine.
 - **`src/lib/local-api.js`** — local HTTP server bound to `127.0.0.1`. Should not accept connections from other hosts.
 - **`TokenTrackerBar/`** — macOS app, ad-hoc signed. Has filesystem access via macOS TCC permissions; should never write outside its own data directories or the documented snapshot/queue paths.
@@ -40,4 +40,4 @@ TokenTracker is a local-first tool that reads AI CLI tool logs from your home di
 
 ## Privacy Commitment
 
-TokenTracker's foundational privacy rule: **token counts and timestamps only — never any prompt content, response content, or file contents from user code**. Any change that risks violating this is treated as a security issue.
+TokenTracker's foundational privacy rule: **usage metadata only — source, model, token and conversation counts, timestamps, and derived cost; never prompts, responses, message bodies, private user-code paths, or credentials**. Any change that risks violating this is treated as a security issue.

@@ -19,8 +19,10 @@ the loopback server binds to `127.0.0.1`, and no usage data leaves the host.
           |  (read-only *.jsonl)         |  (/functions/ endpoints)    |
           +----------------------------> [ TokenTracker ] -------------+
 
-  Boundary: prompts, messages, and conversation bodies never cross into
-  TokenTracker. Only token counts and timestamps are read and stored.
+  Boundary: usage metadata only — source, model, token and conversation counts,
+  timestamps, and derived cost. Never persist prompts, responses, message bodies,
+  private user-code paths, or credentials. Derived cost is computed downstream;
+  it is not stored in the queue.
 ```
 
 ## Level 1 data-flow
@@ -98,9 +100,10 @@ the loopback server binds to `127.0.0.1`, and no usage data leaves the host.
 
 ## Token accounting boundary
 
-The parse step (1.0) is the trust boundary. Everything downstream of it works
-only on token counts and timestamps; prompt and message content is dropped at
-parse time and never reaches the queue. The queue columns and the exclusion of
-conversation content are defined in `CLAUDE.md`, and cost is computed from the
-individual billable columns in `src/lib/pricing/`, never from `total_tokens`.
+The parse step (1.0) is the trust boundary. Everything downstream handles usage
+metadata — source, model, token and conversation counts, timestamps, and derived cost.
+Never persist prompts, responses, message bodies, private user-code paths, or
+credentials. The queue columns and content exclusions are defined in `CLAUDE.md`;
+cost is computed from the individual billable columns in `src/lib/pricing/`, never
+stored in the queue or derived from `total_tokens`.
 See [Parsers and sync](../parsers-and-sync.md) and [Local API](../local-api.md).
