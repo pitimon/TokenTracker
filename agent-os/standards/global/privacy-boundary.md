@@ -15,7 +15,8 @@ Changing parsers, fixtures, logs, diagnostics, queue rows, local API responses, 
 
 - Permit required usage metadata: source, model, token and conversation counts, timestamps, and derived cost.
 - Derived cost is not stored in the queue and may be cached in browser localStorage.
-- Never persist or expose private content: prompts, responses, message bodies, private user-code paths, or credentials.
+- Never persist or expose private content: prompts, responses, message bodies, or private user-code paths.
+- Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads.
 - Use real but anonymized fixtures; remove content fields and identifying paths before committing them.
 - Declare and validate outbound hosts. Document what triggers each call and what data it carries.
 - Treat credentials already present on the machine as sensitive inputs, not reusable output data.

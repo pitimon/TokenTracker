@@ -79,7 +79,7 @@ Look at how Claude Code, Codex, or Gemini are wired in for reference — they're
 
 ## Privacy Rule (non-negotiable)
 
-TokenTracker processes **usage metadata only**: source, model, token and conversation counts, timestamps, and derived cost. The queue stores source, model, counts, and timestamps. Derived cost is not stored in the queue and may be cached in browser localStorage. Never log, store, transmit, or print prompts, responses, message bodies, private user-code paths, or credentials. If your change touches a parser, double-check this boundary.
+TokenTracker processes **usage metadata only**: source, model, token and conversation counts, timestamps, and derived cost. The queue stores source, model, counts, and timestamps. Derived cost is not stored in the queue and may be cached in browser localStorage. Never log, store, transmit, or print prompts, responses, message bodies, or private user-code paths. Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads. If your change touches a parser, double-check this boundary.
 
 ## Releasing (maintainers only)
 

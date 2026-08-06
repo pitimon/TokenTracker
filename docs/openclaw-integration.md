@@ -24,7 +24,7 @@ During `tokentracker init`, TokenTracker:
 3. Calls `openclaw plugins enable openclaw-session-sync`.
 4. The plugin registers a session listener inside OpenClaw. After you restart the OpenClaw gateway, every completed session gets a token-usage record that TokenTracker reads during `sync`.
 
-The plugin only emits token counts and timestamps. It never reads or transmits prompt or response content.
+The plugin reads OpenClaw's local session registry and passes agent and session identifiers, model, token totals, updated timestamp, and OpenClaw home path to TokenTracker's local sync process. It does not pass prompt or response content.
 
 ## Verifying the install
 

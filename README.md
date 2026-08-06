@@ -78,7 +78,7 @@ Both bundle their own Node runtime, so there is nothing else to install. They sh
 
 ## ✨ What you get
 
-- 🔒 **Your usage data never leaves your machine.** Usage metadata only — source, model, token and conversation counts, timestamps, and derived cost; never prompts, responses, message bodies, private user-code paths, or credentials. No account, no telemetry, no analytics, no phone-home. TokenTracker does make a few outbound calls *on your behalf* (model prices, your own plan quotas); every one is named in [Privacy](#-privacy) below, and none of them carry your usage.
+- 🔒 **Your usage data never leaves your machine.** Usage metadata only — source, model, token and conversation counts, timestamps, and derived cost; never prompts, responses, message bodies, or private user-code paths. No account, no telemetry, no analytics, no phone-home. TokenTracker does make documented outbound calls *on your behalf* (for example model prices, provider authentication/quotas, and opt-in tools); none upload token-usage metadata.
 - 📊 **One calm web dashboard.** Your whole picture in the browser at a local URL, no login — light or dark, auto-refreshing while the tab is open. [What's on it ↓](#-the-dashboard)
 - 📈 **Quota at a glance, on every card.** Live plan-quota usage (e.g. 5h + weekly) as color-coded chips right on each provider's card — see how close you are to your limits without leaving the overview. Where the provider reports countable units you get the actual number rather than a percentage to convert in your head: GitHub Copilot reads `158/300` premium requests. Full windows + reset countdowns on the Limits page. Covers Claude, Codex, Cursor, Gemini, Kimi, Z.AI, Kiro, Copilot, and Antigravity.
 - 💰 **Cost you can trust — and a price tag when it can't.** 2,200+ models priced from [LiteLLM](https://github.com/BerriAI/litellm) (refreshed daily) with a bundled offline snapshot, so USD totals are right even without a network. A model too new to have a price is badged **pricing missing** rather than quietly counted as $0, and prices refresh in the background instead of waiting for a restart. Cross-provider records are de-duplicated to match each provider's own billing.
@@ -122,14 +122,14 @@ Rate-limit providers are auto-detected where possible. For Z.AI / GLM Coding Pla
 ## 🧩 How it works
 
 ```
-AI CLI tools  →  hooks / passive readers  →  local queue file  →  dashboard
+AI CLI tools  →  hooks / passive readers  →  local queue files  →  dashboard
    (logs)         (usage metadata)           (30-min buckets)     (your browser)
 ```
 
 1. Your AI tools write logs during normal use.
-2. Lightweight hooks (or passive file readers) pick up token counts locally — never prompt or response content. Some tools keep their logs in SQLite (Cursor, Kiro, Zed and friends); TokenTracker only ever *reads* those.
-3. Counts are aggregated into 30-minute UTC buckets and appended to one plain-text file: `~/.tokentracker/tracker/queue.jsonl`.
-4. The dashboard reads that file and renders it in your browser's timezone.
+2. Lightweight hooks and passive readers parse tool logs locally, then retain only approved usage metadata — never prompts or response content. Some tools keep their logs in SQLite (Cursor, Kiro, Zed and friends); TokenTracker reads those databases without modifying them.
+3. Counts are aggregated into 30-minute UTC buckets and appended to `~/.tokentracker/tracker/queue.jsonl`; per-project counts and local project identifiers are also written to `~/.tokentracker/tracker/project.queue.jsonl`.
+4. The dashboard reads those local queues, derives cost, renders in your browser's timezone, and may cache usage summaries and daily rows in browser localStorage.
 
 No account, no upload of your usage, and no server to sign in to.
 
@@ -139,10 +139,12 @@ No account, no upload of your usage, and no server to sign in to.
 
 | Protection | What it means |
 |---|---|
-| **Usage metadata only** | Source, model, token and conversation counts, timestamps, and derived cost. Never prompts, responses, message bodies, private user-code paths, or credentials. |
-| **Your usage stays local** | Every count TokenTracker collects is written to one file on your disk and read back by a server on your own machine. There is no endpoint it uploads usage to. |
-| **Auditable in one command** | You don't have to take our word for it — the store is an append-only text file you can open yourself: `cat ~/.tokentracker/tracker/queue.jsonl`. It contains usage metadata, not conversation content. |
+| **Usage metadata only** | Source, model, token and conversation counts, timestamps, and derived cost. Never prompts, responses, message bodies, or private user-code paths. |
+| **Your usage stays local** | Usage rows stay in `queue.jsonl` and `project.queue.jsonl`; derived summaries may also be cached in browser localStorage. No TokenTracker endpoint uploads usage. |
+| **Auditable locally** | Inspect both queue files with `cat ~/.tokentracker/tracker/{queue.jsonl,project.queue.jsonl}` and inspect optional browser localStorage caches in your browser's developer tools. The project queue includes local project identifiers. |
 | **No telemetry** | No analytics, no crash reporting, no phone-home, no account. |
+
+Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads.
 
 **Outbound calls.** TokenTracker is local-first, not network-free. It reaches these hosts and no others. None of them carry your usage data — but some do reveal that *you* are asking, so they are listed with who makes the call.
 

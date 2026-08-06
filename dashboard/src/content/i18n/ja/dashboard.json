@@ -269,17 +269,5 @@
   "local_only.body": "このページはお使いの端末上のデータを読み込むため、Mac アプリまたはコマンドラインの dashboard でのみ表示できます。",
   "local_only.open_app": "Mac アプリ内で開く",
   "local_only.download": "Mac アプリをダウンロード",
-  "dashboard.auth_gate.title": "Token Tracker にサインイン",
-  "dashboard.auth_gate.subtitle": "サインインして、クラウドでの API 使用量、コスト、トークン消費の傾向を同期および表示します。",
-  "dashboard.auth_gate.button": "今すぐサインイン",
-  "shared.app_name": "Token Tracker",
-  "dashboard.auth_gate.hero_title": "AIエージェントのすべてのトークン消費",
-  "dashboard.auth_gate.hero_subtitle": "明確で透過的、マルチエンドポイント制御",
-  "dashboard.auth_gate.desc": "Claude Code、Cursor、Gemini CLIなどのすべての主流エージェントからのトークンクォータ、同時実行コスト、遅延統計をパブリッククラウドで安全に同期し、これまでにない包括的な可視化分析を提供します。",
-  "dashboard.auth_gate.feature.sync.title": "リアルタイムクラウド同期",
-  "dashboard.auth_gate.feature.sync.desc": "各エンドポイントの実行コストを自動的に収集し、プライベートクラウドに数秒で安全にアーカイブします。",
-  "dashboard.auth_gate.feature.anal.title": "多次元ダッシュボード分析",
-  "dashboard.auth_gate.feature.anal.desc": "モデル分類、時間枠ごとにトークン分布を統計し、コストの急増と消費構成をいつでも追跡できます。",
-  "dashboard.auth_gate.feature.guard.title": "ローカル優先の自律性",
-  "dashboard.auth_gate.feature.guard.desc": "Localhostモードではすべてのログイン認証を自動的にスキップし、ローカルのオフラインデバッグエクスペリエンスを完全に保護します。"
+  "shared.app_name": "Token Tracker"
 }

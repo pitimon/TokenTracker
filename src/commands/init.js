@@ -218,7 +218,7 @@ function renderWelcome() {
       "",
       `${BOLD}Token Tracker${RESET}  ${color("Local-first usage across " + providerCount + " AI CLIs", DIM)}`,
       DIVIDER,
-      `${CYAN}Nothing leaves your machine — token counts only, never prompts or responses.${RESET}`,
+      `${CYAN}Usage metadata stays local — never prompts or responses; optional outbound calls are documented.${RESET}`,
       DIVIDER,
       "",
       `  Tracks: ${providerLine}`,
@@ -304,7 +304,7 @@ async function runSetup({
   // Scrub cloud credentials and endpoints on upgrade. Spreading the previous
   // config forward kept a live InsForge bearer token in config.json, and this
   // branch also removed the `status` / `diagnostics` lines that used to reveal
-  // it — so the user is told "local-only, nothing is uploaded" while a valid
+  // it — making the user-facing local-usage privacy claim false while a valid
   // credential sits on disk with nothing left to report or rotate it.
   const {
     deviceToken: _removedDeviceToken,
@@ -932,11 +932,9 @@ if (debugEnabled) {
 }
 
 // Throttle spawn: at most once per 20 seconds.
-// Parsing local logs and uploading to the cloud are two separate decisions.
-// This hook makes only the first one. It runs whether or not a device token
-// exists, because a local-only install still needs its queue refreshed when a
-// session ends. Upload stays gated on a device token inside sync itself, so
-// no credential here means local parse happens and nothing is transmitted.
+// This hook only starts local parsing and queue refresh. Provider quota/auth
+// requests are separate, declared server flows; this generated hook does not
+// upload token-usage metadata or carry provider credentials.
 try {
   const throttlePath = path.join(trackerDir, 'sync.throttle');
   const now = Date.now();

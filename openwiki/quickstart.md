@@ -37,7 +37,7 @@ Tool logs and hooks -> src/lib/rollout.js -> local queue files
     -> src/lib/local-api.js -> dashboard/dist -> browser or native WebView
 ```
 
-The data contract is usage metadata only — source, model, token and conversation counts, timestamps, and derived cost. Never add prompts, responses, message bodies, private user-code paths, or credentials to the queue or documentation. Derived cost is computed downstream and is not stored in the queue.
+The data contract is usage metadata only — source, model, token and conversation counts, timestamps, and derived cost. Never add prompts, responses, message bodies, or private user-code paths to the queue or documentation. Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads. Derived cost is computed downstream and is not stored in the queue.
 
 ## Common entry points
 

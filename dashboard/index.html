@@ -201,7 +201,7 @@
                 "name": "Does Token Tracker collect my prompts or conversations?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. Token Tracker only records token counts, model names, timestamps, and project attribution. It never reads, stores, or uploads prompts, completions, or conversation content."
+                  "text": "No. Token Tracker parses provider logs locally, then persists or exposes only approved usage metadata: token counts, model names, timestamps, project attribution, and derived cost. It does not persist or expose prompts, completions, or conversation content."
                 }
               },
               {
@@ -217,7 +217,7 @@
                 "name": "Does Token Tracker work offline?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. Token Tracker is local-only. All parsing, aggregation, and dashboard rendering happens on your machine, and nothing is uploaded anywhere."
+                  "text": "Core parsing, aggregation, and dashboard rendering work offline. Token-usage metadata is not uploaded; documented optional outbound calls support provider authentication/quotas, pricing, skill discovery, currency conversion, and explicit IP checks."
                 }
               }
             ]
@@ -234,7 +234,8 @@
         across 13 AI coding agent CLIs in one place: Claude Code, Codex CLI, Cursor IDE, Gemini CLI, OpenCode,
         OpenClaw, Every Code, Kiro, Hermes Agent, GitHub Copilot, Kimi Code, oh-my-pi (omp), and CodeBuddy.
         It focuses on minimal data collection, auditable metrics, and clear visibility into model and project
-        usage. Token counts only — never prompts or conversation content.
+        usage. Usage metadata only — source, model, token counts, timestamps, project attribution, and derived cost;
+        never prompts or conversation content.
       </p>
 
       <h2>Install in one command</h2>
@@ -249,8 +250,8 @@
       <h2>What you get after installing</h2>
       <p>
         Token Tracker runs entirely on your machine. After <code>npx tokentracker-cli</code>, a local
-        dashboard at <code>http://localhost:7680</code> exposes the following views — your data stays on
-        your device. There is no upload path.
+        dashboard at <code>http://localhost:7680</code> exposes the following views — your token-usage data stays on
+        your device. There is no token-usage upload path; documented optional features make outbound calls.
       </p>
       <ul>
         <li><strong>Unified usage dashboard</strong> — input, output, cached, and cache-creation tokens across all 13 AI coding tools.</li>
@@ -261,7 +262,7 @@
         <li><strong>Skills browser</strong> — discover and install agent skills from the open ecosystem.</li>
         <li><strong>macOS menu bar app & desktop widget</strong> — at-a-glance usage without opening the dashboard.</li>
       </ul>
-      <p><em>Privacy by design</em>: token counts only, never prompts or conversation content. Local-only — nothing is uploaded.</p>
+      <p><em>Privacy by design</em>: usage metadata only — source, model, token counts, timestamps, project attribution, and derived cost; never prompts or conversation content. Token-usage metadata is not uploaded; documented optional outbound calls support provider authentication/quotas and opt-in features.</p>
 
       <h2>Supported AI coding agent CLIs</h2>
       <ul>
@@ -298,8 +299,9 @@
         Each supported tool emits usage data when a session ends. Token Tracker's parser
         (<code>src/lib/rollout.js</code>) normalizes 9 distinct log formats into a unified schema: half-hour
         UTC buckets keyed by <code>(source, model, hour_start)</code>. Aggregated buckets are written to
-        <code>queue.jsonl</code> and served from a local HTTP API on port 7680. The React dashboard reads
-        from those endpoints. Nothing is uploaded anywhere.
+        <code>queue.jsonl</code> and <code>project.queue.jsonl</code>, then served from a local HTTP API on
+        port 7680. The dashboard reads those endpoints and may cache derived summaries in browser localStorage.
+        Token-usage metadata is not uploaded; documented optional outbound calls support provider authentication/quotas and opt-in features.
       </p>
 
       <h2>Frequently asked questions</h2>
@@ -313,13 +315,13 @@
       <p>Yes. Source on GitHub at <a href="https://github.com/mm7894215/TokenTracker">github.com/mm7894215/TokenTracker</a>; npm package <code>tokentracker-cli</code>.</p>
 
       <h3>Does Token Tracker collect my prompts or conversations?</h3>
-      <p>No. Only token counts, model names, timestamps, and project attribution are recorded. Prompts and completions are never read or uploaded.</p>
+      <p>No. Token Tracker parses provider logs locally, then persists or exposes only approved usage metadata: token counts, model names, timestamps, project attribution, and derived cost. It does not persist or expose prompts, completions, or conversation content.</p>
 
       <h3>What does Token Tracker track?</h3>
       <p>Input, output, cached, and cache-creation tokens per model, project, and time window. It also surfaces rate limits and subscription status for Claude Pro, ChatGPT plans, Cursor, Gemini, Kiro, and Antigravity.</p>
 
       <h3>Does Token Tracker work offline?</h3>
-      <p>Yes. Token Tracker is local-only. All parsing, aggregation, and dashboard rendering happen on your machine, and nothing is uploaded.</p>
+      <p>Core parsing, aggregation, and dashboard rendering work offline. Token-usage metadata is not uploaded; documented optional outbound calls support provider authentication/quotas, pricing, skill discovery, currency conversion, and explicit IP checks.</p>
 
       <h2>Resources</h2>
       <ul>

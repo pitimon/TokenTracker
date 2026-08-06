@@ -240,7 +240,7 @@ test("privacy standard and declared authorities share the usage-metadata boundar
   ].map((file) => ({ file, content: fs.readFileSync(path.join(ROOT, file), "utf8") }));
   const compact = (content) => content.replace(/\s+/g, " ");
   const allowed = /usage metadata.*source.*model.*counts.*timestamps.*derived cost/i;
-  const prohibited = /never.*prompts.*responses.*message bodies.*(?:private|user-code).*paths.*credentials/i;
+  const prohibited = /never.*prompts.*responses.*message bodies.*(?:private|user-code).*paths/i;
   const stale = /(?:only token counts|token counts and timestamps only|only on token counts and timestamps|data contract uses token counts and timestamps|token counts only)/i;
   const falseStorageClaim = /(?:store|stores|stored|persist|persists|persisted)[^.\n]*derived cost/i;
   const falseGlobalNonPersistence = /derived cost[^.\n]*(?:not persisted|never persisted)/i;
@@ -276,6 +276,80 @@ test("privacy standard and declared authorities share the usage-metadata boundar
     assert.match(compact(content), allowed, `${file} is missing the allowed usage-metadata contract`);
     assert.match(compact(content), prohibited, `${file} is missing the private-content prohibition`);
     assert.doesNotMatch(content, stale, `${file} retains a stale token-count-only contract`);
+  }
+});
+
+test("privacy docs distinguish approved credential flows from usage-data storage", () => {
+  const documents = [
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "PRODUCT.md",
+    "README.md",
+    "SECURITY.md",
+    "openwiki/README.md",
+    "openwiki/architecture/dataflow.md",
+    "openwiki/quickstart.md",
+    "agent-os/standards/global/privacy-boundary.md",
+  ].map((file) => ({ file, content: fs.readFileSync(path.join(ROOT, file), "utf8").replace(/\s+/g, " ") }));
+  const credentialBoundary = /credentials.*only for declared provider authentication or quota flows.*credential files.*never.*TokenTracker queues.*logs.*fixtures.*diagnostics.*API responses.*unrelated outbound payloads/i;
+  for (const { file, content } of documents) {
+    assert.match(content, credentialBoundary, `${file} is missing the credential lifecycle boundary`);
+  }
+});
+
+test("front-door docs describe every local usage store and qualify outbound behavior", () => {
+  const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8").replace(/\s+/g, " ");
+  const product = fs.readFileSync(path.join(ROOT, "PRODUCT.md"), "utf8").replace(/\s+/g, " ");
+  assert.match(readme, /queue\.jsonl.*project\.queue\.jsonl.*browser localStorage/i);
+  assert.match(readme, /project identifiers/i);
+  assert.doesNotMatch(readme, /(?:one plain-text file|Every count[^.]*one file)/i);
+  assert.doesNotMatch(product, /Nothing is uploaded/i);
+  assert.match(product, /token-usage metadata.*not uploaded.*documented optional outbound calls/i);
+});
+
+test("shipped privacy copy qualifies local usage data and optional outbound calls", () => {
+  const builtAssets = fs.readdirSync(path.join(ROOT, "dashboard", "dist", "assets"))
+    .filter((name) => name.endsWith(".js"))
+    .map((name) => `dashboard/dist/assets/${name}`);
+  const surfaces = [
+    "README.md",
+    "docs/openclaw-integration.md",
+    "dashboard/index.html",
+    "dashboard/public/llms.txt",
+    "dashboard/dist/index.html",
+    "dashboard/dist/llms.txt",
+    "dashboard/src/content/copy.csv",
+    "src/commands/init.js",
+    "src/cli.js",
+    ...builtAssets,
+  ].map((file) => ({ file, content: fs.readFileSync(path.join(ROOT, file), "utf8") }));
+  const staleClaim = /(?:token counts only|only\s+(?:records?|emits?)\s+token|never\s+reads?[^\n]*(?:prompt|response|conversation)|nothing leaves your machine|nothing is uploaded|uploaded anywhere|local-only[^\n]*nothing[^\n]*uploaded|parse and upload|upload(?:ing)? to (?:the )?cloud|cloud upload)/i;
+  for (const { file, content } of surfaces) {
+    assert.doesNotMatch(content, staleClaim, `${file} retains an overbroad privacy claim`);
+    assert.doesNotMatch(content, /dashboard\.auth_gate/, `${file} retains obsolete cloud-auth copy`);
+  }
+  const dashboardSource = surfaces.find(({ file }) => file === "dashboard/index.html").content;
+  const dashboardBuilt = surfaces.find(({ file }) => file === "dashboard/dist/index.html").content;
+  const openClawDoc = surfaces.find(({ file }) => file === "docs/openclaw-integration.md").content;
+  const copyRegistry = surfaces.find(({ file }) => file === "dashboard/src/content/copy.csv").content;
+  assert.match(dashboardSource, /token-usage metadata[^.]*not uploaded[^.]*optional outbound/i);
+  const correctedDisclosure = /parses provider logs locally[^.]*persists or exposes only approved usage metadata/gi;
+  assert.equal((dashboardSource.match(correctedDisclosure) || []).length, 2, "source JSON-LD and visible FAQ must agree");
+  assert.equal((dashboardBuilt.match(correctedDisclosure) || []).length, 2, "built JSON-LD and visible FAQ must agree");
+  assert.match(openClawDoc, /agent.*session.*model.*token.*timestamp.*home path/i);
+  assert.match(copyRegistry, /Parse local AI tool logs and refresh local usage now\./);
+
+  const expectedTranslations = new Map([
+    ["ja", "ローカルの AI ツールログを解析して、ローカル使用状況を今すぐ更新します。"],
+    ["ko", "로컬 AI 도구 로그를 파싱하고 로컬 사용량을 지금 새로 고칩니다."],
+    ["zh", "解析本地 AI 工具日志并立即刷新本地用量。"],
+    ["zh-TW", "解析本機 AI 工具日誌並立即重新整理本機用量。"],
+  ]);
+  for (const [locale, expected] of expectedTranslations) {
+    const translation = JSON.parse(fs.readFileSync(path.join(ROOT, "dashboard", "src", "content", "i18n", locale, "core.json"), "utf8"));
+    const dashboardTranslation = JSON.parse(fs.readFileSync(path.join(ROOT, "dashboard", "src", "content", "i18n", locale, "dashboard.json"), "utf8"));
+    assert.equal(translation["settings.menubar.syncNowHint"], expected, `${locale} sync hint must stay local-only`);
+    assert.deepEqual(Object.keys(dashboardTranslation).filter((key) => key.startsWith("dashboard.auth_gate")), [], `${locale} retains obsolete cloud-auth keys`);
   }
 });
 

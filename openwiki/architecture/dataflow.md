@@ -21,7 +21,10 @@ the loopback server binds to `127.0.0.1`, and no usage data leaves the host.
 
   Boundary: usage metadata only — source, model, token and conversation counts,
   timestamps, and derived cost. Never persist prompts, responses, message bodies,
-  private user-code paths, or credentials. Derived cost is computed downstream;
+  or private user-code paths. Credentials are used only for declared provider
+  authentication or quota flows and their credential files; never place them in
+  TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated
+  outbound payloads. Derived cost is computed downstream;
   it is not stored in the queue.
 ```
 
@@ -102,8 +105,8 @@ the loopback server binds to `127.0.0.1`, and no usage data leaves the host.
 
 The parse step (1.0) is the trust boundary. Everything downstream handles usage
 metadata — source, model, token and conversation counts, timestamps, and derived cost.
-Never persist prompts, responses, message bodies, private user-code paths, or
-credentials. The queue columns and content exclusions are defined in `CLAUDE.md`;
+Never persist prompts, responses, message bodies, or private user-code paths.
+Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads. The queue columns and content exclusions are defined in `CLAUDE.md`;
 cost is computed from the individual billable columns in `src/lib/pricing/`, never
 stored in the queue or derived from `total_tokens`.
 See [Parsers and sync](../parsers-and-sync.md) and [Local API](../local-api.md).

@@ -275,7 +275,7 @@ settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,Blin
 settings.menubar.launchAtLogin,ui,SettingsPage,SettingsPage,mb_login,Launch at login,,active
 settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,Start TokenTrackerBar automatically when you sign in to macOS.,,active
 settings.menubar.syncNow,ui,SettingsPage,SettingsPage,mb_sync_now,Sync now,,active
-settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,Trigger an immediate parse and upload of local AI tool logs.,,active
+settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,Parse local AI tool logs and refresh local usage now.,,active
 settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,Syncing…,,active
 settings.menubar.updates,ui,SettingsPage,SettingsPage,mb_updates,Updates,,active
 settings.menubar.checkUpdates,ui,SettingsPage,SettingsPage,mb_check_updates,Check for updates,,active
@@ -626,19 +626,7 @@ local_only.title,dashboard,LocalOnlyNotice,LocalOnlyNotice,title,Available in th
 local_only.body,dashboard,LocalOnlyNotice,LocalOnlyNotice,body,"This page reads data from your own machine, so it only works in the Mac app or the CLI dashboard.",,active
 local_only.open_app,dashboard,LocalOnlyNotice,LocalOnlyNotice,open_app,Open in Mac app,,active
 local_only.download,dashboard,LocalOnlyNotice,LocalOnlyNotice,download,Get the Mac app,,active
-dashboard.auth_gate.title,dashboard,DashboardPage,DashboardView,auth_gate_title,Sign in to Token Tracker,,active
-dashboard.auth_gate.subtitle,dashboard,DashboardPage,DashboardView,auth_gate_subtitle,"Sign in to sync and view your API usage, cost, and token consumption trends in the cloud.",,active
-dashboard.auth_gate.button,dashboard,DashboardPage,DashboardView,auth_gate_button,Sign In,,active
 shared.app_name,shared,*,*,app_name,Token Tracker,,active
-dashboard.auth_gate.hero_title,dashboard,DashboardPage,DashboardView,hero_title,Track every AI agent token seamlessly,,active
-dashboard.auth_gate.hero_subtitle,dashboard,DashboardPage,DashboardView,hero_subtitle,"Clear, transparent, and multi-endpoint control",,active
-dashboard.auth_gate.desc,dashboard,DashboardPage,DashboardView,desc,"Securely sync token quotas, concurrent costs, and latency across Claude Code, Cursor, and Gemini CLI in a beautifully unified real-time dashboard.",,active
-dashboard.auth_gate.feature.sync.title,dashboard,DashboardPage,DashboardView,sync_title,Real-time Cloud Sync,,active
-dashboard.auth_gate.feature.sync.desc,dashboard,DashboardPage,DashboardView,sync_desc,Automated pipeline harvesting terminal execution costs into secure cloud records.,,active
-dashboard.auth_gate.feature.anal.title,dashboard,DashboardPage,DashboardView,anal_title,Multi-dimensional Analytics,,active
-dashboard.auth_gate.feature.anal.desc,dashboard,DashboardPage,DashboardView,anal_desc,Slice and dice by models or period to isolate high-cost peaks and allocations.,,active
-dashboard.auth_gate.feature.guard.title,dashboard,DashboardPage,DashboardView,guard_title,Local-first Autonomy,,active
-dashboard.auth_gate.feature.guard.desc,dashboard,DashboardPage,DashboardView,guard_desc,Skip all auth steps entirely on localhost. Preserves local debug speed.,,active
 cmdk.placeholder,ui,CommandPalette,CommandPalette,placeholder,Search pages and skills…,,active
 cmdk.empty,ui,CommandPalette,CommandPalette,empty,No matches,,active
 cmdk.group.pages,ui,CommandPalette,CommandPalette,group_pages,Pages,,active

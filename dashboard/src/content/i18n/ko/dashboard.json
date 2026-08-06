@@ -269,17 +269,5 @@
   "local_only.body": "이 페이지는 사용자의 컴퓨터에 있는 데이터를 읽으므로 Mac 앱 또는 CLI 대시보드에서만 작동합니다.",
   "local_only.open_app": "Mac 앱에서 열기",
   "local_only.download": "Mac 앱 받기",
-  "dashboard.auth_gate.title": "Token Tracker 로그인",
-  "dashboard.auth_gate.subtitle": "로그인하여 클라우드에서 API 사용량, 비용 및 토큰 소비 트렌드를 동기화하고 확인하세요.",
-  "dashboard.auth_gate.button": "로그인",
-  "shared.app_name": "Token Tracker",
-  "dashboard.auth_gate.hero_title": "AI 에이전트의 모든 토큰 소비",
-  "dashboard.auth_gate.hero_subtitle": "명확하고 투명한 멀티 엔드포인트 제어",
-  "dashboard.auth_gate.desc": "Claude Code, Cursor, Gemini CLI 등 모든 주류 에이전트의 토큰 쿼터, 동시 실행 비용 및 대기 시간 통계를 퍼블릭 클라우드에서 안전하게 동기화하여 전례 없는 종합 시각화 분석을 제공합니다.",
-  "dashboard.auth_gate.feature.sync.title": "실시간 클라우드 동기화",
-  "dashboard.auth_gate.feature.sync.desc": "각 엔드포인트의 실행 비용을 자동으로 수집하고 프라이빗 클라우드에 단 몇 초 만에 안전하게 아카이브합니다.",
-  "dashboard.auth_gate.feature.anal.title": "다차원 대시보드 분석",
-  "dashboard.auth_gate.feature.anal.desc": "모델 분류, 시간 프레임별로 토큰 분포를 통계하여 비용 급증 및 소비 구성을 언제든지 추적할 수 있습니다.",
-  "dashboard.auth_gate.feature.guard.title": "로컬 우선의 자율성",
-  "dashboard.auth_gate.feature.guard.desc": "Localhost 모드에서는 모든 로그인 인증을 자동으로 건너뛰어 로컬 오프라인 디버깅 경험을 완벽하게 보호합니다."
+  "shared.app_name": "Token Tracker"
 }

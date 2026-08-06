@@ -269,17 +269,5 @@
   "local_only.body": "這個頁面讀取的是你本機上的資料，所以只能在 Mac app 或命令列 dashboard 裡檢視。",
   "local_only.open_app": "在 Mac app 內開啟",
   "local_only.download": "下載 Mac app",
-  "dashboard.auth_gate.title": "登入 Token Tracker",
-  "dashboard.auth_gate.subtitle": "登入以在雲端同步並檢視您的 API 使用量、成本與 Token 消耗趨勢。",
-  "dashboard.auth_gate.button": "立即登入",
-  "shared.app_name": "Token Tracker",
-  "dashboard.auth_gate.hero_title": "讓 AI 代理的每一筆 Token 消耗",
-  "dashboard.auth_gate.hero_subtitle": "清晰透明、多端無縫掌控",
-  "dashboard.auth_gate.desc": "為您在純雲端安全同步來自 Claude Code、Cursor、Gemini CLI 等全平台主流代理的 Token 額度、並發費用及耗時統計，提供前所未有的全景可視化數據分析。",
-  "dashboard.auth_gate.feature.sync.title": "實時雲端同步",
-  "dashboard.auth_gate.feature.sync.desc": "全自動採集各端代理的開銷，並在您的私人雲盤中秒級安全歸檔。",
-  "dashboard.auth_gate.feature.anal.title": "多維看板分析",
-  "dashboard.auth_gate.feature.anal.desc": "按模型分類、時間跨度統計 Token 分布，隨時追溯開銷尖峰及用量結構。",
-  "dashboard.auth_gate.feature.guard.title": "本地直連免登",
-  "dashboard.auth_gate.feature.guard.desc": "在 Localhost 模式下自動跳過所有登錄驗證，完美保護本地離線調試體驗。"
+  "shared.app_name": "Token Tracker"
 }

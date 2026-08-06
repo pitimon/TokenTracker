@@ -104,7 +104,7 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 - CommonJS in `src/`, ESM + TypeScript strict in `dashboard/`. No mixing.
 - Env-var prefixes: `TOKENTRACKER_` for CLI, `VITE_` for dashboard.
 - Git commits in **English**, conventional style (`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `test:` / `ci:`).
-- **Privacy**: usage metadata only — source, model, token and conversation counts, timestamps, and derived cost; never prompts, responses, message bodies, private user-code paths, or credentials.
+- **Privacy**: usage metadata only — source, model, token and conversation counts, timestamps, and derived cost; never prompts, responses, message bodies, or private user-code paths. Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads.
 - `TokenTrackerBar/EmbeddedServer/` is gitignored; built on demand by `TokenTrackerBar/scripts/bundle-node.sh`.
 - After editing `TokenTrackerBar/project.yml`: `(cd TokenTrackerBar && xcodegen generate && ruby scripts/patch-pbxproj-icon.rb)`.
 
