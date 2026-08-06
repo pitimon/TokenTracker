@@ -3294,12 +3294,6 @@ function readHermesSessions(dbPath, lastCompletedEpoch, unfinishedSessionIds = [
   const forceIncludeSql = forceIds.length > 0
     ? ` OR id IN (${forceIds.map(sqliteStringLiteral).join(",")})`
     : "";
-  // Fetch sessions that started at/after the cursor, sessions that are still
-  // in-progress (ended_at IS NULL), OR sessions that were previously observed
-  // unfinished.  Hermes updates token counts in real-time, including a final
-  // delta when an active session later gets ended_at set.
-  const sql = `SELECT id, model, started_at, ended_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, message_count FROM sessions WHERE (started_at >= ${since} OR ended_at IS NULL${forceIncludeSql}) AND (input_tokens > 0 OR output_tokens > 0 OR cache_read_tokens > 0 OR reasoning_tokens > 0) ORDER BY started_at ASC`;
-
   let snapshot = null;
   let effectiveDbPath = dbPath;
   if (isUncPath(dbPath)) {
@@ -3311,6 +3305,65 @@ function readHermesSessions(dbPath, lastCompletedEpoch, unfinishedSessionIds = [
       // the non-locked case (e.g. permissions, transient I/O).
     }
   }
+  const eligible = `(started_at >= ${since} OR ended_at IS NULL${forceIncludeSql})`;
+  const modelUsageColumns = new Set(
+    readSqliteJsonRows(
+      effectiveDbPath,
+      "PRAGMA table_info(session_model_usage)",
+      { label: "Hermes", maxBuffer: 1024 * 1024, timeout: 5_000, ...sqliteOptions },
+    ).map((column) => column?.name).filter(Boolean),
+  );
+  const hasModelUsage = [
+    "session_id",
+    "model",
+    "api_call_count",
+    "input_tokens",
+    "output_tokens",
+    "cache_read_tokens",
+    "cache_write_tokens",
+    "reasoning_tokens",
+    "first_seen",
+    "last_seen",
+  ].every((column) => modelUsageColumns.has(column));
+  const sql = hasModelUsage
+    ? `WITH eligible_sessions AS (
+         SELECT * FROM sessions WHERE ${eligible}
+       )
+       SELECT s.id, TRIM(u.model) AS model, s.model AS session_model, s.started_at, s.ended_at,
+              SUM(u.input_tokens) AS input_tokens,
+              SUM(u.output_tokens) AS output_tokens,
+              SUM(u.cache_read_tokens) AS cache_read_tokens,
+              SUM(u.cache_write_tokens) AS cache_write_tokens,
+              SUM(u.reasoning_tokens) AS reasoning_tokens,
+              SUM(u.api_call_count) AS message_count,
+              MIN(u.first_seen) AS first_seen,
+              MAX(u.last_seen) AS last_seen,
+              1 AS per_model
+       FROM eligible_sessions s
+       JOIN session_model_usage u ON u.session_id = s.id
+       GROUP BY s.id, TRIM(u.model)
+       HAVING SUM(u.input_tokens) > 0 OR SUM(u.output_tokens) > 0 OR SUM(u.cache_read_tokens) > 0 OR SUM(u.cache_write_tokens) > 0 OR SUM(u.reasoning_tokens) > 0
+       UNION ALL
+       SELECT s.id, s.model, s.model AS session_model, s.started_at, s.ended_at,
+              s.input_tokens, s.output_tokens, s.cache_read_tokens,
+              s.cache_write_tokens, s.reasoning_tokens, s.message_count,
+              NULL AS first_seen, NULL AS last_seen, 0 AS per_model
+       FROM eligible_sessions s
+       WHERE NOT EXISTS (
+         SELECT 1 FROM session_model_usage u
+         WHERE u.session_id = s.id
+           AND (u.input_tokens > 0 OR u.output_tokens > 0 OR u.cache_read_tokens > 0 OR u.cache_write_tokens > 0 OR u.reasoning_tokens > 0)
+       )
+         AND (s.input_tokens > 0 OR s.output_tokens > 0 OR s.cache_read_tokens > 0 OR s.cache_write_tokens > 0 OR s.reasoning_tokens > 0)
+       ORDER BY 4 ASC`
+    : `SELECT id, model, model AS session_model, started_at, ended_at,
+              input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+              reasoning_tokens, message_count, NULL AS first_seen,
+              NULL AS last_seen, 0 AS per_model
+       FROM sessions
+       WHERE ${eligible}
+         AND (input_tokens > 0 OR output_tokens > 0 OR cache_read_tokens > 0 OR cache_write_tokens > 0 OR reasoning_tokens > 0)
+       ORDER BY started_at ASC`;
 
   try {
     return readSqliteJsonRows(effectiveDbPath, sql, {
@@ -3368,6 +3421,11 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
     // Per-session snapshot from the previous sync: { [sessionId]: { in, out, cacheRead, cacheWrite, reasoning } }
     const prevSnapshots = (dbState.snapshots && typeof dbState.snapshots === "object")
       ? dbState.snapshots : {};
+    const hasPerModelRows = rows.some((row) => Number(row.per_model) === 1);
+    const adoptingPerModelState =
+      hasPerModelRows &&
+      dbState.modelUsageVersion !== 1 &&
+      Object.keys(prevSnapshots).length > 0;
 
     // Only advance past sessions that have fully ended.  Active sessions
     // (ended_at IS NULL) must be re-read every sync because Hermes updates
@@ -3388,10 +3446,22 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
       const cacheWrite = toNonNegativeInt(row.cache_write_tokens);
       const reasoning = toNonNegativeInt(row.reasoning_tokens);
       const messageCount = toNonNegativeInt(row.message_count);
-      if (inputTokens === 0 && outputTokens === 0 && cacheRead === 0 && reasoning === 0) continue;
+      if (inputTokens === 0 && outputTokens === 0 && cacheRead === 0 && cacheWrite === 0 && reasoning === 0) continue;
 
-      // Save current snapshot for next sync
-      nextSnapshots[row.id] = { in: inputTokens, out: outputTokens, cacheRead, cacheWrite, reasoning, message_count: messageCount };
+      const perModel = Number(row.per_model) === 1;
+      const model = normalizeModelInput(row.model) || "hermes-agent";
+      const snapshotKey = perModel ? JSON.stringify([String(row.id || ""), model]) : row.id;
+      const currentSnapshot = {
+        in: inputTokens,
+        out: outputTokens,
+        cacheRead,
+        cacheWrite,
+        reasoning,
+        message_count: messageCount,
+      };
+      // Save current snapshot for next sync. Mixed-model sessions are keyed by
+      // both session and model so later growth is attributed independently.
+      nextSnapshots[snapshotKey] = currentSnapshot;
 
       const startedAt = Number(row.started_at);
       const endedAt = row.ended_at == null ? null : Number(row.ended_at);
@@ -3407,7 +3477,10 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
       // Compute delta from previous snapshot (if any) so that we only count
       // new usage since the last sync.  First time we see a session the
       // previous snapshot is absent, so the full amount is the delta.
-      const prev = prevSnapshots[row.id];
+      const legacySessionSnapshot = prevSnapshots[row.id];
+      const prev = adoptingPerModelState && perModel && legacySessionSnapshot
+        ? currentSnapshot
+        : prevSnapshots[snapshotKey];
       let dInput = inputTokens;
       let dOutput = outputTokens;
       let dCacheRead = cacheRead;
@@ -3425,17 +3498,16 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
       // Skip if delta is zero (session unchanged since last sync)
       if (dInput === 0 && dOutput === 0 && dCacheRead === 0 && dCacheWrite === 0 && dReasoning === 0) continue;
 
-      // A first observation has only the session start as a usable timestamp.
-      // Attribute later active-session deltas to this sync so cross-day usage
-      // does not keep growing the day on which the session originally started.
-      // Once Hermes records completion, ended_at is authoritative for the final delta.
-      const epochSec = endedAt ?? (prev ? Date.parse(updatedAt) / 1000 : startedAt);
+      // Per-model rows carry the authoritative last API-call timestamp. Older
+      // Hermes schemas fall back to the session-level start/end policy.
+      const lastSeen = row.last_seen == null ? null : Number(row.last_seen);
+      const epochSec = perModel && Number.isFinite(lastSeen) && lastSeen > 0
+        ? lastSeen
+        : endedAt ?? (prev ? Date.parse(updatedAt) / 1000 : startedAt);
       if (!epochSec || !Number.isFinite(epochSec)) continue;
       const tsIso = new Date(epochSec * 1000).toISOString();
       const bucketStart = toUtcHalfHourStart(tsIso);
       if (!bucketStart) continue;
-
-      const model = normalizeModelInput(row.model) || "hermes-agent";
 
       const delta = {
         input_tokens: dInput,
@@ -3472,6 +3544,7 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
       lastCompletedStartedAt: nextLastCompletedStartedAt,
       unfinishedSessionIds: Array.from(nextUnfinishedSessionIds),
       snapshots: nextSnapshots,
+      ...(hasPerModelRows ? { modelUsageVersion: 1 } : {}),
       updatedAt,
     });
   }

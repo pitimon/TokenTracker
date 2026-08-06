@@ -2773,6 +2773,126 @@ function createHermesDb(dbPath, sessions) {
   }
 }
 
+test("parseHermesIncremental attributes mixed-session totals by session_model_usage model", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-mixed-model-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const startedAt = 1775993700;
+    const endedAt = 1775994000;
+    createHermesDb(dbPath, [
+      {
+        id: "mixed_session",
+        model: "gpt-5.6-sol",
+        started_at: startedAt,
+        ended_at: endedAt,
+        input_tokens: 1300,
+        output_tokens: 120,
+        cache_read_tokens: 900,
+        reasoning_tokens: 30,
+        message_count: 8,
+      },
+      {
+        id: "zero_detail_session",
+        model: "fallback-model",
+        started_at: startedAt - 1,
+        ended_at: endedAt,
+        input_tokens: 11,
+        cache_write_tokens: 13,
+        message_count: 1,
+      },
+    ]);
+    cp.execFileSync("sqlite3", [dbPath, `
+      CREATE TABLE session_model_usage (
+        session_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        billing_provider TEXT NOT NULL DEFAULT '',
+        billing_base_url TEXT NOT NULL DEFAULT '',
+        billing_mode TEXT NOT NULL DEFAULT '',
+        task TEXT NOT NULL DEFAULT '',
+        api_call_count INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        first_seen REAL,
+        last_seen REAL,
+        PRIMARY KEY (session_id, model, billing_provider, billing_base_url, billing_mode, task)
+      );
+      INSERT INTO session_model_usage
+        (session_id, model, task, api_call_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, first_seen, last_seen)
+      VALUES
+        ('mixed_session', 'gpt-5.6-sol', 'main', 5, 1000, 100, 500, 0, 10, ${startedAt + 10}, ${endedAt - 30}),
+        ('mixed_session', 'gpt-5.6-terra', 'main', 3, 300, 20, 400, 7, 20, ${startedAt + 120}, ${endedAt - 10}),
+        ('mixed_session', ' gpt-5.6-terra ', 'subtask', 1, 50, 0, 0, 0, 0, ${startedAt + 130}, ${endedAt - 5}),
+        ('zero_detail_session', 'fallback-model', 'main', 0, 0, 0, 0, 0, 0, ${startedAt}, ${endedAt});
+    `]);
+
+    const cursors = { version: 1 };
+    const result = await parseHermesIncremental({ hermesPath: tmp, cursors, queuePath });
+    assert.equal(result.eventsAggregated, 3);
+
+    const rows = (await readJsonLines(queuePath)).filter((row) => row.source === "hermes");
+    const byModel = new Map(rows.map((row) => [row.model, row]));
+    assert.deepEqual(
+      {
+        input: byModel.get("gpt-5.6-sol")?.input_tokens,
+        output: byModel.get("gpt-5.6-sol")?.output_tokens,
+        cached: byModel.get("gpt-5.6-sol")?.cached_input_tokens,
+        reasoning: byModel.get("gpt-5.6-sol")?.reasoning_output_tokens,
+        conversations: byModel.get("gpt-5.6-sol")?.conversation_count,
+      },
+      { input: 1000, output: 100, cached: 500, reasoning: 10, conversations: 5 },
+    );
+    assert.deepEqual(
+      {
+        input: byModel.get("gpt-5.6-terra")?.input_tokens,
+        output: byModel.get("gpt-5.6-terra")?.output_tokens,
+        cached: byModel.get("gpt-5.6-terra")?.cached_input_tokens,
+        cacheWrite: byModel.get("gpt-5.6-terra")?.cache_creation_input_tokens,
+        reasoning: byModel.get("gpt-5.6-terra")?.reasoning_output_tokens,
+        conversations: byModel.get("gpt-5.6-terra")?.conversation_count,
+      },
+      { input: 350, output: 20, cached: 400, cacheWrite: 7, reasoning: 20, conversations: 4 },
+    );
+    assert.deepEqual(
+      {
+        input: byModel.get("fallback-model")?.input_tokens,
+        cacheWrite: byModel.get("fallback-model")?.cache_creation_input_tokens,
+      },
+      { input: 11, cacheWrite: 13 },
+    );
+
+    cp.execFileSync("sqlite3", [dbPath, `
+      UPDATE session_model_usage
+      SET input_tokens = 400,
+          output_tokens = 25,
+          cache_read_tokens = 600,
+          api_call_count = 4,
+          last_seen = ${endedAt + 86400}
+      WHERE session_id = 'mixed_session' AND model = 'gpt-5.6-terra';
+    `]);
+    const second = await parseHermesIncremental({ hermesPath: tmp, cursors, queuePath });
+    assert.equal(second.eventsAggregated, 1);
+    const afterGrowth = (await readJsonLines(queuePath))
+      .filter((row) => row.source === "hermes" && row.model === "gpt-5.6-terra")
+      .at(-1);
+    assert.deepEqual(
+      {
+        input: afterGrowth.input_tokens,
+        output: afterGrowth.output_tokens,
+        cached: afterGrowth.cached_input_tokens,
+        reasoning: afterGrowth.reasoning_output_tokens,
+        conversations: afterGrowth.conversation_count,
+      },
+      { input: 100, output: 5, cached: 200, reasoning: 0, conversations: 1 },
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseHermesIncremental reads default and named profile databases with isolated cursors", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-profiles-"));
   try {
