@@ -1,0 +1,14 @@
+api:
+  local-api-security:
+    description: Loopback API trust boundary, method allowlist, input validation, and safe failure behavior
+global:
+  privacy-boundary:
+    description: Usage-metadata privacy boundary for parsers, logs, fixtures, APIs, and outbound behavior
+parsers:
+  incremental-state:
+    description: Cursor, cumulative-delta, timestamp attribution, idempotency, and migration behavior
+  token-accounting:
+    description: Canonical token columns, provider exceptions, queue invariants, and billable cost inputs
+release:
+  version-lockstep:
+    description: npm, macOS, Windows, LaunchAgent, package, and release verification boundaries

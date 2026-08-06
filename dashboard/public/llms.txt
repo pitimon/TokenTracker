@@ -45,7 +45,7 @@ on the user's own machine — they are not public URLs:
 - [sitemap.xml](https://www.tokentracker.cc/sitemap.xml)
 - [feed.xml](https://www.tokentracker.cc/feed.xml)
 - [robots.txt](https://www.tokentracker.cc/robots.txt)
-- Data principle: token counts only, never prompts or conversation content.
+- Data principle: usage metadata only — source, model, token counts, timestamps, project attribution, and derived cost; never prompts or conversation content. Token-usage metadata is not uploaded; documented optional outbound calls support provider authentication/quotas and opt-in features.
 
 ## Contact
 - [GitHub issues](https://github.com/mm7894215/TokenTracker/issues)

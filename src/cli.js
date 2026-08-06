@@ -75,7 +75,7 @@ function printHelp() {
       "  - Every Code notify installs when ~/.code/config.toml exists.",
       "  - OpenClaw hook auto-links when OpenClaw is installed (requires gateway restart).",
       "  - serve prints the local dashboard URL; pass --open to ask the OS to open a browser.",
-      "  - sync parses ~/.codex/sessions/**/rollout-*.jsonl and ~/.code/sessions/**/rollout-*.jsonl into the local queue. Nothing is uploaded.",
+      "  - sync parses ~/.codex/sessions/**/rollout-*.jsonl and ~/.code/sessions/**/rollout-*.jsonl into local queues; sync does not upload token-usage metadata.",
       "  - --from-openclaw marks sync runs triggered by OpenClaw hooks.",
       "  - --debug shows original backend errors.",
       "",

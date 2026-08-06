@@ -4,7 +4,7 @@ register: product
 
 ## Product purpose
 
-Local-first AI token-usage tracker. Parses logs from AI coding CLIs (Claude Code, Codex, Cursor, Gemini, Copilot, Kimi, and more) into a local dashboard so developers can see how many tokens they burn, the estimated cost, and how it trends. Privacy-first: token counts only, never prompts or conversation bodies. Ships as a CLI (`serve` on :7680) with a dashboard it serves locally, plus a self-contained macOS menu-bar app. Nothing is uploaded: there is no account, no sync, and no server component.
+Local-first AI token-usage tracker. Parses logs from AI coding CLIs (Claude Code, Codex, Cursor, Gemini, Copilot, Kimi, and more) into a local dashboard so developers can see how many tokens they burn, the estimated cost, and how it trends. Privacy-first: usage metadata only — source, model, token and conversation counts, timestamps, and derived cost; never prompts, responses, message bodies, or private user-code paths. Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads. Ships as a CLI (`serve` on :7680) with a dashboard it serves locally, plus a self-contained macOS menu-bar app. Token-usage metadata is not uploaded; documented optional outbound calls include provider quota/authentication, public pricing, skill search/install, currency conversion, and explicit IP checks. There is no TokenTracker account, sync service, or hosted server component.
 
 ## Users
 

@@ -133,7 +133,7 @@
   "settings.menubar.launchAtLogin": "登入時啟動",
   "settings.menubar.launchAtLoginHint": "登入 macOS 時自動啟動 TokenTrackerBar。",
   "settings.menubar.syncNow": "立即同步",
-  "settings.menubar.syncNowHint": "觸發本地AI工具日誌立即解析並上傳。",
+  "settings.menubar.syncNowHint": "解析本機 AI 工具日誌並立即重新整理本機用量。",
   "settings.menubar.syncing": "正在同步...",
   "settings.menubar.updates": "更新",
   "settings.menubar.checkUpdates": "檢查更新",
