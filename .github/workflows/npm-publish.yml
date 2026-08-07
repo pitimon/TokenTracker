@@ -83,6 +83,9 @@ jobs:
         if: steps.version-check.outputs.exists == 'true'
         run: echo "v${{ steps.version-check.outputs.version }} already published, skipping."
 
+      - name: Smoke test published package
+        run: node scripts/verify-registry-package.cjs "${{ steps.version-check.outputs.version }}"
+
       # Optionally notify this fork's Homebrew tap. Keep the repository opt-in
       # so fork workflows never dispatch to upstream mm7894215 by accident.
       - name: Dispatch homebrew tap update
