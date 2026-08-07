@@ -41,6 +41,8 @@ SYNC_LABEL="${TOKENTRACKER_SYNC_LABEL:-com.pitimon.tokentracker.local-sync}"
 AGENTS_DIR="$HOME/Library/LaunchAgents"
 PLIST="$AGENTS_DIR/$DASHBOARD_LABEL.plist"
 SYNC_PLIST="$AGENTS_DIR/$SYNC_LABEL.plist"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLIST_TOOL="$SCRIPT_DIR/lib/launchagent-plist.cjs"
 UID_NUM="$(id -u)"
 SERVICE_TARGET="gui/$UID_NUM/$DASHBOARD_LABEL"
 TARGET_ARG="${1:-latest}"
@@ -50,6 +52,7 @@ die() { echo "❌ $*" >&2; exit 1; }
 command -v npm >/dev/null 2>&1 || die "npm not found on PATH"
 [ "$(uname -s)" = "Darwin" ] || die "this script drives launchctl and only runs on macOS"
 [ -f "$PLIST" ] || die "plist not found: $PLIST (run scripts/install-local-service.sh first)"
+[ -f "$PLIST_TOOL" ] || die "plist helper not found: $PLIST_TOOL"
 
 # --- 1. Resolve the target version -----------------------------------------
 if [ "$TARGET_ARG" = "latest" ]; then
@@ -68,32 +71,43 @@ PUBLISHED="$(npm view "$PACKAGE_NAME@$VERSION" version 2>/dev/null || true)"
 echo "✓ Target version on npm: $PACKAGE_NAME@$VERSION"
 
 # --- 2. Read current state from the plist -----------------------------------
-CURRENT="$(grep -oE "${PACKAGE_NAME}@[0-9][0-9A-Za-z.-]*" "$PLIST" | head -1 | sed "s|^${PACKAGE_NAME}@||" || true)"
-CURRENT="${CURRENT:-unpinned}"
-# Port lives right after the --port arg in ProgramArguments.
-PORT="$(awk '/<string>--port<\/string>/{getline; if (match($0,/[0-9]+/)) print substr($0,RSTART,RLENGTH); exit}' "$PLIST")"
-PORT="${PORT:-7680}"
-echo "→ Current pin: $CURRENT · port: $PORT"
+DASH_INSPECT="$(node "$PLIST_TOOL" inspect "$PLIST" "$PACKAGE_NAME")" \
+  || die "could not inspect dashboard plist"
+CURRENT="$(node -e 'const d=JSON.parse(process.argv[1]); console.log(d.versions[0] || "unpinned")' "$DASH_INSPECT")"
+PORT="$(node -e 'const d=JSON.parse(process.argv[1]); console.log(d.port)' "$DASH_INSPECT")"
+CURRENT_PINS="$(node -e 'const d=JSON.parse(process.argv[1]); console.log(d.pinCount)' "$DASH_INSPECT")"
+[ "$CURRENT_PINS" -ge 1 ] || die "dashboard plist has no package reference for $PACKAGE_NAME"
+echo "→ Current pin: $CURRENT · port: $PORT · refs: $CURRENT_PINS"
+
+# Validate the optional writer before mutating or restarting the dashboard.
+# This prevents a late local-sync shape failure from leaving the two agents
+# on different package versions.
+SYNC_PREFLIGHT=""
+if [ -f "$SYNC_PLIST" ]; then
+  SYNC_PREFLIGHT="$(node "$PLIST_TOOL" inspect "$SYNC_PLIST" "$PACKAGE_NAME")" \
+    || die "could not inspect local-sync plist"
+  SYNC_PREFLIGHT_REFS="$(node -e 'const d=JSON.parse(process.argv[1]); console.log(d.pinCount)' "$SYNC_PREFLIGHT")"
+  [ "$SYNC_PREFLIGHT_REFS" -ge 1 ] || die "local-sync plist has no package reference for $PACKAGE_NAME"
+fi
 
 if [ "$CURRENT" = "$VERSION" ]; then
   echo "ℹ Plist already pins $VERSION — reloading to be sure it is live."
 fi
 
-# --- 3. Back up, then repin both occurrences --------------------------------
-BACKUP="$PLIST.bak-$CURRENT"
-cp "$PLIST" "$BACKUP"
+# --- 3. Back up, then repin all observed package references -----------------
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP="$PLIST.bak-$CURRENT-$STAMP-$$"
+cp -p "$PLIST" "$BACKUP"
 echo "✓ Backup: $BACKUP"
 
-# Replace the package spec (pinned or unpinned) with the exact target version,
-# in both ProgramArguments and the TOKENTRACKER_NPM_PACKAGE env value.
-sed -i '' -E "s|<string>${PACKAGE_NAME}(@[^<]*)?</string>|<string>${PACKAGE_NAME}@${VERSION}</string>|g" "$PLIST"
-
-PINS="$(grep -c "${PACKAGE_NAME}@${VERSION}" "$PLIST" || true)"
-if [ "$PINS" -lt 2 ]; then
-  cp "$BACKUP" "$PLIST"
-  die "expected to repin 2 occurrences, found $PINS — restored backup, plist unchanged"
+if ! node "$PLIST_TOOL" repin "$PLIST" "$PACKAGE_NAME" "$VERSION" >/dev/null; then
+  cp -p "$BACKUP" "$PLIST"
+  die "dashboard repin failed — restored backup, plist unchanged"
 fi
-echo "✓ Repinned $PINS occurrences → $VERSION"
+plutil -lint "$PLIST" >/dev/null || { cp -p "$BACKUP" "$PLIST"; die "dashboard plist invalid after repin — restored backup"; }
+DASH_UPDATED="$(node "$PLIST_TOOL" inspect "$PLIST" "$PACKAGE_NAME")"
+PINS="$(node -e 'const d=JSON.parse(process.argv[1]); console.log(d.pinCount)' "$DASH_UPDATED")"
+echo "✓ Repinned $PINS occurrence(s) → $VERSION"
 
 # --- 4. Reload the LaunchAgent ----------------------------------------------
 echo "> Reloading ${DASHBOARD_LABEL}..."
@@ -132,16 +146,17 @@ done
 SYNC_STATUS="not installed (skipped)"
 if [ -f "$SYNC_PLIST" ]; then
   SYNC_TARGET="gui/$UID_NUM/$SYNC_LABEL"
-  SYNC_CURRENT="$(grep -oE "${PACKAGE_NAME}@[0-9][0-9A-Za-z.-]*" "$SYNC_PLIST" | head -1 | sed "s|^${PACKAGE_NAME}@||" || true)"
-  SYNC_CURRENT="${SYNC_CURRENT:-unpinned}"
-  SYNC_BACKUP="$SYNC_PLIST.bak-$SYNC_CURRENT"
-  cp "$SYNC_PLIST" "$SYNC_BACKUP"
-  sed -i '' -E "s|<string>${PACKAGE_NAME}(@[^<]*)?</string>|<string>${PACKAGE_NAME}@${VERSION}</string>|g" "$SYNC_PLIST"
-  SYNC_PINS="$(grep -c "${PACKAGE_NAME}@${VERSION}" "$SYNC_PLIST" || true)"
-  if [ "$SYNC_PINS" -lt 1 ]; then
-    cp "$SYNC_BACKUP" "$SYNC_PLIST"
-    die "local-sync: expected >=1 pin, found $SYNC_PINS — restored backup, plist unchanged"
+  SYNC_INSPECT="$SYNC_PREFLIGHT"
+  SYNC_CURRENT="$(node -e 'const d=JSON.parse(process.argv[1]); console.log(d.versions[0] || "unpinned")' "$SYNC_INSPECT")"
+  SYNC_BACKUP="$SYNC_PLIST.bak-$SYNC_CURRENT-$STAMP-$$"
+  cp -p "$SYNC_PLIST" "$SYNC_BACKUP"
+  if ! node "$PLIST_TOOL" repin "$SYNC_PLIST" "$PACKAGE_NAME" "$VERSION" >/dev/null; then
+    cp -p "$SYNC_BACKUP" "$SYNC_PLIST"
+    die "local-sync repin failed — restored backup, plist unchanged"
   fi
+  plutil -lint "$SYNC_PLIST" >/dev/null || { cp -p "$SYNC_BACKUP" "$SYNC_PLIST"; die "local-sync plist invalid after repin — restored backup"; }
+  SYNC_UPDATED="$(node "$PLIST_TOOL" inspect "$SYNC_PLIST" "$PACKAGE_NAME")"
+  SYNC_PINS="$(node -e 'const d=JSON.parse(process.argv[1]); console.log(d.pinCount)' "$SYNC_UPDATED")"
   echo "> Reloading ${SYNC_LABEL}..."
   launchctl bootout "$SYNC_TARGET" >/dev/null 2>&1 || true
   for _ in $(seq 1 15); do
@@ -164,7 +179,7 @@ fi
 # BUT: the LaunchAgent runs `npx …@$VERSION`, whose cold-start settle time is
 # variable and occasionally exceeds any fixed window — so a hard failure here
 # would false-fail a correct deploy (issue #83). The authoritative deploy action
-# is the plist repin above (already verified: "Repinned 2 occurrences"); npx
+# is the plist repin above (already verified against every observed reference); npx
 # resolves that pin. So we retry generously to confirm, and on timeout WARN
 # rather than die — a timeout means "npx still warming", not "bad deploy".
 VERIFIED=""
