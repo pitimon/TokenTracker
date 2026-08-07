@@ -72,7 +72,7 @@ Look at how Claude Code, Codex, or Gemini are wired in for reference — they're
 
 ## Code Style
 
-- **CLI (`src/`)**: CommonJS, Node 20+, no transpilation. Match the existing style.
+- **CLI (`src/`)**: CommonJS, Node 20.18.1+, no transpilation. Match the existing style.
 - **Dashboard (`dashboard/`)**: TypeScript strict, React 18, ESM, Tailwind. Match the existing style.
 - **macOS (`TokenTrackerBar/`)**: Swift 5.9, SwiftUI + AppKit. Match the existing style.
 - No linter wars. Be reasonable.
