@@ -6,10 +6,10 @@
 // profile directories rather than a JSONL file, and the note said a fixture
 // "needs a real schema, not a JSONL line". It does — so this builds one.
 //
-// `node:sqlite` ships with Node 22+, which is already the floor for the
-// dashboard tests, and `readHermesSessions` falls back to it when the sqlite3
-// CLI is absent. If neither is available the harness reports the fixture
-// produced no rows rather than passing quietly.
+// The package supports Node 20, where `node:sqlite` is unavailable. Build the
+// deterministic fixture through the sqlite3 CLI instead—the same primary reader
+// used by production before its newer-runtime `node:sqlite` fallback. The
+// minimum-Node CI job installs sqlite3 explicitly so this fixture cannot skip.
 //
 // Schema taken from the parser's own query (rollout.js:3216), not guessed:
 //   SELECT id, model, started_at, ended_at, input_tokens, output_tokens,
@@ -22,7 +22,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { DatabaseSync } = require("node:sqlite");
+const { spawnSync } = require("node:child_process");
 
 const SCHEMA = `
   CREATE TABLE sessions (
@@ -44,33 +44,38 @@ const SCHEMA = `
 const STARTED = Math.floor(Date.parse("2026-05-14T09:12:30.000Z") / 1000);
 const ENDED = Math.floor(Date.parse("2026-05-14T09:20:00.000Z") / 1000);
 
+function sqlValue(value) {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error(`non-finite SQLite fixture value: ${value}`);
+    return String(value);
+  }
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
 function writeDb(dbPath, rows) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const db = new DatabaseSync(dbPath);
-  try {
-    db.exec(SCHEMA);
-    const insert = db.prepare(
-      `INSERT INTO sessions
-         (id, model, started_at, ended_at, input_tokens, output_tokens,
-          cache_read_tokens, cache_write_tokens, reasoning_tokens, message_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    for (const r of rows) {
-      insert.run(
-        r.id,
-        r.model,
-        r.started_at,
-        r.ended_at,
-        r.input_tokens,
-        r.output_tokens,
-        r.cache_read_tokens,
-        r.cache_write_tokens,
-        r.reasoning_tokens,
-        r.message_count,
-      );
-    }
-  } finally {
-    db.close();
+  const columns = [
+    "id",
+    "model",
+    "started_at",
+    "ended_at",
+    "input_tokens",
+    "output_tokens",
+    "cache_read_tokens",
+    "cache_write_tokens",
+    "reasoning_tokens",
+    "message_count",
+  ];
+  const inserts = rows.map((row) => (
+    `INSERT INTO sessions (${columns.join(", ")}) VALUES (${columns.map((column) => sqlValue(row[column])).join(", ")});`
+  ));
+  const result = spawnSync("sqlite3", [dbPath], {
+    input: `${SCHEMA}\n${inserts.join("\n")}\n`,
+    encoding: "utf8",
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`sqlite3 fixture build failed: ${result.error?.message || result.stderr || `status ${result.status}`}`);
   }
 }
 

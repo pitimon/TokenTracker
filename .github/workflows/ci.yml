@@ -55,3 +55,37 @@ jobs:
 
       - name: Run local CI gate
         run: npm run ci:local
+
+  node20-contract:
+    name: node20-contract
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          # Dashboard build tooling has a newer floor than the shipped CLI.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Prepare generated dashboard fixtures
+        run: npm ci --prefix dashboard && npm run dashboard:build
+
+      - uses: actions/setup-node@v6
+        with:
+          # Exact declared CLI floor; do not replace with floating `20`.
+          node-version: 20.18.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install SQLite fixture dependency
+        run: sudo apt-get update && sudo apt-get install -y sqlite3
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Run root suite at the declared minimum
+        run: npm test
