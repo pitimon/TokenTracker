@@ -64,6 +64,18 @@ test("workflow builds dashboard before publish", () => {
   );
 });
 
+test("package prepublish rebuilds dashboard before pricing seed", () => {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")
+  );
+  const command = pkg.scripts.prepublishOnly;
+  const dashboardIndex = command.indexOf("npm run dashboard:build");
+  const pricingIndex = command.indexOf("node scripts/build-pricing-seed.cjs");
+  assert.ok(dashboardIndex >= 0, "manual npm publish must rebuild dashboard/dist");
+  assert.ok(pricingIndex >= 0, "prepublish must still rebuild pricing seed");
+  assert.ok(dashboardIndex < pricingIndex, "dashboard build must precede pricing seed generation");
+});
+
 test("package publishes under the ipv9 npm scope", () => {
   const pkg = JSON.parse(
     fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")
