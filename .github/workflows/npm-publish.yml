@@ -41,12 +41,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          # Node 24 bundles npm >=11.5.1, required for npm Trusted Publishing.
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       # Skip if this version is already published
@@ -76,8 +78,6 @@ jobs:
       - name: Publish to npm
         if: steps.version-check.outputs.exists == 'false'
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Skip notice
         if: steps.version-check.outputs.exists == 'true'

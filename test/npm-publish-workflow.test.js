@@ -28,11 +28,11 @@ test("workflow triggers on push to main", () => {
   );
 });
 
-test("workflow uses Node.js 20", () => {
+test("publish job uses a Trusted Publishing-capable Node/npm runtime", () => {
   const content = loadWorkflow();
   assert.ok(
-    content.includes("node-version: 20"),
-    "should use Node.js 20 to match engines field"
+    content.includes("node-version: 24"),
+    "publish job should use Node 24, which bundles npm >=11.5.1 required by Trusted Publishing"
   );
 });
 
@@ -84,11 +84,17 @@ test("package publishes under the ipv9 npm scope", () => {
   assert.equal(pkg.publishConfig.access, "public");
 });
 
-test("workflow uses NPM_TOKEN secret", () => {
+test("workflow uses npm Trusted Publishing rather than a long-lived token", () => {
   const content = loadWorkflow();
-  assert.ok(
-    content.includes("secrets.NPM_TOKEN"),
-    "should reference NPM_TOKEN secret for authentication"
+  assert.match(
+    content,
+    /publish:\n(?:.*\n)*?    permissions:\n(?:.*\n)*?      id-token: write/m,
+    "publish job must grant an OIDC identity token"
+  );
+  assert.doesNotMatch(
+    content,
+    /NODE_AUTH_TOKEN|secrets\.NPM_TOKEN/,
+    "Trusted Publishing must not inject a long-lived npm token"
   );
 });
 
