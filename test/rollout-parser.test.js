@@ -1337,6 +1337,9 @@ test("parseOpencodeIncremental updates totals after message rewrite with new tok
       tokens: { input: 8, output: 0, reasoning: 0, cached: 0 },
     });
     await fs.writeFile(messagePath, JSON.stringify(messageV2), "utf8");
+    // Keep the synthetic mutation within the original source bucket: this test
+    // is about cumulative accounting, not the separate cross-day policy.
+    await fs.utimes(messagePath, new Date("2025-12-29T10:16:00.000Z"), new Date("2025-12-29T10:16:00.000Z"));
 
     const resAgain = await parseOpencodeIncremental({
       messageFiles: [messagePath],
@@ -1348,6 +1351,40 @@ test("parseOpencodeIncremental updates totals after message rewrite with new tok
     const queued = await readJsonLines(queuePath);
     assert.equal(queued.length, 2);
     assert.equal(queued[1].total_tokens, 8);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseOpencodeIncremental attributes cross-midnight mutable JSON growth to the file update bucket", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-opencode-cross-midnight-"));
+  try {
+    const messagePath = path.join(tmp, "msg_cross_midnight.json");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const created = "2026-04-20T23:55:00.000Z";
+    const changedAt = Date.parse("2026-04-21T00:05:00.000Z");
+    const cursors = { version: 1, files: {} };
+    const message = (input, output) => buildOpencodeMessage({
+      modelID: "gpt-4o",
+      created,
+      tokens: { input, output, reasoning: 0, cached: 0, cacheWrite: 0 },
+    });
+    await fs.writeFile(messagePath, JSON.stringify(message(100, 20)));
+    await fs.utimes(messagePath, new Date(created), new Date(created));
+    await parseOpencodeIncremental({ messageFiles: [messagePath], cursors, queuePath });
+    await fs.writeFile(messagePath, JSON.stringify(message(200, 40)));
+    await fs.utimes(messagePath, new Date(changedAt), new Date(changedAt));
+    await parseOpencodeIncremental({ messageFiles: [messagePath], cursors, queuePath });
+
+    const latest = new Map();
+    for (const row of await readJsonLines(queuePath)) latest.set(`${row.source}|${row.model}|${row.hour_start}`, row);
+    const startRow = latest.get("opencode|gpt-4o|2026-04-20T23:30:00.000Z");
+    const changedRow = latest.get("opencode|gpt-4o|2026-04-21T00:00:00.000Z");
+    assert.equal(startRow.total_tokens, 120);
+    assert.equal(changedRow.total_tokens, 120);
+    assert.equal(startRow.conversation_count, 1);
+    assert.equal(changedRow.conversation_count, 0);
+    assert.equal(startRow.total_tokens + changedRow.total_tokens, 240, "token conservation across buckets");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -2888,6 +2925,160 @@ test("parseHermesIncremental attributes mixed-session totals by session_model_us
       },
       { input: 100, output: 5, cached: 200, reasoning: 0, conversations: 1 },
     );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseHermesIncremental reconciles already-ingested mixed-model Hermes buckets without changing the total", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-reconcile-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const startedAt = 1775993700;
+    const endedAt = 1775994000;
+    const bucketStart = new Date(Math.floor(endedAt / 1800) * 1800 * 1000).toISOString();
+    createHermesDb(dbPath, [{
+      id: "previously-aggregated",
+      model: "gpt-5.6-sol",
+      started_at: startedAt,
+      ended_at: endedAt,
+      input_tokens: 1000,
+      output_tokens: 100,
+      cache_read_tokens: 500,
+      cache_write_tokens: 20,
+      reasoning_tokens: 30,
+      message_count: 10,
+    }]);
+    cp.execFileSync("sqlite3", [dbPath, `
+      CREATE TABLE session_model_usage (
+        session_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        billing_provider TEXT NOT NULL DEFAULT '',
+        billing_base_url TEXT NOT NULL DEFAULT '',
+        billing_mode TEXT NOT NULL DEFAULT '',
+        task TEXT NOT NULL DEFAULT '',
+        api_call_count INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        first_seen REAL,
+        last_seen REAL,
+        PRIMARY KEY (session_id, model, billing_provider, billing_base_url, billing_mode, task)
+      );
+      INSERT INTO session_model_usage
+        (session_id, model, api_call_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, first_seen, last_seen)
+      VALUES
+        ('previously-aggregated', 'gpt-5.6-sol', 7, 700, 70, 350, 10, 20, ${startedAt}, ${endedAt}),
+        ('previously-aggregated', 'gpt-5.6-terra', 3, 300, 30, 150, 10, 10, ${startedAt}, ${endedAt});
+    `]);
+
+    const legacyTotals = {
+      input_tokens: 1000,
+      cached_input_tokens: 500,
+      cache_creation_input_tokens: 20,
+      output_tokens: 100,
+      reasoning_output_tokens: 30,
+      total_tokens: 1650,
+      billable_total_tokens: 1650,
+      conversation_count: 10,
+    };
+    const cursors = {
+      version: 1,
+      hermes: {
+        modelUsageVersion: 1,
+        lastStartedAt: startedAt,
+        lastCompletedStartedAt: startedAt,
+        snapshots: {
+          [JSON.stringify(["previously-aggregated", "gpt-5.6-sol"])]: {
+            in: 700, out: 70, cacheRead: 350, cacheWrite: 10, reasoning: 20, message_count: 7,
+          },
+          [JSON.stringify(["previously-aggregated", "gpt-5.6-terra"])]: {
+            in: 300, out: 30, cacheRead: 150, cacheWrite: 10, reasoning: 10, message_count: 3,
+          },
+        },
+      },
+      hourly: {
+        version: 3,
+        buckets: {
+          [`hermes|gpt-5.6-sol|${bucketStart}`]: { totals: legacyTotals, queuedKey: JSON.stringify([
+            legacyTotals.input_tokens,
+            legacyTotals.cached_input_tokens,
+            legacyTotals.cache_creation_input_tokens,
+            legacyTotals.output_tokens,
+            legacyTotals.reasoning_output_tokens,
+            legacyTotals.total_tokens,
+            legacyTotals.billable_total_tokens,
+            legacyTotals.conversation_count,
+          ]) },
+        },
+        groupQueued: {},
+      },
+    };
+    const originalQueue = `${JSON.stringify({ source: "hermes", model: "gpt-5.6-sol", hour_start: bucketStart, ...legacyTotals })}\n`;
+    await fs.writeFile(queuePath, originalQueue);
+    const queueStatePath = path.join(tmp, "queue.state.json");
+    const originalQueueState = JSON.stringify({ offset: originalQueue.length, retained: "must-survive" }) + "\n";
+    await fs.writeFile(queueStatePath, originalQueueState);
+
+    const result = await parseHermesIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      queueStatePath,
+      reconcileHistorical: true,
+    });
+    assert.equal(result.eventsAggregated, 0);
+    const latest = new Map();
+    for (const row of await readJsonLines(queuePath)) {
+      if (row.source === "hermes") latest.set(`${row.model}|${row.hour_start}`, row);
+    }
+    const sol = latest.get(`gpt-5.6-sol|${bucketStart}`);
+    const terra = latest.get(`gpt-5.6-terra|${bucketStart}`);
+    assert.equal(sol.total_tokens, 1150);
+    assert.equal(terra.total_tokens, 500);
+    assert.equal(sol.total_tokens + terra.total_tokens, legacyTotals.total_tokens);
+    assert.equal(sol.conversation_count, 7);
+    assert.equal(terra.conversation_count, 3);
+    assert.equal(cursors.migrations?.hermesMixedModelReconciliationV1?.status, "applied");
+    const resetQueueState = JSON.parse(await fs.readFile(queueStatePath, "utf8"));
+    assert.equal(resetQueueState.offset, originalQueue.length, "corrections must remain after the already-uploaded queue offset");
+    assert.equal(resetQueueState.retained, "must-survive");
+    assert.equal(resetQueueState.note, "hermes_mixed_model_reconciliation_v1_appended_corrections");
+    const uploadableTail = (await fs.readFile(queuePath, "utf8")).slice(resetQueueState.offset);
+    assert.ok(uploadableTail.includes('"model":"gpt-5.6-sol"'));
+    assert.ok(uploadableTail.includes('"model":"gpt-5.6-terra"'));
+
+    const beforeSecondRun = (await readJsonLines(queuePath)).length;
+    await parseHermesIncremental({ dbPath, cursors, queuePath });
+    assert.equal((await readJsonLines(queuePath)).length, beforeSecondRun);
+
+    const mismatchQueuePath = path.join(tmp, "mismatch-queue.jsonl");
+    const mismatchTotals = { ...legacyTotals, total_tokens: legacyTotals.total_tokens - 1, billable_total_tokens: legacyTotals.billable_total_tokens - 1 };
+    const mismatchCursors = {
+      version: 1,
+      hermes: JSON.parse(JSON.stringify(cursors.hermes)),
+      hourly: {
+        version: 3,
+        buckets: {
+          [`hermes|gpt-5.6-sol|${bucketStart}`]: { totals: mismatchTotals, queuedKey: "legacy" },
+        },
+        groupQueued: {},
+      },
+    };
+    const mismatchRow = JSON.stringify({ source: "hermes", model: "gpt-5.6-sol", hour_start: bucketStart, ...mismatchTotals });
+    await fs.writeFile(mismatchQueuePath, `${mismatchRow}\n`);
+    const mismatchResult = await parseHermesIncremental({
+      dbPath,
+      cursors: mismatchCursors,
+      queuePath: mismatchQueuePath,
+      reconcileHistorical: true,
+    });
+    assert.equal(mismatchResult.eventsAggregated, 0);
+    assert.equal(mismatchCursors.migrations.hermesMixedModelReconciliationV1.status, "blocked_total_mismatch");
+    assert.equal(await fs.readFile(mismatchQueuePath, "utf8"), `${mismatchRow}\n`, "mismatch must not rewrite queue history");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -4717,6 +4908,63 @@ async function safeFileSize(p) {
 // Exercises the SQLite-backed path via a synthetic DB written in-process.
 // ─────────────────────────────────────────────────────────────────────────────
 
+test("parseKiroCliIncremental attributes cross-midnight mutable growth to the observation bucket", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kirocli-cross-midnight-"));
+  try {
+    const dbPath = path.join(tmp, "data.sqlite3");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const env = { KIRO_CLI_DB_PATH: dbPath, KIRO_HOME: tmp };
+    const requestStart = Date.parse("2026-04-20T23:55:00.000Z");
+    const observation = Date.parse("2026-04-21T00:05:00.000Z");
+    const valueFor = (promptChars, responseChars) => ({
+      model_info: { model_id: "claude-sonnet-4.5" },
+      user_turn_metadata: {
+        continuation_id: "cross-midnight-conversation",
+        requests: [{
+          request_id: "cross-midnight-request",
+          message_id: "cross-midnight-message",
+          request_start_timestamp_ms: requestStart,
+          user_prompt_length: promptChars,
+          response_size: responseChars,
+          model_id: "claude-sonnet-4.5",
+        }],
+      },
+    });
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      "CREATE TABLE conversations_v2 (key TEXT, conversation_id TEXT, value TEXT, created_at INTEGER, updated_at INTEGER, PRIMARY KEY (key, conversation_id));",
+    ]);
+    const insert = (value) => cp.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT OR REPLACE INTO conversations_v2 VALUES ('project', 'cross-midnight-conversation', '${JSON.stringify(value).replace(/'/g, "''")}', 1, 2);`,
+    ]);
+    insert(valueFor(400, 80));
+
+    const cursors = { version: 1 };
+    await rolloutModule.parseKiroCliIncremental({ cursors, queuePath, env, nowMs: requestStart + 1 });
+    insert(valueFor(800, 160));
+    await rolloutModule.parseKiroCliIncremental({ cursors, queuePath, env, nowMs: observation });
+
+    const latest = new Map();
+    for (const row of await readJsonLines(queuePath)) {
+      latest.set(`${row.source}|${row.model}|${row.hour_start}`, row);
+    }
+    const startRow = latest.get("kiro|claude-sonnet-4.5|2026-04-20T23:30:00.000Z");
+    const observationRow = latest.get("kiro|claude-sonnet-4.5|2026-04-21T00:00:00.000Z");
+    assert.deepEqual(
+      { input: startRow?.input_tokens, output: startRow?.output_tokens, conversations: startRow?.conversation_count },
+      { input: 100, output: 20, conversations: 1 },
+    );
+    assert.deepEqual(
+      { input: observationRow?.input_tokens, output: observationRow?.output_tokens, conversations: observationRow?.conversation_count },
+      { input: 100, output: 20, conversations: 0 },
+    );
+    assert.equal(startRow.total_tokens + observationRow.total_tokens, 240, "token conservation across the two buckets");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseKiroCliIncremental canonicalizes Bedrock model IDs and re-buckets on fingerprint change", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kirocli-mutable-"));
   try {
@@ -4793,7 +5041,12 @@ test("parseKiroCliIncremental canonicalizes Bedrock model IDs and re-buckets on 
       dbPath,
       `UPDATE conversations_v2 SET value = '${JSON.stringify(convValue(800, 160)).replace(/'/g, "''")}' WHERE conversation_id = 'conv-1';`,
     ]);
-    const r3 = await rolloutModule.parseKiroCliIncremental({ cursors, queuePath, env });
+    const r3 = await rolloutModule.parseKiroCliIncremental({
+      cursors,
+      queuePath,
+      env,
+      nowMs: Date.parse("2026-04-20T10:10:00.000Z"),
+    });
     assert.equal(r3.eventsAggregated, 1, "fingerprint-changed request must be re-bucketed");
 
     const rowsC = (await fs.readFile(queuePath, "utf8"))
@@ -6371,7 +6624,12 @@ test("parseCraftIncremental aggregates growing snapshots into the same bucket wi
       }) + "\n",
       "utf8",
     );
-    let res = await parseCraftIncremental({ sessionFiles: [filePath], cursors, queuePath });
+    let res = await parseCraftIncremental({
+      sessionFiles: [filePath],
+      cursors,
+      queuePath,
+      nowMs: ts + 1,
+    });
     assert.equal(res.eventsAggregated, 1);
     // After first sync: cursor remembers 100/20 as previous totals.
     assert.equal(cursors.craft.sessionTotals[sessionId].input, 100);
@@ -6388,7 +6646,12 @@ test("parseCraftIncremental aggregates growing snapshots into the same bucket wi
       }) + "\n",
       "utf8",
     );
-    res = await parseCraftIncremental({ sessionFiles: [filePath], cursors, queuePath });
+    res = await parseCraftIncremental({
+      sessionFiles: [filePath],
+      cursors,
+      queuePath,
+      nowMs: ts + 2,
+    });
     assert.equal(res.eventsAggregated, 1);
     // After second sync: cursor advanced to the new cumulative total.
     assert.equal(cursors.craft.sessionTotals[sessionId].input, 300);
@@ -7729,6 +7992,45 @@ test("parseAntigravityIncremental normalizes non-Flash model settings without de
 });
 
 // ── Kimi Code official (@moonshot-ai/kimi-code) ──────────────────────────────
+
+test("parseCraftIncremental attributes stale-createdAt cumulative growth to the observation bucket", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-craft-cross-midnight-"));
+  try {
+    const sessionPath = path.join(tmp, "session.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const createdAt = Date.parse("2026-04-20T23:55:00.000Z");
+    const observedAt = Date.parse("2026-04-21T00:05:00.000Z");
+    const header = (input, output) => JSON.stringify({
+      id: "craft-cross-midnight",
+      model: "claude-sonnet-4-5",
+      createdAt,
+      tokenUsage: { inputTokens: input, outputTokens: output, totalTokens: input + output },
+    });
+    const cursors = { version: 1 };
+    await fs.writeFile(sessionPath, `${header(100, 20)}\n`);
+    await parseCraftIncremental({ sessionFiles: [sessionPath], cursors, queuePath, nowMs: createdAt + 1 });
+    await fs.writeFile(sessionPath, `${header(200, 40)}\n`);
+    await parseCraftIncremental({ sessionFiles: [sessionPath], cursors, queuePath, nowMs: observedAt });
+
+    const latest = new Map();
+    for (const row of await readJsonLines(queuePath)) {
+      latest.set(`${row.source}|${row.model}|${row.hour_start}`, row);
+    }
+    const startRow = latest.get("craft|claude-sonnet-4-5|2026-04-20T23:30:00.000Z");
+    const observationRow = latest.get("craft|claude-sonnet-4-5|2026-04-21T00:00:00.000Z");
+    assert.deepEqual(
+      { input: startRow?.input_tokens, output: startRow?.output_tokens, conversations: startRow?.conversation_count },
+      { input: 100, output: 20, conversations: 1 },
+    );
+    assert.deepEqual(
+      { input: observationRow?.input_tokens, output: observationRow?.output_tokens, conversations: observationRow?.conversation_count },
+      { input: 100, output: 20, conversations: 0 },
+    );
+    assert.equal(startRow.total_tokens + observationRow.total_tokens, 240, "token conservation across the two buckets");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
 
 test("parseKimiCodeIncremental reads step.end events with Anthropic-style usage", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kimi-code-"));

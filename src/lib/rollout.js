@@ -4,7 +4,7 @@ const path = require("node:path");
 const readline = require("node:readline");
 
 const crypto = require("node:crypto");
-const { ensureDir } = require("./fs");
+const { ensureDir, writeFileAtomic } = require("./fs");
 const {
   readSqliteJsonRows,
   readSqliteJsonRowsWithStatus,
@@ -460,6 +460,7 @@ async function parseOpencodeIncremental({
   onProgress,
   source,
   publicRepoResolver,
+  nowMs = Date.now(),
 }) {
   await ensureDir(path.dirname(queuePath));
   let filesProcessed = 0;
@@ -555,6 +556,7 @@ async function parseOpencodeIncremental({
       projectTouchedBuckets,
       projectRef,
       projectKey,
+      nowMs: mtimeMs || nowMs,
     });
 
     cursors.files[key] = {
@@ -1178,6 +1180,7 @@ async function parseOpencodeMessageFile({
   projectTouchedBuckets,
   projectRef,
   projectKey,
+  nowMs = Date.now(),
 }) {
   const fallbackKey =
     typeof fallbackMessageKey === "string" && fallbackMessageKey.trim()
@@ -1227,9 +1230,10 @@ async function parseOpencodeMessageFile({
   if (!delta || isAllZeroUsage(delta)) {
     return { messageKey, lastTotals: currentTotals, eventsAggregated: 0, shouldUpdate: true };
   }
-  delta.conversation_count = 1;
+  delta.conversation_count = lastTotals ? 0 : 1;
 
-  const timestampMs = coerceEpochMs(msg?.time?.completed) || coerceEpochMs(msg?.time?.created);
+  const sourceTimestampMs = coerceEpochMs(msg?.time?.completed) || coerceEpochMs(msg?.time?.created);
+  const timestampMs = lastTotals ? nowMs : sourceTimestampMs;
   if (!timestampMs) {
     return {
       messageKey,
@@ -2617,6 +2621,7 @@ async function parseOpencodeDbIncremental({
   source,
   cursorKey,
   publicRepoResolver,
+  nowMs = Date.now(),
 }) {
   await ensureDir(path.dirname(queuePath));
   let messagesProcessed = 0;
@@ -2683,9 +2688,13 @@ async function parseOpencodeDbIncremental({
       }
       continue;
     }
-    delta.conversation_count = 1;
+    delta.conversation_count = lastTotals ? 0 : 1;
 
-    const timestampMs = coerceEpochMs(msg?.time?.completed) || coerceEpochMs(msg?.time?.created);
+    const sourceTimestampMs = coerceEpochMs(msg?.time?.completed) || coerceEpochMs(msg?.time?.created);
+    const rowUpdatedMs = coerceEpochMs(entry.timeUpdated || entry.time_updated);
+    const timestampMs = lastTotals
+      ? (rowUpdatedMs || nowMs)
+      : sourceTimestampMs;
     if (!timestampMs) {
       messagesProcessed += 1;
       continue;
@@ -3377,6 +3386,257 @@ function readHermesSessions(dbPath, lastCompletedEpoch, unfinishedSessionIds = [
   }
 }
 
+const HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY = "hermesMixedModelReconciliationV1";
+const HERMES_TOKEN_TOTAL_FIELDS = [
+  "input_tokens",
+  "cached_input_tokens",
+  "cache_creation_input_tokens",
+  "output_tokens",
+  "reasoning_output_tokens",
+  "total_tokens",
+  "billable_total_tokens",
+];
+
+function hermesRowTotals(row) {
+  const inputTokens = toNonNegativeInt(row.input_tokens);
+  const outputTokens = toNonNegativeInt(row.output_tokens);
+  const cacheRead = toNonNegativeInt(row.cache_read_tokens);
+  const cacheWrite = toNonNegativeInt(row.cache_write_tokens);
+  const reasoning = toNonNegativeInt(row.reasoning_tokens);
+  return {
+    input_tokens: inputTokens,
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    output_tokens: outputTokens,
+    reasoning_output_tokens: reasoning,
+    total_tokens: inputTokens + outputTokens + cacheRead + cacheWrite + reasoning,
+    billable_total_tokens: inputTokens + outputTokens + cacheRead + cacheWrite + reasoning,
+    conversation_count: toNonNegativeInt(row.message_count),
+  };
+}
+
+function sameHermesTokenTotals(left, right) {
+  return HERMES_TOKEN_TOTAL_FIELDS.every(
+    (field) => Number(left?.[field] || 0) === Number(right?.[field] || 0),
+  );
+}
+
+function hermesBucketStartForRow(row, updatedAt) {
+  const perModel = Number(row.per_model) === 1;
+  const lastSeen = row.last_seen == null ? null : Number(row.last_seen);
+  const endedAt = row.ended_at == null ? null : Number(row.ended_at);
+  const startedAt = Number(row.started_at);
+  const epochSec = perModel && Number.isFinite(lastSeen) && lastSeen > 0
+    ? lastSeen
+    : endedAt ?? (Number.isFinite(startedAt) ? startedAt : Date.parse(updatedAt) / 1000);
+  if (!epochSec || !Number.isFinite(epochSec)) return null;
+  return toUtcHalfHourStart(new Date(epochSec * 1000).toISOString());
+}
+
+function prepareHermesProfileState(rows, previousState, updatedAt) {
+  const state = previousState && typeof previousState === "object" ? { ...previousState } : {};
+  const snapshots = {};
+  const unfinishedSessionIds = new Set();
+  let maxCompletedStartedAt = 0;
+  let oldestUnfinishedStartedAt = Infinity;
+
+  for (const row of rows) {
+    const totals = hermesRowTotals(row);
+    if (totals.total_tokens === 0) continue;
+    const perModel = Number(row.per_model) === 1;
+    const model = normalizeModelInput(row.model) || "hermes-agent";
+    const snapshotKey = perModel ? JSON.stringify([String(row.id || ""), model]) : row.id;
+    snapshots[snapshotKey] = {
+      in: totals.input_tokens,
+      out: totals.output_tokens,
+      cacheRead: totals.cached_input_tokens,
+      cacheWrite: totals.cache_creation_input_tokens,
+      reasoning: totals.reasoning_output_tokens,
+      message_count: totals.conversation_count,
+    };
+    const startedAt = Number(row.started_at);
+    const endedAt = row.ended_at == null ? null : Number(row.ended_at);
+    if (endedAt == null) {
+      if (row.id && Number.isFinite(startedAt)) {
+        unfinishedSessionIds.add(row.id);
+        oldestUnfinishedStartedAt = Math.min(oldestUnfinishedStartedAt, startedAt);
+      }
+    } else if (Number.isFinite(startedAt)) {
+      maxCompletedStartedAt = Math.max(maxCompletedStartedAt, startedAt);
+    }
+  }
+
+  const nextLastCompletedStartedAt = Number.isFinite(oldestUnfinishedStartedAt)
+    ? Math.min(maxCompletedStartedAt, oldestUnfinishedStartedAt)
+    : maxCompletedStartedAt;
+  return {
+    ...state,
+    lastStartedAt: nextLastCompletedStartedAt,
+    lastCompletedStartedAt: nextLastCompletedStartedAt,
+    unfinishedSessionIds: Array.from(unfinishedSessionIds),
+    snapshots,
+    modelUsageVersion: 1,
+    updatedAt,
+  };
+}
+
+async function appendHermesReconciliationRows({ queuePath, queueStatePath, canonicalRows, updatedAt }) {
+  if (typeof queueStatePath !== "string" || !queueStatePath) {
+    throw new Error("Hermes reconciliation requires queueStatePath to append corrected rows after the upload cursor");
+  }
+
+  let rawQueue = "";
+  try {
+    rawQueue = await fs.readFile(queuePath, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  let state = {};
+  try {
+    const rawState = await fs.readFile(queueStatePath, "utf8");
+    const parsed = JSON.parse(rawState);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) state = parsed;
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const offset = Number(state.offset);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > Buffer.byteLength(rawQueue, "utf8")) {
+    throw new Error("Hermes reconciliation requires a valid queue upload offset");
+  }
+
+  const append = `${canonicalRows.join("\n")}\n`;
+  await ensureDir(path.dirname(queuePath));
+  await fs.appendFile(queuePath, append, "utf8");
+  state.updatedAt = updatedAt;
+  state.note = "hermes_mixed_model_reconciliation_v1_appended_corrections";
+  try {
+    await writeFileAtomic(queueStatePath, JSON.stringify(state, null, 2) + "\n");
+  } catch (error) {
+    await fs.truncate(queuePath, Buffer.byteLength(rawQueue, "utf8"));
+    throw error;
+  }
+}
+
+// One-time, fail-closed correction for the v0.39.48 adoption gate. That gate
+// intentionally avoided replaying legacy aggregate snapshots, which preserved
+// the grand total but left already-counted mixed-model usage on sessions.model.
+// Rebuild only when the authoritative Hermes model rows have exactly the same
+// token total as the existing Hermes accumulator; otherwise leave data intact
+// and let the normal incremental path catch up before retrying next sync.
+async function reconcileHermesMixedModelUsage({ dbPaths, cursors, queuePath, queueStatePath, hermesState, updatedAt, sqliteOptions }) {
+  if (!cursors || typeof cursors !== "object") return { status: "invalid_cursor" };
+  const migrations = cursors.migrations && typeof cursors.migrations === "object" ? cursors.migrations : {};
+  const previous = migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY];
+  if (previous?.status === "applied") return previous;
+
+  const sources = [];
+  if (dbPaths.default) sources.push({ profileName: null, dbPath: dbPaths.default });
+  for (const [profileName, dbPath] of Object.entries(dbPaths.profiles || {})) {
+    sources.push({ profileName, dbPath });
+  }
+  if (sources.length === 0) return { status: "no_source" };
+
+  const rowsBySource = [];
+  for (const source of sources) {
+    const rows = readHermesSessions(source.dbPath, 0, [], sqliteOptions);
+    rowsBySource.push({ ...source, rows });
+  }
+  if (!rowsBySource.some(({ rows }) => rows.some((row) => Number(row.per_model) === 1))) {
+    cursors.migrations ||= {};
+    cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY] = {
+      status: "not_applicable",
+      updatedAt,
+    };
+    return cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY];
+  }
+
+  const hourlyState = normalizeHourlyState(cursors.hourly);
+  const existingTotals = initTotals();
+  for (const [key, bucket] of Object.entries(hourlyState.buckets || {})) {
+    if (parseBucketKey(key).source === "hermes") addTotals(existingTotals, bucket?.totals);
+  }
+
+  const canonicalBuckets = {};
+  const authoritativeTotals = initTotals();
+  for (const { rows } of rowsBySource) {
+    for (const row of rows) {
+      const totals = hermesRowTotals(row);
+      if (totals.total_tokens === 0) continue;
+      const hourStart = hermesBucketStartForRow(row, updatedAt);
+      if (!hourStart) continue;
+      const model = normalizeModelInput(row.model) || "hermes-agent";
+      const key = bucketKey("hermes", model, hourStart);
+      const bucket = canonicalBuckets[key] ||= { totals: initTotals(), queuedKey: null };
+      addTotals(bucket.totals, totals);
+      addTotals(authoritativeTotals, totals);
+    }
+  }
+
+  if (!sameHermesTokenTotals(existingTotals, authoritativeTotals)) {
+    cursors.migrations ||= {};
+    cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY] = {
+      status: "blocked_total_mismatch",
+      updatedAt,
+      existingTotalTokens: existingTotals.total_tokens,
+      authoritativeTotalTokens: authoritativeTotals.total_tokens,
+    };
+    return cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY];
+  }
+
+  for (const key of Object.keys(hourlyState.buckets || {})) {
+    if (parseBucketKey(key).source === "hermes") delete hourlyState.buckets[key];
+  }
+  for (const key of Object.keys(hourlyState.groupQueued || {})) {
+    if (key.startsWith("hermes|")) delete hourlyState.groupQueued[key];
+  }
+  const canonicalRows = [];
+  for (const [key, bucket] of Object.entries(canonicalBuckets)) {
+    const { model, hourStart } = parseBucketKey(key);
+    bucket.queuedKey = totalsKey(bucket.totals);
+    hourlyState.buckets[key] = bucket;
+    canonicalRows.push(JSON.stringify({
+      source: "hermes",
+      model,
+      hour_start: hourStart,
+      ...bucket.totals,
+    }));
+  }
+
+  await appendHermesReconciliationRows({
+    queuePath,
+    queueStatePath,
+    canonicalRows,
+    updatedAt,
+  });
+
+  const nextHermesState = hermesState && typeof hermesState === "object" ? hermesState : {};
+  for (const { profileName, rows } of rowsBySource) {
+    if (profileName == null) {
+      Object.assign(nextHermesState, prepareHermesProfileState(rows, nextHermesState, updatedAt));
+    } else {
+      nextHermesState.profiles = nextHermesState.profiles && typeof nextHermesState.profiles === "object"
+        ? nextHermesState.profiles
+        : {};
+      nextHermesState.profiles[profileName] = prepareHermesProfileState(
+        rows,
+        nextHermesState.profiles[profileName],
+        updatedAt,
+      );
+    }
+  }
+  cursors.hourly = hourlyState;
+  cursors.migrations ||= {};
+  cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY] = {
+    status: "applied",
+    appliedAt: updatedAt,
+    totalTokens: authoritativeTotals.total_tokens,
+    bucketsRebuilt: canonicalRows.length,
+  };
+  return cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY];
+}
+
 function hasLegacyHermesDefaultState(hermesState) {
   return (
     typeof hermesState.lastStartedAt === "number" ||
@@ -3385,7 +3645,16 @@ function hasLegacyHermesDefaultState(hermesState) {
   );
 }
 
-async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, onProgress, sqliteOptions } = {}) {
+async function parseHermesIncremental({
+  hermesPath,
+  dbPath,
+  cursors,
+  queuePath,
+  queueStatePath,
+  onProgress,
+  sqliteOptions,
+  reconcileHistorical = false,
+} = {}) {
   await ensureDir(path.dirname(queuePath));
   const hermesState = cursors.hermes && typeof cursors.hermes === "object" ? cursors.hermes : {};
 
@@ -3398,6 +3667,27 @@ async function parseHermesIncremental({ hermesPath, dbPath, cursors, queuePath, 
   const hourlyState = normalizeHourlyState(cursors?.hourly);
   const cb = typeof onProgress === "function" ? onProgress : null;
   const updatedAt = new Date().toISOString();
+  if (reconcileHistorical) {
+    const reconciliation = await reconcileHermesMixedModelUsage({
+      dbPaths,
+      cursors,
+      queuePath,
+      queueStatePath,
+      hermesState,
+      updatedAt,
+      sqliteOptions,
+    });
+    if (reconciliation?.status === "applied") {
+      hermesState.updatedAt = updatedAt;
+      cursors.hermes = hermesState;
+      return {
+        recordsProcessed: 0,
+        eventsAggregated: 0,
+        bucketsQueued: 0,
+        reconciliation,
+      };
+    }
+  }
   let recordsProcessed = 0;
   let eventsAggregated = 0;
   const touchedBuckets = new Set();
@@ -4027,7 +4317,15 @@ function kiroWatermarkFloor(cell, field, fallback) {
   return value;
 }
 
-async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onProgress, env, sqliteOptions } = {}) {
+async function parseKiroCliIncremental({
+  sessionFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  env,
+  sqliteOptions,
+  nowMs = Date.now(),
+} = {}) {
   await ensureDir(path.dirname(queuePath));
   const kiroCliState =
     cursors.kiroCli && typeof cursors.kiroCli === "object" ? cursors.kiroCli : {};
@@ -4396,7 +4694,14 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
 
     if (!dInput && !dOutput && !dConv) continue;
 
-    const bucket = getHourlyBucket(hourlyState, "kiro", want.model, want.bucketStart);
+    // A mutable request has no authoritative mutation timestamp in Kiro's
+    // SQLite schema. Its initial contribution belongs to request start; later
+    // positive growth is observed now and must not be backdated across midnight.
+    const bucketStart = prior && (dInput > 0 || dOutput > 0)
+      ? toUtcHalfHourStart(new Date(nowMs).toISOString())
+      : want.bucketStart;
+    if (!bucketStart) continue;
+    const bucket = getHourlyBucket(hourlyState, "kiro", want.model, bucketStart);
     addTotals(bucket.totals, {
       input_tokens: dInput,
       cached_input_tokens: 0,
@@ -4406,7 +4711,7 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
       total_tokens: dInput + dOutput,
       conversation_count: dConv,
     });
-    touchedBuckets.add(bucketKey("kiro", want.model, want.bucketStart));
+    touchedBuckets.add(bucketKey("kiro", want.model, bucketStart));
     eventsAggregated += 1;
   }
 
@@ -7534,6 +7839,7 @@ async function parseCraftIncremental({
   onProgress,
   env,
   defaultModel,
+  nowMs = Date.now(),
 } = {}) {
   await ensureDir(path.dirname(queuePath));
   const craftState = cursors.craft && typeof cursors.craft === "object" ? cursors.craft : {};
@@ -7644,7 +7950,15 @@ async function parseCraftIncremental({
     const dCacheWrite = Math.max(0, totalCacheWrite - prev.cacheWrite);
     const dTotal = Math.max(0, totalReported - prev.total);
 
-    const nowMs = Date.now();
+    const activityCandidates = [header.lastMessageAt, header.lastUsedAt];
+    let activityMs = null;
+    for (const cand of activityCandidates) {
+      if (Number.isFinite(Number(cand)) && Number(cand) > 0) {
+        activityMs = Number(cand);
+        break;
+      }
+    }
+    const observedNowMs = nowMs;
 
     if (dInput === 0 && dOutput === 0 && dCacheRead === 0 && dCacheWrite === 0) {
       // No new usage since last parse — but still update the snapshot in case
@@ -7656,21 +7970,25 @@ async function parseCraftIncremental({
         cacheRead: totalCacheRead,
         cacheWrite: totalCacheWrite,
         total: totalReported,
-        lastSeenAt: nowMs,
+        activityMs,
+        lastSeenAt: observedNowMs,
       };
       continue;
     }
 
-    // Bucket on lastMessageAt (preferred) or createdAt — both ms epoch.
-    let tsMs = null;
-    const tsCandidates = [header.lastMessageAt, header.lastUsedAt, header.createdAt];
-    for (const cand of tsCandidates) {
-      if (Number.isFinite(Number(cand)) && Number(cand) > 0) {
-        tsMs = Number(cand);
-        break;
-      }
+    // Initial totals use the source activity timestamp (then createdAt/file
+    // mtime). Cumulative growth must not be pinned to an old createdAt: use a
+    // newer trustworthy activity time when present, otherwise this sync's
+    // observation time.
+    let firstSeenTimestampMs = activityMs;
+    if (firstSeenTimestampMs == null && Number.isFinite(Number(header.createdAt)) && Number(header.createdAt) > 0) {
+      firstSeenTimestampMs = Number(header.createdAt);
     }
-    if (tsMs == null) tsMs = stat.mtimeMs;
+    if (firstSeenTimestampMs == null) firstSeenTimestampMs = stat.mtimeMs;
+    const growthHasNewActivity = activityMs != null && activityMs > Number(prev.activityMs || 0);
+    const tsMs = prev.total > 0
+      ? (growthHasNewActivity ? activityMs : observedNowMs)
+      : firstSeenTimestampMs;
     if (!Number.isFinite(tsMs) || tsMs <= 0) continue;
 
     const tsIso = new Date(tsMs).toISOString();
@@ -7704,7 +8022,8 @@ async function parseCraftIncremental({
       cacheRead: totalCacheRead,
       cacheWrite: totalCacheWrite,
       total: totalReported,
-      lastSeenAt: nowMs,
+      activityMs,
+      lastSeenAt: observedNowMs,
     };
 
     if (cb) {

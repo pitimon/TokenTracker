@@ -636,6 +636,8 @@ async function cmdSync(argv) {
         hermesPath,
         cursors,
         queuePath,
+        queueStatePath,
+        reconcileHistorical: opts.reconcileHermes,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -1076,6 +1078,7 @@ function parseArgs(argv) {
     drain: false,
     repairGrok: false,
     compact: false,
+    reconcileHermes: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -1086,6 +1089,7 @@ function parseArgs(argv) {
     else if (a === "--drain") out.drain = true;
     else if (a === "--repair-grok") out.repairGrok = true;
     else if (a === "--compact") out.compact = true;
+    else if (a === "--reconcile-hermes") out.reconcileHermes = true;
     else throw new Error(`Unknown option: ${a}`);
   }
   return out;
