@@ -186,6 +186,41 @@ async function makeKilocodeTask(rootDir, ide, taskUuid, messages) {
   return path.join(tasksDir, "ui_messages.json");
 }
 
+test("Kilo CLI: mutable SQLite growth after midnight uses time_updated rather than time_created", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kilo-cross-midnight-"));
+  try {
+    const dbPath = path.join(tmp, "kilo.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const created = Date.parse("2026-04-20T23:55:00.000Z");
+    const updated = Date.parse("2026-04-21T00:05:00.000Z");
+    const data = (input, output) => ({
+      role: "assistant",
+      modelID: "gpt-4o",
+      time: { created },
+      tokens: { input, output, reasoning: 0, cached: 0, cacheWrite: 0 },
+    });
+    buildKiloDb(dbPath, [{ id: "msg_cross", session_id: "session_cross", time_created: created, time_updated: created, data: data(100, 20) }]);
+    const cursors = { version: 1 };
+    let messages = readOpencodeDbMessages(dbPath);
+    await parseOpencodeDbIncremental({ dbMessages: messages, cursors, queuePath, source: "kilo", cursorKey: "kiloCli" });
+    cp.execFileSync("sqlite3", [dbPath, `UPDATE message SET time_updated=${updated}, data='${JSON.stringify(data(200, 40)).replace(/'/g, "''")}' WHERE id='msg_cross';`]);
+    messages = readOpencodeDbMessages(dbPath);
+    await parseOpencodeDbIncremental({ dbMessages: messages, cursors, queuePath, source: "kilo", cursorKey: "kiloCli" });
+
+    const latest = new Map();
+    for (const row of (await fs.readFile(queuePath, "utf8")).trim().split("\n").map(JSON.parse)) latest.set(`${row.source}|${row.model}|${row.hour_start}`, row);
+    const startRow = latest.get("kilo|gpt-4o|2026-04-20T23:30:00.000Z");
+    const updatedRow = latest.get("kilo|gpt-4o|2026-04-21T00:00:00.000Z");
+    assert.equal(startRow.total_tokens, 120);
+    assert.equal(updatedRow.total_tokens, 120);
+    assert.equal(startRow.conversation_count, 1);
+    assert.equal(updatedRow.conversation_count, 0);
+    assert.equal(startRow.total_tokens + updatedRow.total_tokens, 240);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("Kilo Code: parseKilocodeIncremental aggregates api_req_started + api_req_deleted, skips other says, dedups by (taskUuid, ts)", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kilo-code-"));
   try {

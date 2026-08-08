@@ -61,7 +61,7 @@ function printHelp() {
       "  npx --yes @ipv9/tokentracker-cli                                         Start local dashboard",
       "  npx --yes @ipv9/tokentracker-cli [--debug] serve [--port 7680] [--open] [--no-open] [--sync]",
       "  npx --yes @ipv9/tokentracker-cli [--debug] init [--yes] [--dry-run] [--no-open]",
-      "  npx --yes @ipv9/tokentracker-cli [--debug] sync [--auto] [--drain] [--from-openclaw]",
+      "  npx --yes @ipv9/tokentracker-cli [--debug] sync [--auto] [--drain] [--from-openclaw] [--compact] [--repair-grok] [--reconcile-hermes]",
       "  npx --yes @ipv9/tokentracker-cli [--debug] status [--probe-keychain] [--probe-keychain-details]",
       "  npx --yes @ipv9/tokentracker-cli [--debug] diagnostics [--out diagnostics.json]",
       "  npx --yes @ipv9/tokentracker-cli [--debug] doctor [--json] [--out doctor.json]",
