@@ -11,7 +11,6 @@ import { ContextCard } from "../components/ContextCard.jsx";
 import { hasProviderModels, resolveContextBreakdownSource } from "../components/usageFormat.js";
 import { TrendMonitor } from "../components/TrendMonitor.jsx";
 import { FadeIn } from "../../foundation/FadeIn.jsx";
-import { WidgetOnboardingCard } from "../components/WidgetOnboardingCard.jsx";
 
 export function DashboardView(props) {
 
@@ -279,12 +278,6 @@ export function DashboardView(props) {
                   <FadeIn delay={0.31}>
                     <ContextCard fleetData={fleetData} from={usageFrom} to={usageTo} />
                   </FadeIn>
-                </div>
-              ) : null}
-
-              {isLocalMode ? (
-                <div className="lg:col-span-6">
-                  <WidgetOnboardingCard enterDelay={0.37} />
                 </div>
               ) : null}
             </div>

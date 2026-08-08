@@ -27,13 +27,13 @@ index.scip
 /tasks/
 .vercel
 
-# TokenTrackerBar build artifacts
-TokenTrackerBar/EmbeddedServer/
-TokenTrackerBar/build/
-TokenTrackerBar/TokenTrackerBar.xcodeproj/
-TokenTrackerBar/icon_composer/
-TokenTrackerBar/DerivedData/
-TokenTrackerBar/*.xcarchive
+# Historical macOS source build artifacts (archived native code)
+archive/native-apps/TokenTrackerBar/EmbeddedServer/
+archive/native-apps/TokenTrackerBar/build/
+archive/native-apps/TokenTrackerBar/TokenTrackerBar.xcodeproj/
+archive/native-apps/TokenTrackerBar/icon_composer/
+archive/native-apps/TokenTrackerBar/DerivedData/
+archive/native-apps/TokenTrackerBar/*.xcarchive
 
 # AI / IDE tooling (created locally by assistants)
 .agent/

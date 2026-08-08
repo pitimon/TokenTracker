@@ -3,7 +3,6 @@ import { Link, useLocation } from "react-router-dom";
 import {
   BarChart3,
   Gauge,
-  LayoutGrid,
   Globe,
   Puzzle,
   Settings as SettingsIcon,
@@ -19,7 +18,6 @@ import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { useTheme } from "../../hooks/useTheme.js";
 import { useLocale } from "../../hooks/useLocale.js";
-import { isNativeApp, isNativeEmbed, isNativeWindowsApp } from "../../lib/native-bridge.js";
 
 const STORAGE_KEY = "tt.sidebarCollapsed";
 const APP_VERSION = String(import.meta.env.VITE_APP_VERSION || "0.0.0").trim();
@@ -41,7 +39,6 @@ export function getNavGroups() {
       id: "tools",
       label: copy("nav.group.tools"),
       items: [
-        { id: "widgets", to: "/widgets", icon: LayoutGrid, label: copy("nav.widgets") },
         { id: "skills", to: "/skills", icon: Puzzle, label: copy("nav.skills") },
         { id: "ip-check", to: "/ip-check", icon: Globe, label: copy("nav.ip_check") },
       ],
@@ -307,11 +304,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
           <div key={group.id} className="flex flex-col">
             <NavGroupLabel label={group.label} collapsed={collapsed} first={groupIdx === 0} />
             <div className="flex flex-col gap-0.5">
-              {group.items
-                // Widgets is a macOS-only feature (system widget gallery); hide it in
-                // the Windows tray app per the upstream author's request.
-                .filter((item) => !(item.to === "/widgets" && isNativeWindowsApp()))
-                .map((item) => (
+              {group.items.map((item) => (
                   <NavItem
                     key={item.id}
                     item={item}
@@ -364,11 +357,6 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
  * already bounded by AppLayout's fixed-viewport flex container).
  */
 function Sidebar({ collapsed, onToggleCollapsed }) {
-  const nativeGlass = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return isNativeEmbed() || isNativeApp();
-  }, []);
-
   return (
     <aside
       aria-label={copy("nav.aside_label")}
@@ -377,7 +365,7 @@ function Sidebar({ collapsed, onToggleCollapsed }) {
         collapsed ? "w-[72px]" : "w-[220px]",
       )}
     >
-      <SidebarBody collapsed={collapsed} onToggleCollapsed={onToggleCollapsed} glassChrome={nativeGlass} />
+      <SidebarBody collapsed={collapsed} onToggleCollapsed={onToggleCollapsed} />
     </aside>
   );
 }
@@ -463,43 +451,21 @@ function MobileTopBar({ onOpenDrawer }) {
 export function AppLayout({ children }) {
   const { collapsed, toggle } = useSidebarCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const openDrawer = useCallback(() => setDrawerOpen(true), []);
-  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
-
-  /** macOS WKWebView：底层由 NSVisualEffectView 提供模糊，Web 根布局透明，侧栏浮在背景上；浏览器仍用灰色底。 */
-  const nativeEmbed = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return isNativeEmbed() || isNativeApp();
+  const openDrawer = useCallback(function openDrawer() {
+    setDrawerOpen(true);
+  }, []);
+  const closeDrawer = useCallback(function closeDrawer() {
+    setDrawerOpen(false);
   }, []);
 
   return (
-    <div
-      className={cn(
-        "fixed inset-0 flex flex-col text-oai-black dark:text-oai-white font-sans overflow-hidden",
-        isNativeWindowsApp() && "tt-native-glass-shell",
-        nativeEmbed ? "bg-transparent" : "bg-oai-gray-100 dark:bg-oai-gray-950",
-      )}
-    >
-      {nativeEmbed && (
-        <div
-          className="h-7 shrink-0"
-          style={{ WebkitAppRegion: "drag" }}
-          aria-hidden
-        />
-      )}
+    <div className="fixed inset-0 flex flex-col bg-oai-gray-100 dark:bg-oai-gray-950 text-oai-black dark:text-oai-white font-sans overflow-hidden">
       <div className="flex-1 min-h-0 flex">
         <Sidebar collapsed={collapsed} onToggleCollapsed={toggle} />
         <MobileDrawer open={drawerOpen} onClose={closeDrawer} />
-        {/* lg：与侧栏内容区对齐 — 侧栏底部按钮区为 px-2 py-3；主卡右侧/底侧用 pr-3 pb-3 与 py-3 视觉一致，避免仅靠 p-2 显得贴边 */}
-        {/* Mac App：`lg:pr-3 lg:pb-3` (12pt) 须与 Swift `DashboardChromeMetrics.mainGutterPoints` 一致，主卡圆角由 `--tt-main-card-radius` 注入 */}
+        {/* Desktop: align the main card with the sidebar content gutter. */}
         <div className="flex-1 min-w-0 min-h-0 p-2 lg:pl-0 lg:pr-3 lg:pb-3 flex flex-col">
-          <div
-            className={cn(
-              "flex-1 min-h-0 flex flex-col bg-oai-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-800 overflow-hidden",
-              nativeEmbed ? "tt-native-main-card" : "rounded-2xl",
-              !nativeEmbed && "shadow-sm",
-            )}
-          >
+          <div className="flex-1 min-h-0 flex flex-col bg-oai-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-800 overflow-hidden rounded-2xl shadow-sm">
             <MobileTopBar onOpenDrawer={openDrawer} />
             <div className="flex-1 min-h-0 overflow-y-auto">
               {children}

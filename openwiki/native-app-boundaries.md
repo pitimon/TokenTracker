@@ -1,30 +1,21 @@
-# Native App Boundaries
+# Archived Native App History
 
-TokenTracker ships two desktop wrappers around the bundled Node CLI and built
-dashboard.
+TokenTracker no longer ships or supports native macOS or Windows applications. The active product is the local browser dashboard served by the loopback CLI backend.
 
-## macOS
+## Retained source
 
-`TokenTrackerBar/` is the Swift/XcodeGen menu-bar application with WidgetKit.
-`TokenTrackerBar/TokenTrackerBar/Services/NativeBridge.swift` is the native side of the web
-bridge; `dashboard/src/lib/native-bridge.js` is the web side. The generated
-`TokenTrackerBar/EmbeddedServer/` directory is build output and is gitignored.
+- `archive/native-apps/TokenTrackerBar/` contains historical Swift/XcodeGen menu-bar and WidgetKit code.
+- `archive/native-apps/TokenTrackerWin/` contains historical .NET/WebView2 tray-app code.
+- `archive/native-apps/` also retains their former workflows, tests, and version helpers.
 
-After editing `TokenTrackerBar/project.yml`, follow the XcodeGen and project
-patch commands in `CLAUDE.md` before building.
+These files are reference material only. They are not active architecture authorities, test targets, version locations, security-support surfaces, or release artifacts. Do not restore native builds or add native features without a new explicit product decision, issue, acceptance criteria, and threat/release review.
 
-## Windows
+## Active boundary
 
-`TokenTrackerWin/` is the .NET desktop application using WinForms, WPF, and
-WebView2. It bundles the CLI and dashboard with its PowerShell bundling script,
-prefers loopback port `17680` and falls back to a dynamic loopback port only
-when that port is unavailable. It registers the `tokentracker://` deep link.
-Dashboard behavior specific to the Windows host is gated by
-`isNativeWindowsApp()` in `dashboard/src/lib/native-bridge.js`.
+The supported flow is:
 
-## Release impact
+```text
+AI tool logs -> CLI sync/parsers -> local queues -> loopback HTTP API -> browser dashboard
+```
 
-Any change under `src/` or `dashboard/` affects npm and both native bundles.
-Version metadata must remain synchronized across the locations identified in
-`CLAUDE.md`, and the combined macOS/Windows release workflow is the authoritative
-desktop build path.
+Hosted/cloud service operation, native WebViews, custom URL schemes, DMG artifacts, Windows ZIP/installers, and native auto-update behavior are out of scope.

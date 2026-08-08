@@ -1174,10 +1174,6 @@ export default function IpCheckPage() {
 // ─── Internal components ───────────────────────────────────────────────────
 
 function Card({ title, subtitle, action, children, className = "" }) {
-  // Use a plain <div> for the header row, NOT the semantic <header> element:
-  // macOS app's WKWebView (Safari) applies a 36px padding-top to <header>
-  // via its user-agent stylesheet (Blink does not). Chrome looks fine, the
-  // app does not. <div> sidesteps all UA semantics.
   return (
     <section className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 sm:p-6 ${className}`}>
       <div className="flex items-start justify-between gap-3 mb-4">

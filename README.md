@@ -4,7 +4,7 @@
 
 ### Know exactly what you're spending on AI — across every CLI
 
-Auto-collect token usage from **20+ AI coding tools**, aggregate it locally, and read real cost trends in one dashboard. No account or API key required to start — just one command.
+Auto-collect token usage from **20+ AI coding tools**, aggregate it locally, and inspect real cost trends in a browser dashboard served by a loopback CLI backend. No account, hosted service, or native app required — just one command.
 
 [![npm version](https://img.shields.io/npm/v/@ipv9/tokentracker-cli.svg?color=blue)](https://www.npmjs.com/package/@ipv9/tokentracker-cli)
 [![npm downloads](https://img.shields.io/npm/dm/@ipv9/tokentracker-cli.svg?color=brightgreen)](https://www.npmjs.com/package/@ipv9/tokentracker-cli)
@@ -39,7 +39,7 @@ If you only use one tool and never care about per-project cost, the provider's o
 
 ## ⚡ Quick Start
 
-> **Requires** Node.js **20+**.
+> **Requires** Node.js **20.18.1+**.
 
 ```bash
 npx --yes @ipv9/tokentracker-cli
@@ -61,18 +61,11 @@ tokentracker doctor     # health check
 
 ---
 
-## 💻 Prefer an app? There's a desktop build
+## 🌐 Product scope
 
-If you'd rather not keep a terminal open, both native apps are on the [Releases page](https://github.com/pitimon/TokenTracker/releases/latest):
+TokenTracker is developed and released as a **local web dashboard plus loopback CLI backend**. Open the printed `localhost` or `127.0.0.1` URL in a normal browser. There is no hosted/cloud dashboard, native macOS app, or native Windows app in the active product scope.
 
-| Platform | Download | What it adds |
-|---|---|---|
-| **macOS 12+** | `TokenTrackerBar.dmg` | A menu-bar app — live token count in the menu bar, launch at login, sync and update from a click, plus a desktop widget. |
-| **Windows** | `TokenTracker-Setup.exe` | The same dashboard as a standalone app. |
-
-<img src="https://raw.githubusercontent.com/pitimon/TokenTracker/main/docs/screenshots/menubar.gif" alt="TokenTracker in the macOS menu bar" width="420" />
-
-Both bundle their own Node runtime, so there is nothing else to install. They share the same local data as the CLI — run either, or both. The desktop builds are cut less often than the npm package, so the latest release tag usually trails the npm version badge above.
+Historical Swift and C# source remains in the repository as an unsupported archive; it is not tested, versioned, built, or released.
 
 ---
 
@@ -196,7 +189,7 @@ Browser auto-open is opt-in: `tokentracker serve --open`. Background services an
 
 ## ⏰ Always-on, without a terminal (macOS)
 
-If you want the dashboard up all the time but don't want the desktop app, the repo ships a launchd installer. It registers two LaunchAgents — the dashboard on port `7680`, and a periodic background sync — both pinned to a specific published version:
+For an always-on local web dashboard, the repo ships a launchd installer. It registers two LaunchAgents — the browser dashboard on port `7680`, and a periodic background sync — both pinned to a specific published npm version:
 
 ```bash
 git clone https://github.com/pitimon/TokenTracker.git

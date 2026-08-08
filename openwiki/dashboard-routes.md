@@ -11,7 +11,6 @@ reference.
 | `/limits` | `LimitsPage` |
 | `/settings` | `SettingsPage` |
 | `/skills` | `SkillsPage` |
-| `/widgets` | `WidgetsPage` |
 | `/ip-check` | `IpCheckPage` |
 | `/wrapped` | `WrappedPage` |
 

@@ -337,18 +337,22 @@ test("shipped privacy copy qualifies local usage data and optional outbound call
   assert.equal((dashboardSource.match(correctedDisclosure) || []).length, 2, "source JSON-LD and visible FAQ must agree");
   assert.equal((dashboardBuilt.match(correctedDisclosure) || []).length, 2, "built JSON-LD and visible FAQ must agree");
   assert.match(openClawDoc, /agent.*session.*model.*token.*timestamp.*home path/i);
-  assert.match(copyRegistry, /Parse local AI tool logs and refresh local usage now\./);
+  assert.match(copyRegistry, /Local dashboard required/);
+  assert.match(copyRegistry, /localhost URL.*no hosted or native-app fallback/i);
+  assert.doesNotMatch(copyRegistry, /settings\.menubar|widgets\.|nav\.widgets|Mac app/);
 
   const expectedTranslations = new Map([
-    ["ja", "ローカルの AI ツールログを解析して、ローカル使用状況を今すぐ更新します。"],
-    ["ko", "로컬 AI 도구 로그를 파싱하고 로컬 사용량을 지금 새로 고칩니다."],
-    ["zh", "解析本地 AI 工具日志并立即刷新本地用量。"],
-    ["zh-TW", "解析本機 AI 工具日誌並立即重新整理本機用量。"],
+    ["ja", "TokenTracker CLI をローカルで起動し、localhost の URL を開いてください。ホスト型サービスやネイティブアプリの代替はありません。"],
+    ["ko", "TokenTracker CLI를 로컬에서 시작하고 localhost URL을 여세요. 호스팅 서비스나 네이티브 앱 대체 경로는 없습니다."],
+    ["zh", "请在本机启动 TokenTracker CLI 并打开 localhost 地址。TokenTracker 不提供托管服务或原生应用替代方案。"],
+    ["zh-TW", "請在本機啟動 TokenTracker CLI 並開啟 localhost 網址。TokenTracker 不提供託管服務或原生應用程式替代方案。"],
   ]);
   for (const [locale, expected] of expectedTranslations) {
     const translation = JSON.parse(fs.readFileSync(path.join(ROOT, "dashboard", "src", "content", "i18n", locale, "core.json"), "utf8"));
     const dashboardTranslation = JSON.parse(fs.readFileSync(path.join(ROOT, "dashboard", "src", "content", "i18n", locale, "dashboard.json"), "utf8"));
-    assert.equal(translation["settings.menubar.syncNowHint"], expected, `${locale} sync hint must stay local-only`);
+    assert.equal(dashboardTranslation["local_only.body"], expected, `${locale} local dashboard hint must describe the localhost CLI path`);
+    assert.deepEqual(Object.keys(translation).filter((key) => /^(?:widgets|menubar|settings\.menubar)|^nav\.widgets/.test(key)), [], `${locale} retains archived native copy`);
+    assert.deepEqual(Object.keys(dashboardTranslation).filter((key) => /^(?:dashboard\.widgets|local_only\.(?:open_app|download))/.test(key)), [], `${locale} retains archived native dashboard copy`);
     assert.deepEqual(Object.keys(dashboardTranslation).filter((key) => key.startsWith("dashboard.auth_gate")), [], `${locale} retains obsolete cloud-auth keys`);
   }
 });

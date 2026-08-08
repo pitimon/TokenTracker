@@ -1,8 +1,8 @@
 # TokenTracker OpenWiki
 
 This directory is the source-backed engineering map for TokenTracker. It covers
-the local runtime, dashboard, native wrappers, and the checks used to keep the
-documentation aligned with the repository.
+the local CLI backend, browser dashboard, and checks used to keep documentation
+aligned with the repository. Native wrappers are archived and unsupported.
 
 ## System diagram
 
@@ -24,7 +24,7 @@ flowchart TD
         dist["dashboard/dist/ — static SPA"]
     end
 
-    consumers["Browser at a local URL<br/>Native WebView — TokenTrackerBar / TokenTrackerWin"]
+    consumers["Browser at a local URL"]
 
     tools -->|read| parsers
     parsers --> queue
@@ -80,11 +80,9 @@ Credentials are used only for declared provider authentication or quota flows an
   |   +-- src/lib/local-api.js (dynamic endpoints) |
   |   +-- dashboard/dist (static SPA)              |
   +-----------------------------------------------+
-          |                              |
-          v                              v
-  browser at a local URL          native WebView
-                                  TokenTrackerBar / TokenTrackerWin
-                                  bundle Node CLI + dashboard output
+          |
+          v
+  browser at a local URL
 ```
 
 </details>
@@ -104,7 +102,7 @@ transformed between them, see the [Data flow](architecture/dataflow.md) view.
 - [Parsers and sync](parsers-and-sync.md): parser entry points and aggregation.
 - [Local API](local-api.md): documented local endpoints.
 - [Dashboard routes](dashboard-routes.md): route ownership and route list.
-- [Native app boundaries](native-app-boundaries.md): macOS and Windows wrappers.
+- [Archived native history](native-app-boundaries.md): unsupported macOS/Windows source retained for reference.
 - [Testing and release](testing-and-release.md): validation and release scope.
 
 ## Keep the documentation factual

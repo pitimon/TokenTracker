@@ -6,10 +6,9 @@ Guidance for Claude Code working in this repository. Every line here is loaded i
 
 Token Tracker is a local-first AI token usage tracker.
 
-- **CLI** (`src/`, CommonJS, Node ≥20.18.1) — entry `bin/tracker.js` → `src/cli.js`. `serve` runs a local HTTP server on `:7680`, `sync` parses logs into `~/.tokentracker/tracker/queue.jsonl`.
-- **Dashboard** (`dashboard/`, React 18 + Vite 7 + TS strict + Tailwind) — built to `dashboard/dist/`, served by the CLI on localhost. Local-only: there is no hosted deployment.
-- **macOS app** (`TokenTrackerBar/`, Swift 5.9, XcodeGen) — menu bar + WidgetKit. `EmbeddedServer/` bundles the CLI runtime + built dashboard so the `.app` is self-contained.
-- **Windows app** (`TokenTrackerWin/`, .NET 8 WinForms + WPF + WebView2) — system-tray counterpart of the macOS app. Launches the bundled CLI `serve` on a dynamic loopback port (avoids the DoSvc-held `:7680`), hosts the dashboard in WebView2, registers the `tokentracker://` deep-link for OAuth. Built `EmbeddedServer/` (Node + CLI + dashboard) is bundled by `scripts/bundle-node.ps1` so the `.exe` is self-contained. Dashboard adaptations are gated behind `isNativeWindowsApp()` (`dashboard/src/lib/native-bridge.js`) so macOS/web paths are untouched.
+- **CLI backend** (`src/`, CommonJS, Node ≥20.18.1) — entry `bin/tracker.js` → `src/cli.js`. `serve` binds a loopback HTTP server; `sync` parses logs into `~/.tokentracker/tracker/queue.jsonl`.
+- **Local web dashboard** (`dashboard/`, React 18 + Vite 7 + TS strict + Tailwind) — built to `dashboard/dist/` and opened in a normal browser against the localhost CLI backend. This is the only active product UI; hosted/cloud operation is out of scope.
+- **Archived native apps** (`archive/native-apps/TokenTrackerBar/`, `archive/native-apps/TokenTrackerWin/`) — native macOS and Windows apps are archived, unsupported historical source only; they are not developed, tested, versioned, built, or released.
 
 Data flow: AI CLI runs → hook fires → `rollout.js` parses → `queue.jsonl` → local API → dashboard.
 
@@ -26,8 +25,7 @@ npm run dashboard:build                   # build to dashboard/dist/
 npm run validate:copy                     # copy registry completeness
 npm run validate:ui-hardcode              # no hardcoded UI strings
 npm run validate:guardrails               # architecture guardrails
-npm run validate:version-lockstep         # desktop project versions match package.json
-node bin/tracker.js serve --no-sync       # local dashboard server on :7680
+node bin/tracker.js serve --no-sync       # local browser dashboard on :7680
 ```
 
 `npm run dashboard:dev` skips the CLI backend; to verify `src/` changes use `node bin/tracker.js serve`.
@@ -45,8 +43,7 @@ node bin/tracker.js serve --no-sync       # local dashboard server on :7680
 | Add UI components | `dashboard/src/ui/dashboard/components/` |
 | Add a provider icon | `dashboard/src/ui/dashboard/components/ProviderIcon.jsx` (`PROVIDER_ICON_MAP` keyed by `source.toUpperCase()`) |
 | Add user-facing text | `dashboard/src/content/copy.csv` — never hardcode |
-| Modify menu bar UI | `TokenTrackerBar/Services/` (controllers) + `Views/` (SwiftUI) |
-| Bridge native ↔ web | `TokenTrackerBar/Services/NativeBridge.swift` + `dashboard/src/lib/native-bridge.js` |
+| Inspect archived native history | `archive/native-apps/`, `TokenTrackerBar/ARCHIVED.md`, `TokenTrackerWin/ARCHIVED.md` — never treat it as active product authority |
 
 ## Standards pilot
 
@@ -105,66 +102,26 @@ UTC, half-hour buckets, append-only — readers take the latest entry per `(sour
 - Env-var prefixes: `TOKENTRACKER_` for CLI, `VITE_` for dashboard.
 - Git commits in **English**, conventional style (`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `test:` / `ci:`).
 - **Privacy**: usage metadata only — source, model, token and conversation counts, timestamps, and derived cost; never prompts, responses, message bodies, or private user-code paths. Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads.
-- `TokenTrackerBar/EmbeddedServer/` is gitignored; built on demand by `TokenTrackerBar/scripts/bundle-node.sh`.
-- After editing `TokenTrackerBar/project.yml`: `(cd TokenTrackerBar && xcodegen generate && ruby scripts/patch-pbxproj-icon.rb)`.
+- Archived native source must not constrain active browser/CLI development or re-enter release automation without a new explicit product decision.
 
 ## Release workflow
 
-**Any change under `src/` or `dashboard/` ships npm + DMG + Windows**, because both `TokenTrackerBar/EmbeddedServer/` (macOS) and `TokenTrackerWin/EmbeddedServer/` (Windows) bundle the CLI runtime and built dashboard. Bumping only `package.json` leaves desktop-app users on the stale embedded copy.
+The npm package is the sole active release artifact. Changes under `src/` or `dashboard/` that affect shipped behavior require a package version bump and npm publication; docs/tests/CI-only changes do not. Never bump, build, tag, or publish archived native projects.
 
 ### Repository routing
 
-This checkout publishes the `@ipv9/tokentracker-cli` package from the `pitimon/TokenTracker` release track. Treat `origin` (`git@github.com:pitimon/TokenTracker.git`) as the writable repository for issues, branches, PRs, releases, and npm-related work. Treat `upstream` (`git@github.com:mm7894215/TokenTracker.git`) as read-only reference material only; do not open issues, PRs, push branches, close trackers, or trigger workflows there unless the user explicitly asks for upstream contribution work.
+This checkout publishes `@ipv9/tokentracker-cli` from `pitimon/TokenTracker`. Treat `origin` as writable and `upstream` as read-only unless the user explicitly requests upstream contribution work. Every bugfix or release-bound change needs an issue, topic branch, PR, hosted CI, merge, registry artifact verification, and—when locally deployed—served-bundle verification.
 
-For every bugfix or release-bound change, create a `pitimon/TokenTracker` issue first, branch from `origin/main`, commit on a topic branch, push to `origin`, and open a PR back to `pitimon/TokenTracker:main`. Keep the issue/PR as the visible tracker even if npm has already been published manually. If a tracker or PR is accidentally created against `mm7894215/TokenTracker`, close it immediately with a note pointing to the correct `pitimon/TokenTracker` issue/PR.
+### Version and publish discipline
 
-The macOS + Windows release is **one workflow**: `release-dmg.yml` (display name **`release (macOS + Windows)`**). A `create-release` job makes the `vX.Y.Z` release as a **draft**, then a macOS `build` job and a `windows` job (which calls the reusable `release-windows.yml` via `workflow_call`) both `needs: create-release` and run **in parallel**, each uploading its assets to the draft with `--clobber`. A final `publish` job (`needs: [build, windows]`) flips the draft live (`gh release edit --draft=false`) and optionally notifies a Homebrew tap only when this fork's `HOMEBREW_TAP_REPOSITORY` variable and `HOMEBREW_DISPATCH_TOKEN` secret are both configured. The draft stays invisible until then, so `releases/latest` never serves a half-published release (and a failed platform leaves it unpublished rather than half-public). A **single** `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` ships **both** platforms. `release-windows.yml` can still be dispatched standalone for a Windows-only build.
+1. Verify registry state with `npm view @ipv9/tokentracker-cli version versions --json`; npm versions are immutable.
+2. Bump only `package.json` and `package-lock.json`: `npm version X.Y.Z --no-git-tag-version --ignore-scripts`.
+3. Run focused tests, one full `npm run ci:local`, and `npm publish --dry-run` before merge.
+4. Publish through `.github/workflows/npm-publish.yml` once Trusted Publishing/OIDC is configured. Until Issue #179 is closed, an authorized local publish is a recovery path, not proof that CI publishing works.
+5. Fresh-install the exact registry version and verify CLI help, Node engine, dependency audit, dashboard assets, target version presence, and old/bad version absence.
+6. For the local web service, run `scripts/release.sh X.Y.Z`; verify dashboard and local-sync pins, listener, HTTP 200, and served bundle version.
 
-| Change scope | Bump `package.json` | Bump `project.yml` `MARKETING_VERSION` | Bump `TokenTrackerWin.csproj` `<Version>` | Trigger DMG workflow (→ also builds Windows) |
-|---|---|---|---|---|
-| `src/` or `dashboard/` | ✅ | ✅ | ✅ | ✅ |
-| `TokenTrackerBar/` Swift only | ✅ | ✅ | ✅ | ✅ |
-| `TokenTrackerWin/` only | ✅ | ✅ | ✅ | ✅ |
-| scripts, docs, CI | — | — | — | — |
-
-All four version locations must match or the workflows' "Verify version" steps fail (DMG checks `package.json` + `project.yml`; Windows checks `package.json` + `csproj`).
-
-### Version bump discipline
-
-Before publishing or marking a release PR ready, verify the registry state with `npm view @ipv9/tokentracker-cli version versions --json`. Never attempt to publish a version that already exists on npm; npm versions are immutable. If any code/docs changes are added after a manual publish, bump to the next patch version immediately and update all lockstep version locations again before publishing a follow-up package.
-
-Use `npm version X.Y.Z --no-git-tag-version` for `package.json` and `package-lock.json`, then update both `MARKETING_VERSION` entries in `TokenTrackerBar/project.yml` and the `<Version>` in `TokenTrackerWin/TokenTrackerWin.csproj` to the same `X.Y.Z`. Re-run `npm pack --dry-run` and confirm the tarball name/version matches the intended version before publishing.
-
-Manual npm publish can be delegated to the agent, but MFA stays with the human. Run `npm publish --access public` from this repo and let it pause on npm web auth. When npm prints `Authenticate your account at: https://www.npmjs.com/auth/cli/...`, send that URL to the user and wait; do not ask for or accept passwords, OTP codes, recovery codes, or npm tokens in chat. After the user approves in the browser, keep the terminal session alive until it exits with `+ @ipv9/tokentracker-cli@X.Y.Z`, then verify with `npm view @ipv9/tokentracker-cli version versions --json`.
-
-`npm publish` runs `prepublishOnly`, which refreshes `src/lib/pricing/seed-snapshot.json`. If that file changes during publish, inspect it structurally. A timestamp-only `_meta.generated_at` change with unchanged model count and zero model/rate changes is expected; commit and push that post-publish timestamp so the PR HEAD matches the published tarball. If model/rate contents change unexpectedly, stop and review before recording the release state.
-
-When the user says "release" or "发 release", that is explicit approval for the release commit(s) + push — do not ask again for commit/push permission within that scope.
-
-### Steps
-
-1. Create or identify the `pitimon/TokenTracker` issue that describes the fix/release scope.
-2. Branch from `origin/main`; do not base release PRs on stale fork history or on `upstream/main` unless the user explicitly asks for an upstream contribution.
-3. Bump `package.json`, `project.yml`'s two `MARKETING_VERSION` entries (App + Widget targets), and `TokenTrackerWin/TokenTrackerWin.csproj`'s `<Version>` — keep all four in lockstep.
-4. Run validation (`npm run ci:local`; use focused tests while iterating, but do not skip the full local gate before publishing or opening the PR).
-5. Commit, push the topic branch to `origin`, and open a PR to `pitimon/TokenTracker:main` that references/closes the issue and records publish state.
-6. Publish npm only for a version that is not already in the registry. For manual MFA-protected publish, run `npm publish --access public`, give the npm auth URL to the user, wait for browser approval, then verify `npm view @ipv9/tokentracker-cli version versions --json`.
-7. After npm publish, check `git status`. If `prepublishOnly` changed only `src/lib/pricing/seed-snapshot.json` metadata, commit and push that timestamp-only follow-up before updating the PR release state. If contents changed beyond metadata, review before continuing.
-8. If manual publish happens before the PR is merged, record the published version and verification evidence in the PR.
-9. For DMG-eligible changes: `gh workflow run "release (macOS + Windows)" -f version=X.Y.Z` in `pitimon/TokenTracker` → cloud builds DMG **and** the Windows zip + installer (in parallel), attaching all to the GitHub Release.
-10. Homebrew tap dispatch is opt-in for this fork: set `HOMEBREW_TAP_REPOSITORY` to the intended `owner/repo` and `HOMEBREW_DISPATCH_TOKEN` before expecting workflow dispatch. Leave it unset to skip dispatch. **Never dispatch to or edit `mm7894215/homebrew-tokentracker` from this fork unless the user explicitly asks for upstream release work.**
-
-Release notes: one English line, no markdown sections (`Fix token stats inflation caused by duplicate queue entries`).
-
-### Local DMG build (testing only — CI is authoritative)
-
-```bash
-cd TokenTrackerBar && npm run dashboard:build && ./scripts/bundle-node.sh
-xcodegen generate && ruby scripts/patch-pbxproj-icon.rb
-xcodebuild -scheme TokenTrackerBar -configuration Release clean build
-APP="$(find ~/Library/Developer/Xcode/DerivedData/TokenTrackerBar-*/Build/Products/Release -name 'TokenTrackerBar.app' -maxdepth 1)"
-bash scripts/create-dmg.sh "$APP"
-```
+`npm publish` runs `prepublishOnly`, rebuilding `dashboard/dist` and refreshing the pricing seed. Inspect any tracked pricing-seed change before commit. Hosted/cloud deployment, DMG, Windows ZIP/installer, native tags, and Homebrew native-app distribution are out of scope.
 
 ## OpenSpec
 
@@ -176,12 +133,6 @@ openspec validate <id> --strict
 ```
 
 ## Lessons learned (read before touching)
-
-### macOS build & release
-
-- **Icon Composer (`.icon`) needs Xcode 26+**. CI uses `macos-26` runners but a static `TokenTrackerBar/TokenTrackerBar/AppIcon.icns` is committed as fallback for older Xcode. If you update `AppIcon.icon`, regenerate `.icns` from a local Xcode 26 build and commit both.
-- **DMG layout on CI needs Homebrew `create-dmg`**. `TokenTrackerBar/scripts/create-dmg.sh` uses AppleScript locally but delegates to `create-dmg` on headless runners. Don't reintroduce a "skip Finder customization on CI" shortcut — produces bare DMGs.
-- **CI must ad-hoc sign the `.app` before DMG packaging.** Build flags strip signing entirely; without ad-hoc signing the `.app` + `com.apple.quarantine` xattr triggers Gatekeeper "damaged" rejection (unfixable without Terminal). The workflow signs inner Mach-O (`Resources/EmbeddedServer/node`) first, then the outer bundle with `--entitlements TokenTrackerBar/TokenTrackerBar.entitlements --sign -`. **Never** remove this step without replacing it with Developer ID + notarization.
 
 ### Dashboard layout
 

@@ -12,23 +12,10 @@ error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,This view failed to rend
 error.boundary.hint,shared,*,ErrorBoundary,hint,"Open the console, then reload the page",,active
 error.boundary.no_details,shared,*,ErrorBoundary,details,No error details,,active
 error.boundary.action.reload,shared,*,ErrorBoundary,action_reload,Reload,,active
-
-
-
-
-
-
-
-
-
-
-
 identity_card.rank_label,ui,IdentityCard,IdentityCard,rank_label,Started,,active
 identity_card.streak_label,ui,IdentityCard,IdentityCard,streak_label,Active days,,active
 identity_card.rank_placeholder,ui,IdentityCard,IdentityCard,rank_placeholder,—,,active
 identity_card.streak_value,ui,IdentityCard,IdentityCard,streak_value,{{days}} DAY,,active
-
-
 dashboard.core_index.collapse_label,dashboard,DashboardPage,UsagePanel,toggle,▾,,active
 dashboard.core_index.expand_label,dashboard,DashboardPage,UsagePanel,toggle,▸,,active
 dashboard.core_index.collapse_aria,dashboard,DashboardPage,UsagePanel,toggle_aria,Collapse model breakdown,,active
@@ -41,12 +28,10 @@ usage.metric.output,ui,UsagePanel,UsagePanel,metric_output,Output,,active
 usage.metric.cached_input,ui,UsagePanel,UsagePanel,metric_cached_input,Cached input,,active
 usage.metric.reasoning_output,ui,UsagePanel,UsagePanel,metric_reasoning_output,Reasoning output,,active
 usage.button.refresh,ui,UsagePanel,UsagePanel,button_refresh,Refresh,,active
-
 dashboard.rolling.title,ui,RollingUsagePanel,RollingUsagePanel,title,Recent Activity,,active
 dashboard.rolling.last_7d,ui,RollingUsagePanel,RollingUsagePanel,label_last_7d,Last 7 days,,active
 dashboard.rolling.last_30d,ui,RollingUsagePanel,RollingUsagePanel,label_last_30d,Last 30 days,,active
 dashboard.rolling.avg_active_day,ui,RollingUsagePanel,RollingUsagePanel,label_avg_active_day,Daily average,,active
-
 dashboard.projects.title,ui,ProjectUsagePanel,ProjectUsagePanel,title,Project Usage,,active
 dashboard.projects.tokens_label,ui,ProjectUsagePanel,ProjectUsagePanel,tokens_label,Tokens,,active
 dashboard.projects.stars_label,ui,ProjectUsagePanel,ProjectUsagePanel,stars_label,STAR,,active
@@ -60,33 +45,14 @@ dashboard.projects.unattributed,ui,ProjectUsagePanel,ProjectUsagePanel,unattribu
 dashboard.projects.unpriced,ui,ProjectUsagePanel,ProjectUsagePanel,unpriced,no model recorded,Shown instead of a cost when every row for this repo predates per-model project attribution,active
 dashboard.plan_value.title,ui,PlanValueCard,PlanValueCard,title,Plan vs list price,,active
 dashboard.plan_value.empty,ui,PlanValueCard,PlanValueCard,empty,Enter what you pay for a plan to compare it against list price.,Shown when no provider has a plan price set,active
-dashboard.plan_value.headline,ui,PlanValueCard,PlanValueCard,headline,{{plan}}/mo of plans · {{list}} of usage at API list price,Deliberately neutral: no "saved" or "wasted",active
+dashboard.plan_value.headline,ui,PlanValueCard,PlanValueCard,headline,{{plan}}/mo of plans · {{list}} of usage at API list price,"Deliberately neutral: no ""saved"" or ""wasted""",active
 dashboard.plan_value.row,ui,PlanValueCard,PlanValueCard,row,{{plan}}/mo · {{list}} at list price,Per-provider line,active
 dashboard.plan_value.floor_note,ui,PlanValueCard,PlanValueCard,floor_note,At least this much — some usage could not be priced ({{models}}).,Shown when any model is unpriced or fuzzy-matched,active
 dashboard.plan_value.disclaimer,ui,PlanValueCard,PlanValueCard,disclaimer,List-price-equivalent for this window — not a bill you would have paid.,Guards against reading the number as a counterfactual,active
 dashboard.plan_value.input_aria,ui,PlanValueCard,PlanValueCard,input_aria,Monthly plan price for {{source}},,active
-dashboard.widgets.title,dashboard,DashboardPage,WidgetOnboardingCard,title,Desktop Widgets,,active
-dashboard.widgets.hint,dashboard,DashboardPage,WidgetOnboardingCard,hint,"Right-click your desktop → Edit Widgets → search ""TokenTracker""",,active
-dashboard.widgets.dismiss_aria,dashboard,DashboardPage,WidgetOnboardingCard,dismiss_aria,Dismiss widget intro,,active
-widgets.page.title,dashboard,WidgetsPage,WidgetsPage,title,Widgets,,active
-widgets.cta.open_gallery,dashboard,WidgetsPage,WidgetsPage,cta_open_gallery,Open Widget Gallery,,active
-widgets.cta.download,dashboard,WidgetsPage,WidgetsPage,cta_download,Download Mac App,,active
-widgets.cta.macos_only,dashboard,WidgetsPage,WidgetsPage,cta_macos_only,macOS only,,active
-widgets.menubar.section.title,dashboard,WidgetsPage,WidgetsPage,menubar_section_title,Menu Bar,,active
-widgets.gallery.section.title,dashboard,WidgetsPage,WidgetsPage,gallery_section_title,Desktop Widgets,,active
-widgets.summary.name,dashboard,WidgetsPage,WidgetsPage,summary_name,Usage Summary,,active
-widgets.summary.description,dashboard,WidgetsPage,WidgetsPage,summary_desc,Today and seven-day usage with a compact sparkline.,,active
-widgets.heatmap.name,dashboard,WidgetsPage,WidgetsPage,heatmap_name,Activity Heatmap,,active
-widgets.heatmap.description,dashboard,WidgetsPage,WidgetsPage,heatmap_desc,GitHub-style daily calendar. Spot streaks and quiet days at a glance.,,active
-widgets.topModels.name,dashboard,WidgetsPage,WidgetsPage,topmodels_name,Top Models,,active
-widgets.topModels.description,dashboard,WidgetsPage,WidgetsPage,topmodels_desc,Your heaviest-used models ranked by token share.,,active
-widgets.limits.name,dashboard,WidgetsPage,WidgetsPage,limits_name,Usage Limits,,active
-widgets.limits.description,dashboard,WidgetsPage,WidgetsPage,limits_desc,"Live rate-limit progress for Claude, Codex, Cursor, Gemini and more.",,active
 dashboard.cost_breakdown.title,ui,CostAnalysisModal,CostAnalysisModal,title,Cost Breakdown,,active
 dashboard.cost_breakdown.total_label,ui,CostAnalysisModal,CostAnalysisModal,total_label,Estimated Total Cost,,active
 dashboard.cost_breakdown.close,ui,CostAnalysisModal,CostAnalysisModal,close_label,Close,,active
-
-
 trend.monitor.label,ui,TrendMonitor,TrendMonitor,label,Usage Trend,,active
 trend.zoom.open_aria,ui,TrendMonitor,TrendMonitor,zoom_open_aria,Expand to full screen,,active
 trend.zoom.close_aria,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_close_aria,Close,,active
@@ -113,7 +79,6 @@ trend.zoom.insight.calm,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insi
 trend.zoom.insight.steady,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_steady,"A steady rhythm across {{active}} active stretches, cresting at {{peak}}. The kind of pace that ships things without drama.",,active
 trend.zoom.insight.heavy,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_heavy,"Heavy lifting: {{active}} stretches running hot, peaking at {{peak}}. This is output from someone who manufactures momentum instead of waiting for it.",,active
 trend.zoom.insight.massive,ui,TrendMonitorZoomModal,TrendMonitorZoomModal,zoom_insight_massive,"Industrial scale. A {{peak}} peak and throughput that never cools. At this volume you are not using the model, you are running a foundry.",,active
-
 heatmap.title,ui,ActivityHeatmap,ActivityHeatmap,title,Activity Heatmap,,active
 heatmap.empty,ui,ActivityHeatmap,ActivityHeatmap,empty_state,No activity data yet.,,active
 heatmap.legend.less,ui,ActivityHeatmap,ActivityHeatmap,legend_less,Less,,active
@@ -143,10 +108,6 @@ heatmap.day.wed,ui,ActivityHeatmap,ActivityHeatmap,day_label,Wed,,active
 heatmap.day.thu,ui,ActivityHeatmap,ActivityHeatmap,day_label,Thu,,active
 heatmap.day.fri,ui,ActivityHeatmap,ActivityHeatmap,day_label,Fri,,active
 heatmap.day.sat,ui,ActivityHeatmap,ActivityHeatmap,day_label,Sat,,active
-
-
-
-
 daily.sort.date.label,dashboard,DashboardPage,DailyTable,sort_label,Date,,active
 daily.sort.date.title,dashboard,DashboardPage,DailyTable,sort_title,Sort by Date,,active
 daily.sort.total.label,dashboard,DashboardPage,DailyTable,sort_label,Total,,active
@@ -169,28 +130,12 @@ daily.sort.top_model.label,dashboard,DashboardPage,DailyTable,sort_label,Top mod
 daily.sort.top_model.title,dashboard,DashboardPage,DailyTable,sort_title,Sort by Top model,,active
 details.pagination.prev,dashboard,DashboardPage,DailyTable,pagination_prev,Prev,,active
 details.pagination.next,dashboard,DashboardPage,DailyTable,pagination_next,Next,,active
-
-
-
-
-
-
-
-
 limits.copilot.otelHint.title,dashboard,LimitsPage,LimitsPage,otel_hint_title,Track Copilot token usage,,active
 limits.copilot.otelHint.body,dashboard,LimitsPage,LimitsPage,otel_hint_body,"Limits load via your GitHub OAuth token. To also record per-token usage, enable Copilot's OpenTelemetry export and add these lines to your shell profile (~/.zshrc or ~/.bashrc):",,active
 limits.copilot.otelHint.copy,dashboard,LimitsPage,LimitsPage,otel_hint_copy,Copy,,active
 limits.copilot.otelHint.copied,dashboard,LimitsPage,LimitsPage,otel_hint_copied,Copied,,active
-
-
-
-
-
-
 dashboard.session_expired.copy_label,dashboard,DashboardPage,AsciiBox,body,run npx --yes @ipv9/tokentracker-cli init,,active
 dashboard.session_expired.copied,dashboard,DashboardPage,AsciiBox,body,copied,,active
-
-
 dashboard.install.prompt,dashboard,DashboardPage,AsciiBox,install_prompt,Install Node.js 18+ then run:,,active
 dashboard.install.cmd.init,dashboard,DashboardPage,AsciiBox,install_cmd,npx --yes @ipv9/tokentracker-cli init,,active
 dashboard.install.cmd.init_link_code,dashboard,DashboardPage,AsciiBox,install_cmd,npx --yes @ipv9/tokentracker-cli init --link-code {{link_code}},,active
@@ -200,27 +145,19 @@ dashboard.install.copied,dashboard,DashboardPage,AsciiBox,install_copy,Copied to
 dashboard.install.link_code.loading,dashboard,DashboardPage,AsciiBox,install_status,Generating private code...,,active
 dashboard.install.link_code.failed,dashboard,DashboardPage,AsciiBox,install_status,Private code unavailable,,active
 dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,npx --yes @ipv9/tokentracker-cli sync,,active
-
-
-
 dashboard.daily.title,dashboard,DashboardPage,AsciiBox,title,Daily Breakdown,,active
 dashboard.daily.empty,dashboard,DashboardPage,AsciiBox,empty_state,No data yet. Use your AI CLI then run {{cmd}}.,,active
 dashboard.data_health.day_empty_has_recent,dashboard,DashboardPage,DashboardView,data_health_day_recent,No tokens in today's local day. Last 7 days has {{tokens}} tokens; switch to 7d or 30d to review recent usage.,,active
 dashboard.data_health.period_empty_has_30d,dashboard,DashboardPage,DashboardView,data_health_period_30d,No tokens in this range. Last 30 days has {{tokens}} tokens; widen the range to review recent usage.,,active
 dashboard.data_health.month_empty_has_30d,dashboard,DashboardPage,DashboardView,data_health_month_30d,No tokens in this calendar month yet. Last 30 days has {{tokens}} tokens.,,active
 dashboard.data_health.no_recent_data,dashboard,DashboardPage,DashboardView,data_health_no_recent,No recent token data found. Run sync or check status to confirm readable tool logs.,,active
-
 dashboard.identity.title,dashboard,DashboardPage,IdentityCard,title,Your Profile,,active
 dashboard.identity.subtitle,dashboard,DashboardPage,IdentityCard,subtitle,Track your coding journey,,active
 dashboard.identity.fallback,dashboard,DashboardPage,IdentityCard,handle_fallback,Anonymous,,active
-
-
 dashboard.screenshot.title_line1,dashboard,DashboardPage,ScreenshotTitle,title_line,Coding Agent,,active
 dashboard.screenshot.title_line2,dashboard,DashboardPage,ScreenshotTitle,title_line,2025 Wrapped,,active
-
 nav.usage,shared,*,Sidebar,nav_usage,Tokens,,active
 nav.limits,shared,*,Sidebar,nav_limits,Limits,,active
-nav.widgets,shared,*,Sidebar,nav_widgets,macOS Widgets,,active
 nav.collapse,shared,*,Sidebar,nav_collapse,Collapse sidebar,,active
 nav.expand,shared,*,Sidebar,nav_expand,Expand sidebar,,active
 nav.menu,shared,*,Sidebar,nav_menu,Open navigation menu,,active
@@ -267,31 +204,6 @@ stats.period.month,ui,DashboardPage,StatsPanel,period_month,30d convs,,active
 stats.period.this_month,ui,DashboardPage,StatsPanel,period_this_month,month,,active
 stats.period.all,ui,DashboardPage,StatsPanel,period_all,all convs,,active
 stats.period.convs,ui,DashboardPage,StatsPanel,period_convs,convs,,active
-settings.section.menubar,ui,SettingsPage,SettingsPage,sec_menubar,Menu Bar App,,active
-settings.menubar.showStats,ui,SettingsPage,SettingsPage,mb_show_stats,Show stats in menu bar,,active
-settings.menubar.showStatsHint,ui,SettingsPage,SettingsPage,mb_show_stats_hint,Display today's token count and cost beside the menu bar icon.,,active
-settings.menubar.animatedIcon,ui,SettingsPage,SettingsPage,mb_anim,Animated icon,,active
-settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,Blink the Clawd character and play the syncing animation in the menu bar.,,active
-settings.menubar.launchAtLogin,ui,SettingsPage,SettingsPage,mb_login,Launch at login,,active
-settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,Start TokenTrackerBar automatically when you sign in to macOS.,,active
-settings.menubar.syncNow,ui,SettingsPage,SettingsPage,mb_sync_now,Sync now,,active
-settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,Parse local AI tool logs and refresh local usage now.,,active
-settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,Syncing…,,active
-settings.menubar.updates,ui,SettingsPage,SettingsPage,mb_updates,Updates,,active
-settings.menubar.checkUpdates,ui,SettingsPage,SettingsPage,mb_check_updates,Check for updates,,active
-menubar.slot.primary,ui,WidgetsPage,MenuBarDisplayCard,slot_primary,Primary slot,,active
-menubar.slot.secondary,ui,WidgetsPage,MenuBarDisplayCard,slot_secondary,Secondary slot,,active
-menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,Open TokenTrackerBar for macOS to edit the live menu bar display.,,active
-menubar.metric.today_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_today_tokens,Today Tokens,,active
-menubar.metric.today_cost,ui,WidgetsPage,MenuBarDisplayCard,metric_today_cost,Today Cost,,active
-menubar.metric.last_7d_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_last_7d,Last 7 Days,,active
-menubar.metric.this_month_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_this_month,This Month,,active
-menubar.metric.total_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_total_tokens,Total Tokens,,active
-menubar.metric.total_cost,ui,WidgetsPage,MenuBarDisplayCard,metric_total_cost,Total Cost,,active
-menubar.metric.claude_5h,ui,WidgetsPage,MenuBarDisplayCard,metric_claude_5h,Claude 5h Limit,,active
-menubar.metric.claude_7d,ui,WidgetsPage,MenuBarDisplayCard,metric_claude_7d,Claude 7d Limit,,active
-menubar.metric.codex_5h,ui,WidgetsPage,MenuBarDisplayCard,metric_codex_5h,Codex 5h Limit,,active
-menubar.metric.codex_7d,ui,WidgetsPage,MenuBarDisplayCard,metric_codex_7d,Codex 7d Limit,,active
 usage.period.day,ui,DashboardPage,UsageOverview,period_day,Day,,active
 usage.period.last24h,ui,DashboardPage,UsageOverview,period_last24h,24h,,active
 usage.period.week,ui,DashboardPage,UsageOverview,period_week,7d,,active
@@ -622,10 +534,8 @@ ipcheck.region.SY,ui,IpCheckPage,IpCheckPage,region_sy,Syria,,active
 ipcheck.region.CU,ui,IpCheckPage,IpCheckPage,region_cu,Cuba,,active
 ipcheck.region.BY,ui,IpCheckPage,IpCheckPage,region_by,Belarus,,active
 ipcheck.region.VE,ui,IpCheckPage,IpCheckPage,region_ve,Venezuela,,active
-local_only.title,dashboard,LocalOnlyNotice,LocalOnlyNotice,title,Available in the app,,active
-local_only.body,dashboard,LocalOnlyNotice,LocalOnlyNotice,body,"This page reads data from your own machine, so it only works in the Mac app or the CLI dashboard.",,active
-local_only.open_app,dashboard,LocalOnlyNotice,LocalOnlyNotice,open_app,Open in Mac app,,active
-local_only.download,dashboard,LocalOnlyNotice,LocalOnlyNotice,download,Get the Mac app,,active
+local_only.title,dashboard,LocalOnlyNotice,LocalOnlyNotice,title,Local dashboard required,,active
+local_only.body,dashboard,LocalOnlyNotice,LocalOnlyNotice,body,Start the TokenTracker CLI locally and open its localhost URL. TokenTracker has no hosted or native-app fallback.,,active
 shared.app_name,shared,*,*,app_name,Token Tracker,,active
 cmdk.placeholder,ui,CommandPalette,CommandPalette,placeholder,Search pages and skills…,,active
 cmdk.empty,ui,CommandPalette,CommandPalette,empty,No matches,,active
@@ -667,7 +577,7 @@ skills.usage.months_ago,ui,SkillsPage,SkillDetailPanel,usage_months_ago,{{months
 skills.usage.unknown,ui,SkillsPage,SkillDetailPanel,usage_unknown,Unknown,,active
 skills.usage.unused,ui,SkillsPage,SkillDetailPanel,usage_unused,Not invoked yet. Possible dead weight if you never use it.,,active
 skills.usage.disclaimer,ui,SkillsPage,SkillDetailPanel,usage_disclaimer,Counts from Claude transcripts. Cost is the approximate spend of turns that invoked this skill.,,active
-app.meta.title,app,*,*,meta_title,TokenTracker,"Local dashboard <title>; replaces the removed landing.meta.* keys",active
+app.meta.title,app,*,*,meta_title,TokenTracker,Local dashboard <title>; replaces the removed landing.meta.* keys,active
 app.meta.description,app,*,*,meta_description,See how many tokens your AI coding tools use — locally.,,active
 app.meta.og_site_name,app,*,*,meta_og_site_name,TokenTracker,,active
 app.meta.og_type,app,*,*,meta_og_type,website,,active

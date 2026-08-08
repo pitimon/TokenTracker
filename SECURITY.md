@@ -10,7 +10,7 @@ Only the **latest minor release** is supported with security fixes. This is a sm
 
 Instead, use one of these private channels:
 
-- **GitHub Private Vulnerability Reporting**: [Report a vulnerability](https://github.com/mm7894215/TokenTracker/security/advisories/new)
+- **GitHub Private Vulnerability Reporting**: [Report a vulnerability](https://github.com/pitimon/TokenTracker/security/advisories/new)
 - **Email**: open a GitHub issue asking the maintainer to enable an alternative private channel if you can't use GitHub Security Advisories
 
 When reporting, please include:
@@ -25,12 +25,12 @@ You can expect an initial response within a few days. Once a fix is ready, it wi
 
 ## Scope
 
-TokenTracker is a local-first tool that reads AI CLI tool logs from your home directory. The most sensitive areas to consider when reviewing security:
+TokenTracker is a local web tool: a browser dashboard served by a CLI HTTP backend bound to loopback. It reads AI CLI tool logs from the user's home directory. There is no hosted/cloud service or supported native app. The most sensitive areas to consider when reviewing security:
 
 - **`src/lib/rollout.js`** — parses logs from 8 different AI CLI tools. Privacy rule: usage metadata only — source, model, token and conversation counts, timestamps, and derived cost; never prompts, responses, message bodies, or private user-code paths.
 - **`src/lib/cursor-config.js`** — reads Cursor's local SQLite to extract auth tokens for the Cursor usage API. Credentials may be sent only to declared Cursor authentication or quota hosts and must never enter TokenTracker queues, logs, diagnostics, or API responses.
 - **`src/lib/local-api.js`** — local HTTP server bound to `127.0.0.1`. Should not accept connections from other hosts.
-- **`TokenTrackerBar/`** — macOS app, ad-hoc signed. Has filesystem access via macOS TCC permissions; should never write outside its own data directories or the documented snapshot/queue paths.
+- **Archived native source** — `archive/native-apps/TokenTrackerBar/` and `archive/native-apps/TokenTrackerWin/` are unsupported historical code and outside the active security-support boundary unless explicitly reactivated.
 
 ## Out of Scope
 

@@ -30,9 +30,6 @@ const SettingsPage = lazy(() =>
 const SkillsPage = lazy(() =>
   import("./pages/SkillsPage.jsx").then((m) => ({ default: m.SkillsPage })),
 );
-const WidgetsPage = lazy(() =>
-  import("./pages/WidgetsPage.jsx").then((m) => ({ default: m.WidgetsPage })),
-);
 
 
 export default function App() {
@@ -55,7 +52,6 @@ export default function App() {
   const isLimitsPath = normalizedPath === "/limits";
   const isSettingsPath = normalizedPath === "/settings";
   const isSkillsPath = normalizedPath === "/skills";
-  const isWidgetsPath = normalizedPath === "/widgets";
   const isIpCheckPath = normalizedPath === "/ip-check";
   const isWrappedPath = normalizedPath === "/wrapped";
 
@@ -78,8 +74,6 @@ export default function App() {
     PageComponent = SettingsPage;
   } else if (isSkillsPath) {
     PageComponent = SkillsPage;
-  } else if (isWidgetsPath) {
-    PageComponent = WidgetsPage;
   } else if (isIpCheckPath) {
     PageComponent = IpCheckPage;
   }
@@ -90,7 +84,6 @@ export default function App() {
     isLimitsPath ||
     isSettingsPath ||
     isSkillsPath ||
-    isWidgetsPath ||
     isIpCheckPath;
 
   let content = null;

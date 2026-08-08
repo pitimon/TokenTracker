@@ -46,14 +46,6 @@
         } catch (e) {}
       })();
       document.documentElement.classList.add("js");
-      // TokenTrackerBar WKWebView: mark before first paint so inline CSS below can clear html/body (NSVisualEffectView shows through).
-      (function () {
-        try {
-          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
-            document.documentElement.classList.add("native-app");
-          }
-        } catch (e) {}
-      })();
       // Sync theme before first paint to prevent dark→light flash (FOUC)
       (function(){
         var t;
@@ -66,14 +58,6 @@
       /* Prevent dark flash: set background before CSS loads */
       html { background: #fafafa; }
       html.dark { background: #0a0a0a; }
-      /* Native app: must override the two lines above — otherwise WKWebView stays opaque over NSVisualEffectView */
-      html.native-app,
-      html.native-app.dark {
-        background: transparent !important;
-      }
-      html.native-app body {
-        background: transparent !important;
-      }
 
       .js .aeo-seed-content {
         display: none;

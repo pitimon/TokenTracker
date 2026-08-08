@@ -20,7 +20,7 @@ trap 'rm -rf "$TMP"' EXIT
 verify_page() {
   local page="$1" output="$2"
   local prompt
-  prompt="Fact-check exactly one generated TokenTracker OpenWiki page against repository source. Read-only only: do not edit, create, or delete files. PAGE: $page. Source of truth: src/cli.js (commands), src/commands/ (options/behavior), src/lib/local-api.js (local routes), src/lib/rollout.js (parsers), dashboard/src/App.jsx (routes), TokenTrackerBar/ and TokenTrackerWin/ (native boundaries), CLAUDE.md (repository workflow). Also read openwiki-facts/source-facts.json before checking exact facts. Treat only contradictions as errors. Ignore style. Output exactly STATUS: CLEAN, or STATUS: ERRORS followed by one bullet per confirmed error with source path:line evidence."
+  prompt="Fact-check exactly one generated TokenTracker OpenWiki page against repository source. Read-only only: do not edit, create, or delete files. PAGE: $page. Source of truth: src/cli.js (commands), src/commands/ (options/behavior), src/lib/local-api.js (local routes), src/lib/rollout.js (parsers), dashboard/src/App.jsx (routes), archive/native-apps/ (historical native boundaries), CLAUDE.md (repository workflow). Also read openwiki-facts/source-facts.json before checking exact facts. Treat only contradictions as errors. Ignore style. Output exactly STATUS: CLEAN, or STATUS: ERRORS followed by one bullet per confirmed error with source path:line evidence."
   if ! codex exec -s read-only --ephemeral -C "$ROOT" -o "$output" "$prompt" </dev/null >/dev/null 2>"$output.err"; then
     {
       echo "STATUS: ERRORS"

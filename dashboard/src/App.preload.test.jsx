@@ -13,7 +13,6 @@ const TEXT = {
   reveal: "reveal main content",
   settings: "Settings page",
   skills: "Skills page",
-  widgets: "Widgets page",
   wrapped: "Wrapped page",
 };
 
@@ -81,7 +80,6 @@ vi.mock("./pages/IpCheckPage.jsx", () => ({ default: () => <main>{TEXT.ipCheck}<
 vi.mock("./pages/WrappedPage.jsx", () => ({ default: () => <main>{TEXT.wrapped}</main> }));
 vi.mock("./pages/SettingsPage.jsx", () => ({ SettingsPage: () => <main>{TEXT.settings}</main> }));
 vi.mock("./pages/SkillsPage.jsx", () => ({ SkillsPage: () => <main>{TEXT.skills}</main> }));
-vi.mock("./pages/WidgetsPage.jsx", () => ({ WidgetsPage: () => <main>{TEXT.widgets}</main> }));
 
 function renderApp(initialPath = "/dashboard") {
   window.history.pushState({}, "", initialPath);
