@@ -4,8 +4,6 @@
 
 - [ ] CLI (`src/`)
 - [ ] Dashboard (`dashboard/`)
-- [ ] macOS app (`TokenTrackerBar/`)
-- [ ] Windows app (`TokenTrackerWin/`)
 - [ ] Docs / CI / config
 
 ## Checklist
@@ -14,7 +12,7 @@
 - [ ] New dashboard/user-facing strings go through `dashboard/src/content/copy.csv`
 - [ ] Commits follow conventional style (`feat:` / `fix:` / `refactor:` / `docs:` / `chore:` / `test:` / `ci:`)
 - [ ] PR description explains why, not just what
-- [ ] Version bump files are in lockstep when release-bound (`package.json`, `package-lock.json`, `TokenTrackerBar/project.yml`, `TokenTrackerWin/TokenTrackerWin.csproj`)
+- [ ] Version bump files are in lockstep when release-bound (`package.json`, `package-lock.json`)
 - [ ] npm publish state is recorded when release-bound (manual MFA URL approval, `npm view @ipv9/tokentracker-cli version versions --json`, and any `seed-snapshot.json` post-publish diff)
 
 ## Codex Context (required when requesting @codex review)

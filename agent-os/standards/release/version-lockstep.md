@@ -1,41 +1,42 @@
-# Version Lockstep
+# npm Version and Local Web Release
 
 ## Authority
 
 - `CLAUDE.md`
 - `openwiki/testing-and-release.md`
 - `package.json`
+- `.github/workflows/npm-publish.yml`
 - `scripts/release.sh`
-- `test/version-lockstep.test.js`
 - `test/npm-publish-workflow.test.js`
+- `test/release-automation.test.js`
 
 ## Applies when
 
-Changing `src/`, `dashboard/`, either native wrapper, version metadata, packaging, LaunchAgent behavior, npm publishing, or the macOS/Windows release workflows.
+Changing `src/`, `dashboard/`, package version metadata, npm packaging/publishing, or local browser-dashboard LaunchAgent behavior.
 
 ## Required behavior
 
-- Treat changes under `src/` or `dashboard/` as npm, macOS, and Windows release-bound.
-- Keep package, lockfile, both macOS marketing versions, and Windows package version synchronized.
-- Verify the target npm version is unused before publishing; published versions are immutable.
-- Keep npm MFA with the human and inspect post-publish pricing-seed changes before recording release state.
-- Keep the combined release draft unpublished until required platform assets succeed.
-- Verify both dashboard and local-sync LaunchAgent pins when release tooling changes.
+- npm is the sole active release artifact; archived native source and project versions are outside the release contract.
+- Keep `package.json` and `package-lock.json` versions synchronized.
+- Verify the target npm version is unused; published versions are immutable.
+- Rebuild `dashboard/dist` before publish and semantically inspect the exact registry artifact.
+- Keep npm authentication with the approved human/OIDC boundary and inspect pricing-seed changes before recording release state.
+- Verify dashboard and local-sync LaunchAgent pins, listener, HTTP status, and served target version after local deployment.
 
 ## Verification
 
 ```bash
-npm run validate:version-lockstep
-node --test test/version-lockstep.test.js test/npm-publish-workflow.test.js test/release-dmg-workflow.test.js test/release-windows-workflow.test.js
-npm pack --dry-run --json
+node --test test/npm-publish-workflow.test.js test/release-automation.test.js test/web-only-product-scope.test.js
+npm publish --dry-run --json
 npm run ci:local
 ```
 
-Publishing and release dispatch remain explicit external approval gates.
+Publishing and local deployment remain explicit external approval gates.
 
 ## Do not infer
 
-- A green npm test proves desktop bundles are current.
-- A tag or draft release proves npm or both native assets were published.
-- Updating one version location or one LaunchAgent pin is sufficient.
-- A docs/scripts-only change requires a product version bump unless its actual release surface says otherwise.
+- A green source test proves the registry artifact or served browser bundle is current.
+- A successful manual publish proves GitHub Actions publishing works.
+- Updating one LaunchAgent pin is sufficient.
+- Archived DMG/Windows workflows or project versions are active release authorities.
+- A docs/tests/CI-only change requires a product version bump unless its actual release surface says otherwise.

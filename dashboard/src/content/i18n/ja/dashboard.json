@@ -26,9 +26,6 @@
   "dashboard.projects.limit_top_6": "上位 6 件",
   "dashboard.projects.limit_top_10": "上位 10 件",
   "dashboard.projects.empty": "公開リポジトリはありません",
-  "dashboard.widgets.title": "デスクトップウィジェット",
-  "dashboard.widgets.hint": "デスクトップを右クリック → ウィジェットを編集 → 「TokenTracker」を検索",
-  "dashboard.widgets.dismiss_aria": "ウィジェットの紹介を閉じる",
   "dashboard.cost_breakdown.title": "コスト内訳",
   "dashboard.cost_breakdown.total_label": "推定総コスト",
   "dashboard.cost_breakdown.close": "閉じる",
@@ -265,9 +262,7 @@
   "ipcheck.region.CU": "キューバ",
   "ipcheck.region.BY": "ベラルーシ",
   "ipcheck.region.VE": "ベネズエラ",
-  "local_only.title": "クライアント内でご利用ください",
-  "local_only.body": "このページはお使いの端末上のデータを読み込むため、Mac アプリまたはコマンドラインの dashboard でのみ表示できます。",
-  "local_only.open_app": "Mac アプリ内で開く",
-  "local_only.download": "Mac アプリをダウンロード",
+  "local_only.title": "ローカルダッシュボードが必要です",
+  "local_only.body": "TokenTracker CLI をローカルで起動し、localhost の URL を開いてください。ホスト型サービスやネイティブアプリの代替はありません。",
   "shared.app_name": "Token Tracker"
 }

@@ -28,7 +28,4 @@ local review gate, not a CI job, because it uses model access.
 
 ## Release boundary
 
-Changes under `src/` or `dashboard/` require the npm plus macOS/Windows release
-path described in `CLAUDE.md`. Before publishing, verify that the target package
-version is unused, keep all version locations synchronized, and validate the
-packaged artifact. Manual npm MFA stays with the human user.
+Changes under `src/` or `dashboard/` that affect shipped behavior require the npm-only release path described in `CLAUDE.md`. Before publishing, verify the target version is unused and semantically inspect the packed and registry artifacts. Archived native project versions and workflows are not release authorities. Manual npm authentication stays with the approved human boundary until Trusted Publishing/OIDC replaces it.

@@ -34,7 +34,7 @@ The check runs two different ways over two different file sets:
 
 ```text
 Tool logs and hooks -> src/lib/rollout.js -> local queue files
-    -> src/lib/local-api.js -> dashboard/dist -> browser or native WebView
+    -> src/lib/local-api.js -> dashboard/dist -> browser on localhost
 ```
 
 The data contract is usage metadata only — source, model, token and conversation counts, timestamps, and derived cost. Never add prompts, responses, message bodies, or private user-code paths to the queue or documentation. Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads. Derived cost is computed downstream and is not stored in the queue.
@@ -45,7 +45,7 @@ The data contract is usage metadata only — source, model, token and conversati
 - `src/commands/serve.js` hosts the built dashboard and local API on loopback.
 - `src/commands/sync.js` coordinates parser runs.
 - `dashboard/src/App.jsx` selects dashboard pages by pathname.
-- `TokenTrackerBar/` and `TokenTrackerWin/` bundle the CLI and built dashboard.
+- `archive/native-apps/TokenTrackerBar/` and `archive/native-apps/TokenTrackerWin/` are unsupported historical source; there are no active native contracts.
 
 Run `npm run ci:local` before a release-bound change. It includes the OpenWiki
 deterministic check; the model-backed update and independent review remain local

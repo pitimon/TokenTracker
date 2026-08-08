@@ -46,11 +46,11 @@ test("App.jsx serves the dashboard at the root path", () => {
   );
 });
 
-test("App.jsx keeps menu bar configuration inside /widgets", () => {
+test("App.jsx excludes archived native-only routes", () => {
   const appPath = path.join(repoRoot, "dashboard/src/App.jsx");
   const source = fs.readFileSync(appPath, "utf8");
-  assert.equal(source.includes('"/widgets"'), true, "/widgets route should exist");
-  assert.equal(source.includes("WidgetsPage"), true, "WidgetsPage should be referenced");
-  assert.equal(source.includes('"/menubar"'), false, "/menubar should not be a separate route");
+  assert.equal(source.includes('"/widgets"'), false, "/widgets is a native-only archived route");
+  assert.equal(source.includes("WidgetsPage"), false, "WidgetsPage should not be referenced");
+  assert.equal(source.includes('"/menubar"'), false, "/menubar should not be a route");
   assert.equal(source.includes("MenuBarPage"), false, "MenuBarPage should not be referenced");
 });

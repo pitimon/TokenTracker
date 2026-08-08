@@ -11,10 +11,9 @@ the loopback server binds to `127.0.0.1`, and no usage data leaves the host.
 ## Context (Level 0)
 
 ```text
-  AI coding tools               TokenTracker (local)              consumers
-  Claude, Codex, Gemini,        parse -> aggregate -> price       dashboard (React)
-  Cursor, and other readers                                       native WebView
-          |                              |                             ^
+  AI coding tools               TokenTracker (local)              consumer
+  Claude, Codex, Gemini,        parse -> aggregate -> price       browser dashboard (React)
+  Cursor, and other readers             |                             ^
           |  raw session logs            |  usage + cost JSON          |
           |  (read-only *.jsonl)         |  (/functions/ endpoints)    |
           +----------------------------> [ TokenTracker ] -------------+
@@ -77,7 +76,7 @@ the loopback server binds to `127.0.0.1`, and no usage data leaves the host.
                                      /functions/tokentracker-usage-heatmap  +----------------------------+
                                      /functions/tokentracker-usage-monthly  | dashboard/src/lib/api.ts   |
                                      ... and the other documented endpoints  | -> dashboard pages         |
-                                                                            | -> native WebView (Bar/Win)|
+                                                                            | -> browser on localhost    |
                                                                             +----------------------------+
 ```
 

@@ -26,9 +26,6 @@
   "dashboard.projects.limit_top_6": "TOP 6",
   "dashboard.projects.limit_top_10": "TOP 10",
   "dashboard.projects.empty": "공개 저장소 없음",
-  "dashboard.widgets.title": "데스크톱 위젯",
-  "dashboard.widgets.hint": "데스크톱 우클릭 → 위젯 편집 → \"TokenTracker\" 검색",
-  "dashboard.widgets.dismiss_aria": "위젯 소개 닫기",
   "dashboard.cost_breakdown.title": "비용 내역",
   "dashboard.cost_breakdown.total_label": "예상 총비용",
   "dashboard.cost_breakdown.close": "닫기",
@@ -265,9 +262,7 @@
   "ipcheck.region.CU": "쿠바",
   "ipcheck.region.BY": "벨라루스",
   "ipcheck.region.VE": "베네수엘라",
-  "local_only.title": "앱에서 사용 가능",
-  "local_only.body": "이 페이지는 사용자의 컴퓨터에 있는 데이터를 읽으므로 Mac 앱 또는 CLI 대시보드에서만 작동합니다.",
-  "local_only.open_app": "Mac 앱에서 열기",
-  "local_only.download": "Mac 앱 받기",
+  "local_only.title": "로컬 대시보드가 필요합니다",
+  "local_only.body": "TokenTracker CLI를 로컬에서 시작하고 localhost URL을 여세요. 호스팅 서비스나 네이티브 앱 대체 경로는 없습니다.",
   "shared.app_name": "Token Tracker"
 }

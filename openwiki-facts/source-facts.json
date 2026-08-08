@@ -185,42 +185,37 @@
       {
         "path": "/",
         "component": "DashboardPage",
-        "evidence": "dashboard/src/App.jsx:54"
+        "evidence": "dashboard/src/App.jsx:51"
       },
       {
         "path": "/dashboard",
         "component": "DashboardPage",
-        "evidence": "dashboard/src/App.jsx:54"
+        "evidence": "dashboard/src/App.jsx:51"
       },
       {
         "path": "/limits",
         "component": "LimitsPage",
-        "evidence": "dashboard/src/App.jsx:55"
+        "evidence": "dashboard/src/App.jsx:52"
       },
       {
         "path": "/settings",
         "component": "SettingsPage",
-        "evidence": "dashboard/src/App.jsx:56"
+        "evidence": "dashboard/src/App.jsx:53"
       },
       {
         "path": "/skills",
         "component": "SkillsPage",
-        "evidence": "dashboard/src/App.jsx:57"
-      },
-      {
-        "path": "/widgets",
-        "component": "WidgetsPage",
-        "evidence": "dashboard/src/App.jsx:58"
+        "evidence": "dashboard/src/App.jsx:54"
       },
       {
         "path": "/ip-check",
         "component": "IpCheckPage",
-        "evidence": "dashboard/src/App.jsx:59"
+        "evidence": "dashboard/src/App.jsx:55"
       },
       {
         "path": "/wrapped",
         "component": "WrappedPage",
-        "evidence": "dashboard/src/App.jsx:60"
+        "evidence": "dashboard/src/App.jsx:56"
       }
     ]
   },

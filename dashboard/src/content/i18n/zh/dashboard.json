@@ -26,9 +26,6 @@
   "dashboard.projects.limit_top_6": "前 6 名",
   "dashboard.projects.limit_top_10": "前 10 名",
   "dashboard.projects.empty": "没有公开仓库",
-  "dashboard.widgets.title": "桌面小组件",
-  "dashboard.widgets.hint": "右键点按桌面 → 编辑小组件 → 搜索“TokenTracker”",
-  "dashboard.widgets.dismiss_aria": "关闭小组件介绍",
   "dashboard.cost_breakdown.title": "成本明细",
   "dashboard.cost_breakdown.total_label": "预计总成本",
   "dashboard.cost_breakdown.close": "关闭",
@@ -265,9 +262,7 @@
   "ipcheck.region.CU": "古巴",
   "ipcheck.region.BY": "白俄罗斯",
   "ipcheck.region.VE": "委内瑞拉",
-  "local_only.title": "请在客户端内使用",
-  "local_only.body": "这个页面读取的是你本机上的数据，所以只能在 Mac app 或命令行 dashboard 里查看。",
-  "local_only.open_app": "在 Mac app 内打开",
-  "local_only.download": "下载 Mac app",
+  "local_only.title": "需要本地仪表板",
+  "local_only.body": "请在本机启动 TokenTracker CLI 并打开 localhost 地址。TokenTracker 不提供托管服务或原生应用替代方案。",
   "shared.app_name": "Token Tracker"
 }

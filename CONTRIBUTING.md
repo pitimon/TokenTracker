@@ -1,6 +1,8 @@
 # Contributing to TokenTracker
 
-Thanks for considering a contribution! TokenTracker is a small project, so the process is intentionally lightweight.
+Thanks for considering a contribution! TokenTracker is a local web product: a browser dashboard served by a loopback CLI backend. Hosted/cloud operation and native macOS/Windows apps are out of scope; the retained Swift/C# source is archived and unsupported.
+
+The project is small, so the process is intentionally lightweight.
 
 ## Setup
 
@@ -50,7 +52,6 @@ npm run validate:copy                        # Validate copy registry completene
 
 - [ ] Tests pass (`npm test`)
 - [ ] If you added user-facing strings, add them to `dashboard/src/content/copy.csv`
-- [ ] If you changed Swift, run `xcodegen generate` after editing `TokenTrackerBar/project.yml`
 - [ ] Conventional commit style: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `ci:`, `test:`
 - [ ] PR description explains *why*, not just *what*
 
@@ -74,7 +75,7 @@ Look at how Claude Code, Codex, or Gemini are wired in for reference — they're
 
 - **CLI (`src/`)**: CommonJS, Node 20.18.1+, no transpilation. Match the existing style.
 - **Dashboard (`dashboard/`)**: TypeScript strict, React 18, ESM, Tailwind. Match the existing style.
-- **macOS (`TokenTrackerBar/`)**: Swift 5.9, SwiftUI + AppKit. Match the existing style.
+- **Archived native source**: do not add features or restore release coupling without a new product decision.
 - No linter wars. Be reasonable.
 
 ## Privacy Rule (non-negotiable)

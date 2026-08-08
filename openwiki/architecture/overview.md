@@ -26,8 +26,7 @@ For how usage data moves through these components step by step, see
 - Local endpoint changes begin in `src/lib/local-api.js`; see [Local API](../local-api.md).
 - Dashboard route changes begin in `dashboard/src/App.jsx`; see
   [Dashboard routes](../dashboard-routes.md).
-- Native bridge changes span `TokenTrackerBar/TokenTrackerBar/Services/NativeBridge.swift` and
-  `dashboard/src/lib/native-bridge.js`.
+- Native bridge and wrapper source is archived and unsupported; it is not an active architecture boundary.
 
 ## Privacy and persistence
 
@@ -38,6 +37,4 @@ or documentation example.
 
 ## Build boundaries
 
-`dashboard/dist/` is an output artifact. The macOS and Windows builds bundle the
-CLI and this output, so changes under `src/` or `dashboard/` are release-bound
-and must follow [Testing and release](../testing-and-release.md).
+`dashboard/dist/` is the npm package's browser UI output. Changes under `src/` or `dashboard/` that affect shipped behavior follow the npm-only path in [Testing and release](../testing-and-release.md). Archived native projects do not participate in active builds or versioning.

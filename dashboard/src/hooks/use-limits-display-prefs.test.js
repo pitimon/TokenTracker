@@ -14,28 +14,12 @@ describe("useLimitsDisplayPrefs", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.history.pushState({}, "", "/");
-    delete window.webkit;
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     window.history.pushState({}, "", "/");
-    delete window.webkit;
   });
-
-  function installNativeBridge() {
-    const messages = [];
-    window.webkit = {
-      messageHandlers: {
-        nativeBridge: {
-          postMessage(message) {
-            messages.push(message);
-          },
-        },
-      },
-    };
-    return messages;
-  }
 
   it("exports the two-mode constant used across panel and settings", () => {
     expect(LIMIT_DISPLAY_MODES.USED).toBe("used");
@@ -89,40 +73,6 @@ describe("useLimitsDisplayPrefs", () => {
     });
     expect(window.localStorage.getItem(DISPLAY_MODE_KEY)).toBe(
       LIMIT_DISPLAY_MODES.USED,
-    );
-  });
-
-  it("sends dashboard displayMode changes to the native bridge", () => {
-    const messages = installNativeBridge();
-    const { result } = renderHook(() => useLimitsDisplayPrefs());
-
-    act(() => {
-      result.current.setDisplayMode(LIMIT_DISPLAY_MODES.REMAINING);
-    });
-
-    expect(messages).toContainEqual({
-      type: "setSetting",
-      key: "limitsDisplayMode",
-      value: LIMIT_DISPLAY_MODES.REMAINING,
-    });
-  });
-
-  it("applies native limitsDisplayMode pushes from the host app", () => {
-    installNativeBridge();
-    const { result } = renderHook(() => useLimitsDisplayPrefs());
-    expect(result.current.displayMode).toBe(LIMIT_DISPLAY_MODES.USED);
-
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent("native:settings", {
-          detail: { limitsDisplayMode: LIMIT_DISPLAY_MODES.REMAINING },
-        }),
-      );
-    });
-
-    expect(result.current.displayMode).toBe(LIMIT_DISPLAY_MODES.REMAINING);
-    expect(window.localStorage.getItem(DISPLAY_MODE_KEY)).toBe(
-      LIMIT_DISPLAY_MODES.REMAINING,
     );
   });
 

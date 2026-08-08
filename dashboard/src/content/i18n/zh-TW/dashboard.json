@@ -26,9 +26,6 @@
   "dashboard.projects.limit_top_6": "前 6 名",
   "dashboard.projects.limit_top_10": "前 10 名",
   "dashboard.projects.empty": "沒有公開倉庫",
-  "dashboard.widgets.title": "桌面小元件",
-  "dashboard.widgets.hint": "右鍵點按桌面 → 編輯小元件 → 搜尋“TokenTracker”",
-  "dashboard.widgets.dismiss_aria": "關閉小元件介紹",
   "dashboard.cost_breakdown.title": "成本明細",
   "dashboard.cost_breakdown.total_label": "預計總成本",
   "dashboard.cost_breakdown.close": "關閉",
@@ -265,9 +262,7 @@
   "ipcheck.region.CU": "古巴",
   "ipcheck.region.BY": "白俄羅斯",
   "ipcheck.region.VE": "委內瑞拉",
-  "local_only.title": "請在客戶端內使用",
-  "local_only.body": "這個頁面讀取的是你本機上的資料，所以只能在 Mac app 或命令列 dashboard 裡檢視。",
-  "local_only.open_app": "在 Mac app 內開啟",
-  "local_only.download": "下載 Mac app",
+  "local_only.title": "需要本機儀表板",
+  "local_only.body": "請在本機啟動 TokenTracker CLI 並開啟 localhost 網址。TokenTracker 不提供託管服務或原生應用程式替代方案。",
   "shared.app_name": "Token Tracker"
 }

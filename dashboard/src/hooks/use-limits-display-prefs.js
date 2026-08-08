@@ -1,17 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  isNativeEmbed,
-  onNativeSettings,
-  requestNativeSettings,
-  setNativeSetting,
-} from "../lib/native-bridge";
 
 /**
  * Display preferences for the Usage Limits panel.
  *
- * Mirrors the native macOS app's LimitsSettingsStore (order + visibility per provider),
- * persisted in localStorage. The display mode additionally syncs through NativeBridge
- * inside the macOS app so the dashboard, menu bar, and popover render the same mode.
+ * Persisted in localStorage and synchronized across browser tabs.
  */
 
 const ALL_LIMIT_PROVIDERS = [
@@ -53,7 +45,6 @@ export const LIMIT_PROVIDER_ICONS = {
 const ORDER_KEY = "tt.limits.providerOrder";
 const VISIBILITY_KEY = "tt.limits.providerVisibility";
 const DISPLAY_MODE_KEY = "tt.limits.displayMode";
-const NATIVE_DISPLAY_MODE_KEY = "limitsDisplayMode";
 
 export const LIMIT_DISPLAY_MODES = Object.freeze({
   USED: "used",
@@ -116,9 +107,6 @@ export function useLimitsDisplayPrefs() {
   const setDisplayMode = useCallback((mode) => {
     if (!VALID_DISPLAY_MODES.has(mode)) return;
     setDisplayModeState(mode);
-    if (isNativeEmbed()) {
-      setNativeSetting(NATIVE_DISPLAY_MODE_KEY, mode);
-    }
   }, []);
 
   // Persist on change
@@ -142,20 +130,6 @@ export function useLimitsDisplayPrefs() {
       window.localStorage.setItem(DISPLAY_MODE_KEY, displayMode);
     } catch { /* ignore */ }
   }, [displayMode]);
-
-  // Native app sync: native pushes the canonical UserDefaults-backed value,
-  // while explicit dashboard changes are sent through setDisplayMode().
-  useEffect(() => {
-    if (!isNativeEmbed()) return undefined;
-    const unsubscribe = onNativeSettings((detail) => {
-      const next = detail?.[NATIVE_DISPLAY_MODE_KEY];
-      if (VALID_DISPLAY_MODES.has(next)) {
-        setDisplayModeState(next);
-      }
-    });
-    requestNativeSettings();
-    return unsubscribe;
-  }, []);
 
   // Cross-tab sync
   useEffect(() => {

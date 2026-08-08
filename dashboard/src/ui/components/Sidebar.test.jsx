@@ -15,12 +15,6 @@ vi.mock("../../hooks/useLocale.js", () => ({
   useLocale: () => ({ resolvedLocale: "en" }),
 }));
 
-vi.mock("../../lib/native-bridge.js", () => ({
-  isNativeApp: () => false,
-  isNativeEmbed: () => false,
-  isNativeWindowsApp: () => false,
-}));
-
 function navIds(groups) {
   return groups.flatMap((group) => group.items.map((item) => item.id));
 }
@@ -40,7 +34,6 @@ describe("getNavGroups", () => {
     expect(navIds(getNavGroups())).toEqual([
       "usage",
       "limits",
-      "widgets",
       "skills",
       "ip-check",
       "settings",
