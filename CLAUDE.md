@@ -78,7 +78,7 @@ total_tokens                  = input + output + cache_creation + cache_read + r
                                 expectedTotal() in src/lib/queue-compact.js.
 ```
 
-**Cost is computed from `input_tokens + output_tokens + cached_input_tokens + cache_creation_input_tokens + reasoning_output_tokens` only — never `total_tokens`** (`computeRowCost` in `src/lib/pricing/index.js`). If a new provider only fills `total_tokens` with input=0/output=0, the dashboard renders **$0 cost** regardless of pricing entries. Distribute the total across columns or extend `computeRowCost`.
+**Cost is normally computed from `input_tokens + output_tokens + cached_input_tokens + cache_creation_input_tokens + reasoning_output_tokens` only — never `total_tokens`** (`computeRowCost` in `src/lib/pricing/index.js`). The bounded exception is a compatible Hermes row explicitly marked `cost_provenance=hermes-actual`, where local API aggregates use its `actual_cost_usd` instead of model pricing. If a new provider only fills `total_tokens` with input=0/output=0, the dashboard renders **$0 cost** regardless of pricing entries. Distribute the total across columns or extend `computeRowCost`.
 
 ### Queue entry
 
@@ -95,6 +95,11 @@ total_tokens                  = input + output + cache_creation + cache_read + r
 ```
 
 UTC, half-hour buckets, append-only — readers take the latest entry per `(source, model, hour_start)`.
+
+Hermes rows may additionally include `actual_cost_usd` and
+`cost_provenance: "hermes-actual"`, but only when every contributing local
+Hermes task explicitly reports `cost_status=actual`. Unknown, estimated,
+partial, older-schema, and pre-existing buckets retain normal model pricing.
 
 ### Project-wide
 

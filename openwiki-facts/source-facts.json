@@ -44,7 +44,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1012",
+        "evidence": "src/lib/local-api.js:1026",
         "mutation": false
       },
       {
@@ -53,7 +53,7 @@
           "GET",
           "HEAD"
         ],
-        "evidence": "src/lib/local-api.js:1026",
+        "evidence": "src/lib/local-api.js:1040",
         "mutation": false
       },
       {
@@ -62,7 +62,7 @@
           "GET",
           "HEAD"
         ],
-        "evidence": "src/lib/local-api.js:1097",
+        "evidence": "src/lib/local-api.js:1111",
         "mutation": false
       },
       {
@@ -70,7 +70,7 @@
         "methods": [
           "POST"
         ],
-        "evidence": "src/lib/local-api.js:1201",
+        "evidence": "src/lib/local-api.js:1215",
         "mutation": true
       },
       {
@@ -78,7 +78,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1231",
+        "evidence": "src/lib/local-api.js:1245",
         "mutation": false
       },
       {
@@ -86,7 +86,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1242",
+        "evidence": "src/lib/local-api.js:1256",
         "mutation": false
       },
       {
@@ -94,7 +94,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1327",
+        "evidence": "src/lib/local-api.js:1341",
         "mutation": false
       },
       {
@@ -102,7 +102,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1338",
+        "evidence": "src/lib/local-api.js:1352",
         "mutation": false
       },
       {
@@ -110,7 +110,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1406",
+        "evidence": "src/lib/local-api.js:1420",
         "mutation": false
       },
       {
@@ -118,7 +118,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1485",
+        "evidence": "src/lib/local-api.js:1510",
         "mutation": false
       },
       {
@@ -126,7 +126,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1531",
+        "evidence": "src/lib/local-api.js:1556",
         "mutation": false
       },
       {
@@ -134,7 +134,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1544",
+        "evidence": "src/lib/local-api.js:1569",
         "mutation": false
       },
       {
@@ -142,7 +142,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1554",
+        "evidence": "src/lib/local-api.js:1579",
         "mutation": false
       },
       {
@@ -150,7 +150,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1564",
+        "evidence": "src/lib/local-api.js:1589",
         "mutation": false
       },
       {
@@ -159,7 +159,7 @@
           "GET",
           "POST"
         ],
-        "evidence": "src/lib/local-api.js:1598",
+        "evidence": "src/lib/local-api.js:1623",
         "mutation": true
       },
       {
@@ -167,7 +167,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1747",
+        "evidence": "src/lib/local-api.js:1772",
         "mutation": false
       },
       {
@@ -175,7 +175,7 @@
         "methods": [
           "GET"
         ],
-        "evidence": "src/lib/local-api.js:1775",
+        "evidence": "src/lib/local-api.js:1800",
         "mutation": false
       }
     ]
@@ -243,79 +243,79 @@
       },
       {
         "name": "parseOpencodeDbIncremental",
-        "evidence": "src/lib/rollout.js:2615"
+        "evidence": "src/lib/rollout.js:2644"
       },
       {
         "name": "parseCursorApiIncremental",
-        "evidence": "src/lib/rollout.js:2804"
+        "evidence": "src/lib/rollout.js:2833"
       },
       {
         "name": "parseKiroIncremental",
-        "evidence": "src/lib/rollout.js:3062"
+        "evidence": "src/lib/rollout.js:3091"
       },
       {
         "name": "parseHermesIncremental",
-        "evidence": "src/lib/rollout.js:3648"
+        "evidence": "src/lib/rollout.js:3699"
       },
       {
         "name": "parseKiroCliIncremental",
-        "evidence": "src/lib/rollout.js:4320"
+        "evidence": "src/lib/rollout.js:4403"
       },
       {
         "name": "parseKimiIncremental",
-        "evidence": "src/lib/rollout.js:4965"
+        "evidence": "src/lib/rollout.js:5048"
       },
       {
         "name": "parseKimiCodeIncremental",
-        "evidence": "src/lib/rollout.js:5156"
+        "evidence": "src/lib/rollout.js:5239"
       },
       {
         "name": "parseCodebuddyIncremental",
-        "evidence": "src/lib/rollout.js:5380"
+        "evidence": "src/lib/rollout.js:5463"
       },
       {
         "name": "parseRoocodeIncremental",
-        "evidence": "src/lib/rollout.js:5883"
+        "evidence": "src/lib/rollout.js:5966"
       },
       {
         "name": "parseZedIncremental",
-        "evidence": "src/lib/rollout.js:6200"
+        "evidence": "src/lib/rollout.js:6283"
       },
       {
         "name": "parseGooseIncremental",
-        "evidence": "src/lib/rollout.js:6517"
+        "evidence": "src/lib/rollout.js:6600"
       },
       {
         "name": "parseDroidIncremental",
-        "evidence": "src/lib/rollout.js:6915"
+        "evidence": "src/lib/rollout.js:6998"
       },
       {
         "name": "parseKilocodeIncremental",
-        "evidence": "src/lib/rollout.js:7162"
+        "evidence": "src/lib/rollout.js:7245"
       },
       {
         "name": "parseOmpIncremental",
-        "evidence": "src/lib/rollout.js:7298"
+        "evidence": "src/lib/rollout.js:7381"
       },
       {
         "name": "parsePiIncremental",
-        "evidence": "src/lib/rollout.js:7551"
+        "evidence": "src/lib/rollout.js:7634"
       },
       {
         "name": "parseCraftIncremental",
-        "evidence": "src/lib/rollout.js:7835"
+        "evidence": "src/lib/rollout.js:7918"
       },
       {
         "name": "parseCopilotIncremental",
-        "evidence": "src/lib/rollout.js:8199"
+        "evidence": "src/lib/rollout.js:8282"
       },
       {
         "name": "parseGrokBuildIncremental",
-        "evidence": "src/lib/rollout.js:8665"
+        "evidence": "src/lib/rollout.js:8748"
       },
       {
         "name": "parseAntigravityIncremental",
-        "evidence": "src/lib/rollout.js:8837"
+        "evidence": "src/lib/rollout.js:8920"
       }
     ]
   }

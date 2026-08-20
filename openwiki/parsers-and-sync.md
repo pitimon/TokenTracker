@@ -22,6 +22,20 @@ adding a parser to the real sync path or changing aggregation behavior.
 Parser changes must preserve those meanings. A parser that only supplies
 `total_tokens` cannot produce a correct model cost without further normalization.
 
+## Hermes authoritative-cost handoff
+
+When a compatible Hermes `session_model_usage` row explicitly reports
+`cost_status=actual`, TokenTracker carries its cumulative `actual_cost_usd`
+delta into the matching local half-hour bucket and labels the emitted row
+`cost_provenance=hermes-actual`. This is a local state-db handoff, not a
+LiteLLM API or database collector: TokenTracker neither holds gateway
+credentials nor correlates request logs in this path.
+
+Older Hermes schemas, `unknown`/estimated rows, and pre-existing queue buckets
+continue through the normal TokenTracker price resolver. A historical bucket is
+not relabelled actual merely because a later row carries a cost; that fail-closed
+rule avoids replacing an unknown portion of past usage with a partial amount.
+
 ## Change checklist
 
 1. Read the matching parser and its fixture-based tests under `test/`.

@@ -98,6 +98,8 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
           // genuinely free one, which is why isKnownZeroCostModel exists; it
           // stays as the fallback for responses from an older server.
           const pricingTier = typeof model?.pricing_tier === "string" ? model.pricing_tier : null;
+          const costProvenance =
+            typeof model?.cost_provenance === "string" ? model.cost_provenance : null;
           const pricingMissing = pricingTier
             ? UNPRICED_PRICING_TIERS.has(pricingTier) && modelTokens > 0
             : modelTokens > 0 && (modelCost == null || modelCost <= 0) && !isKnownZeroCostModel(name);
@@ -109,6 +111,7 @@ export function buildFleetData(modelBreakdown: any, { copyFn }: AnyRecord = {}) 
             usage: modelTokens,
             cost: modelCost,
             pricingTier,
+            costProvenance,
             pricingMissing,
             pricingFuzzy,
           };

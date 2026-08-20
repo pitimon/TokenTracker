@@ -695,6 +695,30 @@ test("pricing_tier from the server beats the cost<=0 guess for missing pricing",
   assert.deepEqual(insights.fuzzyPricingModels.map((m) => m.name), ["acme-9-turbo"]);
 });
 
+test("dashboard model data keeps Hermes authoritative cost provenance distinct from fuzzy pricing", async () => {
+  const mod = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
+  const { buildFleetData } = mod;
+  const [provider] = buildFleetData({
+    sources: [
+      {
+        source: "hermes",
+        totals: { billable_total_tokens: 1300, total_cost_usd: "0.012500" },
+        models: [{
+          model: "logical-gateway-route",
+          model_id: "logical-gateway-route",
+          pricing_tier: "hermes:actual",
+          cost_provenance: "hermes-actual",
+          totals: { billable_total_tokens: 1300, total_cost_usd: "0.012500" },
+        }],
+      },
+    ],
+  });
+
+  assert.equal(provider.models[0].costProvenance, "hermes-actual");
+  assert.equal(provider.models[0].pricingFuzzy, false);
+  assert.deepEqual(provider.fuzzyPricingModels, []);
+});
+
 test("without pricing_tier the cost<=0 heuristic still applies (older server response)", async () => {
   const mod = await loadDashboardModule("dashboard/src/lib/model-breakdown.ts");
   const { buildFleetData } = mod;

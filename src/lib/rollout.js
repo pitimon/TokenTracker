@@ -1441,6 +1441,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             total_tokens: totals.total_tokens,
             billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
             conversation_count: totals.conversation_count,
+            ...queueCostFields(group.source, totals),
           }),
         );
         bucket.queuedKey = key;
@@ -1817,12 +1818,23 @@ function getHourlyBucket(state, source, model, hourStart) {
   let bucket = buckets[key];
   if (!bucket || typeof bucket !== "object") {
     bucket = { totals: initTotals(), queuedKey: null };
+    if (normalizedSource === "hermes") {
+      bucket.totals.actual_cost_usd = 0;
+      bucket.totals.actual_cost_complete = true;
+    }
     buckets[key] = bucket;
     return bucket;
   }
 
   if (!bucket.totals || typeof bucket.totals !== "object") {
     bucket.totals = initTotals();
+  }
+  if (normalizedSource === "hermes" && !Object.hasOwn(bucket.totals, "actual_cost_complete")) {
+    // Existing queues predate authoritative Hermes-cost support. Their past
+    // token rows retain estimation rather than being relabelled actual when a
+    // later delta lands in the same bucket.
+    bucket.totals.actual_cost_usd = 0;
+    bucket.totals.actual_cost_complete = false;
   }
 
   if (bucket.queuedKey != null && typeof bucket.queuedKey !== "string") {
@@ -1902,7 +1914,24 @@ function totalsKey(totals) {
     totals.total_tokens || 0,
     totals.billable_total_tokens ?? totals.total_tokens ?? 0,
     totals.conversation_count || 0,
+    totals.actual_cost_complete === true ? "hermes-actual" : "",
+    totals.actual_cost_complete === true ? totals.actual_cost_usd || 0 : "",
   ].join("|");
+}
+
+function queueCostFields(source, totals) {
+  if (
+    source === "hermes" &&
+    totals?.actual_cost_complete === true &&
+    Number.isFinite(Number(totals.actual_cost_usd)) &&
+    Number(totals.actual_cost_usd) >= 0
+  ) {
+    return {
+      actual_cost_usd: Number(totals.actual_cost_usd),
+      cost_provenance: "hermes-actual",
+    };
+  }
+  return {};
 }
 
 function toUtcHalfHourStart(ts) {
@@ -3334,6 +3363,23 @@ function readHermesSessions(dbPath, lastCompletedEpoch, unfinishedSessionIds = [
     "first_seen",
     "last_seen",
   ].every((column) => modelUsageColumns.has(column));
+  const hasModelUsageCosts = [
+    "estimated_cost_usd",
+    "actual_cost_usd",
+    "cost_status",
+    "cost_source",
+  ].every((column) => modelUsageColumns.has(column));
+  const modelUsageCostSelect = hasModelUsageCosts
+    ? `SUM(u.estimated_cost_usd) AS estimated_cost_usd,
+              SUM(u.actual_cost_usd) AS actual_cost_usd,
+              CASE WHEN SUM(CASE WHEN LOWER(COALESCE(u.cost_status, '')) = 'actual' THEN 0 ELSE 1 END) = 0
+                   THEN 'actual' ELSE NULL END AS cost_status,
+              CASE WHEN SUM(CASE WHEN LOWER(COALESCE(u.cost_status, '')) = 'actual' THEN 0 ELSE 1 END) = 0
+                   THEN MAX(u.cost_source) ELSE NULL END AS cost_source,`
+    : `NULL AS estimated_cost_usd,
+              NULL AS actual_cost_usd,
+              NULL AS cost_status,
+              NULL AS cost_source,`;
   const sql = hasModelUsage
     ? `WITH eligible_sessions AS (
          SELECT * FROM sessions WHERE ${eligible}
@@ -3347,6 +3393,7 @@ function readHermesSessions(dbPath, lastCompletedEpoch, unfinishedSessionIds = [
               SUM(u.api_call_count) AS message_count,
               MIN(u.first_seen) AS first_seen,
               MAX(u.last_seen) AS last_seen,
+              ${modelUsageCostSelect}
               1 AS per_model
        FROM eligible_sessions s
        JOIN session_model_usage u ON u.session_id = s.id
@@ -3356,7 +3403,9 @@ function readHermesSessions(dbPath, lastCompletedEpoch, unfinishedSessionIds = [
        SELECT s.id, s.model, s.model AS session_model, s.started_at, s.ended_at,
               s.input_tokens, s.output_tokens, s.cache_read_tokens,
               s.cache_write_tokens, s.reasoning_tokens, s.message_count,
-              NULL AS first_seen, NULL AS last_seen, 0 AS per_model
+              NULL AS first_seen, NULL AS last_seen,
+              NULL AS estimated_cost_usd, NULL AS actual_cost_usd,
+              NULL AS cost_status, NULL AS cost_source, 0 AS per_model
        FROM eligible_sessions s
        WHERE NOT EXISTS (
          SELECT 1 FROM session_model_usage u
@@ -3368,7 +3417,9 @@ function readHermesSessions(dbPath, lastCompletedEpoch, unfinishedSessionIds = [
     : `SELECT id, model, model AS session_model, started_at, ended_at,
               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
               reasoning_tokens, message_count, NULL AS first_seen,
-              NULL AS last_seen, 0 AS per_model
+              NULL AS last_seen, NULL AS estimated_cost_usd,
+              NULL AS actual_cost_usd, NULL AS cost_status,
+              NULL AS cost_source, 0 AS per_model
        FROM sessions
        WHERE ${eligible}
          AND (input_tokens > 0 OR output_tokens > 0 OR cache_read_tokens > 0 OR cache_write_tokens > 0 OR reasoning_tokens > 0)
@@ -3741,6 +3792,11 @@ async function parseHermesIncremental({
       const perModel = Number(row.per_model) === 1;
       const model = normalizeModelInput(row.model) || "hermes-agent";
       const snapshotKey = perModel ? JSON.stringify([String(row.id || ""), model]) : row.id;
+      const actualCost = Number(row.actual_cost_usd);
+      const hasAuthoritativeCost =
+        String(row.cost_status || "").toLowerCase() === "actual" &&
+        Number.isFinite(actualCost) &&
+        actualCost >= 0;
       const currentSnapshot = {
         in: inputTokens,
         out: outputTokens,
@@ -3748,6 +3804,7 @@ async function parseHermesIncremental({
         cacheWrite,
         reasoning,
         message_count: messageCount,
+        actual_cost_usd: hasAuthoritativeCost ? actualCost : null,
       };
       // Save current snapshot for next sync. Mixed-model sessions are keyed by
       // both session and model so later growth is attributed independently.
@@ -3771,12 +3828,19 @@ async function parseHermesIncremental({
       const prev = adoptingPerModelState && perModel && legacySessionSnapshot
         ? currentSnapshot
         : prevSnapshots[snapshotKey];
+      const previousActualCost = Number(prev?.actual_cost_usd);
+      const hasPreviousActualCost =
+        typeof prev?.actual_cost_usd === "number" &&
+        Number.isFinite(previousActualCost) &&
+        previousActualCost >= 0;
+      const isActualCostTransition = hasAuthoritativeCost && Boolean(prev) && !hasPreviousActualCost;
       let dInput = inputTokens;
       let dOutput = outputTokens;
       let dCacheRead = cacheRead;
       let dCacheWrite = cacheWrite;
       let dReasoning = reasoning;
       let dMessageCount = messageCount;
+      let dActualCost = hasAuthoritativeCost ? actualCost : 0;
       if (prev) {
         dInput = Math.max(0, inputTokens - (prev.in || 0));
         dOutput = Math.max(0, outputTokens - (prev.out || 0));
@@ -3784,9 +3848,13 @@ async function parseHermesIncremental({
         dCacheWrite = Math.max(0, cacheWrite - (prev.cacheWrite || 0));
         dReasoning = Math.max(0, reasoning - (prev.reasoning || 0));
         dMessageCount = Math.max(0, messageCount - (prev.message_count || 0));
+        dActualCost = hasAuthoritativeCost
+          ? (hasPreviousActualCost ? Math.max(0, actualCost - previousActualCost) : 0)
+          : 0;
       }
-      // Skip if delta is zero (session unchanged since last sync)
-      if (dInput === 0 && dOutput === 0 && dCacheRead === 0 && dCacheWrite === 0 && dReasoning === 0) continue;
+      const hasTokenDelta =
+        dInput > 0 || dOutput > 0 || dCacheRead > 0 || dCacheWrite > 0 || dReasoning > 0;
+      const hasActualCostDelta = hasAuthoritativeCost && hasPreviousActualCost && dActualCost > 0;
 
       // Per-model rows carry the authoritative last API-call timestamp. Older
       // Hermes schemas fall back to the session-level start/end policy.
@@ -3796,8 +3864,18 @@ async function parseHermesIncremental({
         : endedAt ?? (prev ? Date.parse(updatedAt) / 1000 : startedAt);
       if (!epochSec || !Number.isFinite(epochSec)) continue;
       const tsIso = new Date(epochSec * 1000).toISOString();
-      const bucketStart = toUtcHalfHourStart(tsIso);
-      if (!bucketStart) continue;
+      const observedBucketStart = toUtcHalfHourStart(tsIso);
+      if (!observedBucketStart) continue;
+      currentSnapshot.bucket_start = observedBucketStart;
+      // A status transition establishes a cost baseline but cannot safely
+      // relabel already-ingested token rows. A pure later cost update belongs
+      // with the prior observed bucket; otherwise it would create a zero-token
+      // current bucket that the dashboard cannot attribute to the usage.
+      if (!hasTokenDelta && !hasActualCostDelta) continue;
+      const bucketStart =
+        !hasTokenDelta && hasActualCostDelta && typeof prev?.bucket_start === "string"
+          ? prev.bucket_start
+          : observedBucketStart;
 
       const delta = {
         input_tokens: dInput,
@@ -3811,6 +3889,11 @@ async function parseHermesIncremental({
 
       const bucket = getHourlyBucket(hourlyState, "hermes", model, bucketStart);
       addTotals(bucket.totals, delta);
+      if (hasAuthoritativeCost && !isActualCostTransition && bucket.totals.actual_cost_complete === true) {
+        bucket.totals.actual_cost_usd += dActualCost;
+      } else if (!hasAuthoritativeCost || isActualCostTransition) {
+        bucket.totals.actual_cost_complete = false;
+      }
       touchedBuckets.add(bucketKey("hermes", model, bucketStart));
       eventsAggregated++;
 
