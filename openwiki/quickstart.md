@@ -37,7 +37,7 @@ Tool logs and hooks -> src/lib/rollout.js -> local queue files
     -> src/lib/local-api.js -> dashboard/dist -> browser on localhost
 ```
 
-The data contract is usage metadata only — source, model, token and conversation counts, timestamps, and derived cost. Never add prompts, responses, message bodies, or private user-code paths to the queue or documentation. Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads. Derived cost is computed downstream and is not stored in the queue.
+The data contract is usage metadata only — source, model, token and conversation counts, timestamps, and derived cost. Never add prompts, responses, message bodies, or private user-code paths to the queue or documentation. Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads. Derived cost normally comes from local model pricing; a compatible Hermes row explicitly marked `hermes-actual` may carry its local actual-cost amount without a gateway request.
 
 ## Common entry points
 

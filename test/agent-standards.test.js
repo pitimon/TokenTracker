@@ -245,6 +245,7 @@ test("privacy standard and declared authorities share the usage-metadata boundar
   const falseStorageClaim = /(?:store|stores|stored|persist|persists|persisted)[^.\n]*derived cost/i;
   const falseGlobalNonPersistence = /derived cost[^.\n]*(?:not persisted|never persisted)/i;
   const browserCacheLifecycle = /derived cost[^.\n]*not stored in the queue[^.\n]*may be cached[^.\n]*browser localStorage/i;
+  const hermesActualCostLifecycle = /(?:derived cost|cost)[\s\S]*?(?:normally|computed downstream)[\s\S]*?hermes-actual/i;
 
   assert.match(compact(privacy), allowed);
   assert.match(compact(privacy), prohibited);
@@ -267,11 +268,12 @@ test("privacy standard and declared authorities share the usage-metadata boundar
     assert.doesNotMatch(content, falseStorageClaim, `${file} falsely claims derived cost is stored`);
     assert.doesNotMatch(content, falseGlobalNonPersistence, `${file} falsely claims derived cost is never persisted`);
   }
-  assert.match(compact(contributing), browserCacheLifecycle);
   assert.match(compact(privacy), browserCacheLifecycle);
+  assert.match(compact(claude), hermesActualCostLifecycle);
   for (const { file, content } of additionalAuthorities.filter(({ file }) => file.startsWith("openwiki/"))) {
-    assert.match(compact(content), /derived cost.*(?:computed downstream|not stored)/i, `${file} is missing the derived-cost lifecycle`);
+    assert.match(compact(content), hermesActualCostLifecycle, `${file} is missing the Hermes actual-cost lifecycle`);
   }
+  assert.match(compact(contributing), hermesActualCostLifecycle);
   for (const { file, content } of additionalAuthorities) {
     assert.match(compact(content), allowed, `${file} is missing the allowed usage-metadata contract`);
     assert.match(compact(content), prohibited, `${file} is missing the private-content prohibition`);

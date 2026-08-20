@@ -151,6 +151,20 @@ its TTL, triggers a single-flight background refresh; `refreshing`, `stale`, and
 is discarded rather than installed, so a failed refresh never replaces good
 prices with an older snapshot's.
 
+### Hermes authoritative cost
+
+Cost normally comes from the model matcher. For a Hermes queue row carrying
+`cost_provenance: "hermes-actual"`, local aggregates use `actual_cost_usd`
+instead. Model-breakdown
+returns `pricing_tier: "hermes:actual"` and `cost_provenance: "hermes-actual"`;
+these rows do not enter `unpriced_models` or `fuzzy_priced_models`. This is the
+amount Hermes persisted as actual for that per-model usage, not an upstream
+provider invoice and not a direct LiteLLM spend-log query by TokenTracker.
+
+Rows without that exact provenance keep the existing matcher behavior. Mixed
+model windows remain explicitly labelled `mixed` in the model breakdown rather
+than being silently promoted to authoritative.
+
 ## Related modules
 
 - `src/lib/pricing/` resolves model pricing used by local aggregations.

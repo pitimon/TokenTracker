@@ -23,8 +23,9 @@ the loopback server binds to `127.0.0.1`, and no usage data leaves the host.
   or private user-code paths. Credentials are used only for declared provider
   authentication or quota flows and their credential files; never place them in
   TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated
-  outbound payloads. Derived cost is computed downstream;
-  it is not stored in the queue.
+  outbound payloads. Derived cost is normally computed downstream; a compatible
+  Hermes row explicitly marked `hermes-actual` may carry its local actual-cost
+  amount without any gateway request.
 ```
 
 ## Level 1 data-flow
@@ -89,7 +90,7 @@ the loopback server binds to `127.0.0.1`, and no usage data leaves the host.
 | (C) | Parsed usage records | Raw provider fields are normalized into the queue columns. |
 | (D) | Queue entries | Appended to the queue, bucketed into UTC half-hour windows. |
 | (E) | Dedup read | Readers keep the latest entry per `(source, model, hour_start)`. |
-| (F) | Model pricing rates | Seeded separately from the queue; cost is derived, not stored in the queue. |
+| (F) | Cost source | Cost is normally derived from model pricing seeded separately from the queue and billable columns. A Hermes row explicitly marked `hermes-actual` carries its persisted actual cost locally and takes precedence for that row; TokenTracker does not contact the gateway for it. |
 | (G) | Usage + cost JSON | Served over the loopback `/functions/` endpoints to `dashboard/src/lib/api.ts`. |
 
 ## Data stores
@@ -106,6 +107,8 @@ The parse step (1.0) is the trust boundary. Everything downstream handles usage
 metadata — source, model, token and conversation counts, timestamps, and derived cost.
 Never persist prompts, responses, message bodies, or private user-code paths.
 Credentials are used only for declared provider authentication or quota flows and their credential files; never place them in TokenTracker queues, logs, fixtures, diagnostics, API responses, or unrelated outbound payloads. The queue columns and content exclusions are defined in `CLAUDE.md`;
-cost is computed from the individual billable columns in `src/lib/pricing/`, never
-stored in the queue or derived from `total_tokens`.
+cost normally comes from the individual billable columns in `src/lib/pricing/`,
+never from `total_tokens`. The bounded exception is a Hermes row explicitly
+marked `hermes-actual`: its locally persisted `actual_cost_usd` is used without
+calling a gateway or retaining gateway credentials.
 See [Parsers and sync](../parsers-and-sync.md) and [Local API](../local-api.md).

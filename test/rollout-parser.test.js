@@ -2853,17 +2853,21 @@ test("parseHermesIncremental attributes mixed-session totals by session_model_us
         cache_read_tokens INTEGER NOT NULL DEFAULT 0,
         cache_write_tokens INTEGER NOT NULL DEFAULT 0,
         reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        estimated_cost_usd REAL NOT NULL DEFAULT 0,
+        actual_cost_usd REAL NOT NULL DEFAULT 0,
+        cost_status TEXT,
+        cost_source TEXT,
         first_seen REAL,
         last_seen REAL,
         PRIMARY KEY (session_id, model, billing_provider, billing_base_url, billing_mode, task)
       );
       INSERT INTO session_model_usage
-        (session_id, model, task, api_call_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, first_seen, last_seen)
+        (session_id, model, task, api_call_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, actual_cost_usd, cost_status, cost_source, first_seen, last_seen)
       VALUES
-        ('mixed_session', 'gpt-5.6-sol', 'main', 5, 1000, 100, 500, 0, 10, ${startedAt + 10}, ${endedAt - 30}),
-        ('mixed_session', 'gpt-5.6-terra', 'main', 3, 300, 20, 400, 7, 20, ${startedAt + 120}, ${endedAt - 10}),
-        ('mixed_session', ' gpt-5.6-terra ', 'subtask', 1, 50, 0, 0, 0, 0, ${startedAt + 130}, ${endedAt - 5}),
-        ('zero_detail_session', 'fallback-model', 'main', 0, 0, 0, 0, 0, 0, ${startedAt}, ${endedAt});
+        ('mixed_session', 'gpt-5.6-sol', 'main', 5, 1000, 100, 500, 0, 10, 0.0125, 'actual', 'provider', ${startedAt + 10}, ${endedAt - 30}),
+        ('mixed_session', 'gpt-5.6-terra', 'main', 3, 300, 20, 400, 7, 20, 0.01, 'actual', 'provider', ${startedAt + 120}, ${endedAt - 10}),
+        ('mixed_session', ' gpt-5.6-terra ', 'subtask', 1, 50, 0, 0, 0, 0, 0, NULL, NULL, ${startedAt + 130}, ${endedAt - 5}),
+        ('zero_detail_session', 'fallback-model', 'main', 0, 0, 0, 0, 0, 0, 0, 'unknown', 'none', ${startedAt}, ${endedAt});
     `]);
 
     const cursors = { version: 1 };
@@ -2882,6 +2886,8 @@ test("parseHermesIncremental attributes mixed-session totals by session_model_us
       },
       { input: 1000, output: 100, cached: 500, reasoning: 10, conversations: 5 },
     );
+    assert.equal(byModel.get("gpt-5.6-sol")?.actual_cost_usd, 0.0125);
+    assert.equal(byModel.get("gpt-5.6-sol")?.cost_provenance, "hermes-actual");
     assert.deepEqual(
       {
         input: byModel.get("gpt-5.6-terra")?.input_tokens,
@@ -2893,6 +2899,11 @@ test("parseHermesIncremental attributes mixed-session totals by session_model_us
       },
       { input: 350, output: 20, cached: 400, cacheWrite: 7, reasoning: 20, conversations: 4 },
     );
+    assert.equal(
+      byModel.get("gpt-5.6-terra")?.cost_provenance,
+      undefined,
+      "a model with an unpriced task must not promote a partial actual amount",
+    );
     assert.deepEqual(
       {
         input: byModel.get("fallback-model")?.input_tokens,
@@ -2903,17 +2914,20 @@ test("parseHermesIncremental attributes mixed-session totals by session_model_us
 
     cp.execFileSync("sqlite3", [dbPath, `
       UPDATE session_model_usage
-      SET input_tokens = 400,
-          output_tokens = 25,
+      SET input_tokens = 1100,
+          output_tokens = 105,
           cache_read_tokens = 600,
-          api_call_count = 4,
+          api_call_count = 6,
+          actual_cost_usd = 0.02,
+          cost_status = 'actual',
+          cost_source = 'provider',
           last_seen = ${endedAt + 86400}
-      WHERE session_id = 'mixed_session' AND model = 'gpt-5.6-terra';
+      WHERE session_id = 'mixed_session' AND model = 'gpt-5.6-sol';
     `]);
     const second = await parseHermesIncremental({ hermesPath: tmp, cursors, queuePath });
     assert.equal(second.eventsAggregated, 1);
     const afterGrowth = (await readJsonLines(queuePath))
-      .filter((row) => row.source === "hermes" && row.model === "gpt-5.6-terra")
+      .filter((row) => row.source === "hermes" && row.model === "gpt-5.6-sol")
       .at(-1);
     assert.deepEqual(
       {
@@ -2922,9 +2936,73 @@ test("parseHermesIncremental attributes mixed-session totals by session_model_us
         cached: afterGrowth.cached_input_tokens,
         reasoning: afterGrowth.reasoning_output_tokens,
         conversations: afterGrowth.conversation_count,
+        actualCost: afterGrowth.actual_cost_usd,
+        costProvenance: afterGrowth.cost_provenance,
       },
-      { input: 100, output: 5, cached: 200, reasoning: 0, conversations: 1 },
+      { input: 100, output: 5, cached: 100, reasoning: 0, conversations: 1, actualCost: 0.0075, costProvenance: "hermes-actual" },
     );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseHermesIncremental defers an actual-cost transition until a later incremental delta", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-cost-transition-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const startedAt = 1775993700;
+    createHermesDb(dbPath, [{
+      id: "cost-transition",
+      model: "logical-route",
+      started_at: startedAt,
+      input_tokens: 100,
+      output_tokens: 10,
+      message_count: 1,
+    }]);
+    cp.execFileSync("sqlite3", [dbPath, `
+      CREATE TABLE session_model_usage (
+        session_id TEXT, model TEXT, api_call_count INTEGER,
+        input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
+        cache_write_tokens INTEGER, reasoning_tokens INTEGER,
+        estimated_cost_usd REAL, actual_cost_usd REAL,
+        cost_status TEXT, cost_source TEXT, first_seen REAL, last_seen REAL
+      );
+      INSERT INTO session_model_usage VALUES
+        ('cost-transition', 'logical-route', 1, 100, 10, 0, 0, 0, 0, 0, 'unknown', 'none', ${startedAt}, ${startedAt});
+    `]);
+
+    const cursors = { version: 1 };
+    await parseHermesIncremental({ dbPath, cursors, queuePath });
+    cp.execFileSync("sqlite3", [dbPath, `
+      UPDATE session_model_usage
+      SET input_tokens = 200, output_tokens = 20, api_call_count = 2,
+          actual_cost_usd = 0.01, cost_status = 'actual', cost_source = 'provider',
+          last_seen = ${startedAt + 1800};
+    `]);
+    await parseHermesIncremental({ dbPath, cursors, queuePath });
+    const transitionRow = (await readJsonLines(queuePath)).at(-1);
+    assert.equal(transitionRow.cost_provenance, undefined);
+
+    cp.execFileSync("sqlite3", [dbPath, `
+      UPDATE session_model_usage
+      SET input_tokens = 300, output_tokens = 30, api_call_count = 3,
+          actual_cost_usd = 0.02, last_seen = ${startedAt + 3600};
+    `]);
+    await parseHermesIncremental({ dbPath, cursors, queuePath });
+    const authoritativeRow = (await readJsonLines(queuePath)).at(-1);
+    assert.equal(authoritativeRow.actual_cost_usd, 0.01);
+    assert.equal(authoritativeRow.cost_provenance, "hermes-actual");
+
+    cp.execFileSync("sqlite3", [dbPath, `
+      UPDATE session_model_usage
+      SET actual_cost_usd = 0.025, last_seen = ${startedAt + 5400};
+    `]);
+    await parseHermesIncremental({ dbPath, cursors, queuePath });
+    const costOnlyRow = (await readJsonLines(queuePath)).at(-1);
+    assert.equal(costOnlyRow.hour_start, authoritativeRow.hour_start);
+    assert.ok(Math.abs(costOnlyRow.actual_cost_usd - 0.015) < 1e-12);
+    assert.equal(costOnlyRow.cost_provenance, "hermes-actual");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

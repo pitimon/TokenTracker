@@ -201,6 +201,20 @@ function normalizeQueueRow(row) {
   return normalized;
 }
 
+function hasHermesAuthoritativeCost(row) {
+  const cost = Number(row?.actual_cost_usd);
+  return (
+    String(row?.source || "").toLowerCase() === "hermes" &&
+    row?.cost_provenance === "hermes-actual" &&
+    Number.isFinite(cost) &&
+    cost >= 0
+  );
+}
+
+function resolveQueueRowCost(row) {
+  return hasHermesAuthoritativeCost(row) ? Number(row.actual_cost_usd) : computeRowCost(row);
+}
+
 function readQueueData(queuePath) {
   let raw;
   try {
@@ -278,7 +292,7 @@ function aggregateByDay(rows, timeZoneContext = null) {
     const a = byDay.get(day);
     a.total_tokens += row.total_tokens || 0;
     a.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
-    a.total_cost_usd += computeRowCost(row);
+    a.total_cost_usd += resolveQueueRowCost(row);
     a.input_tokens += row.input_tokens || 0;
     a.output_tokens += row.output_tokens || 0;
     a.cached_input_tokens += row.cached_input_tokens || 0;
@@ -502,7 +516,7 @@ function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
     const bucket = byHour.get(hourKey);
     bucket.total_tokens += row.total_tokens || 0;
     bucket.billable_total_tokens += row.total_tokens || 0;
-    bucket.total_cost_usd += computeRowCost(row);
+    bucket.total_cost_usd += resolveQueueRowCost(row);
     bucket.input_tokens += row.input_tokens || 0;
     bucket.output_tokens += row.output_tokens || 0;
     bucket.cached_input_tokens += row.cached_input_tokens || 0;
@@ -1418,8 +1432,10 @@ function createLocalApiHandler({ queuePath }) {
       for (const row of rows) {
         const src = row.source || "unknown";
         const mdl = row.model || "unknown";
+        const rowCost = resolveQueueRowCost(row);
+        const rowUsesAuthoritativeCost = hasHermesAuthoritativeCost(row);
         if (!bySource.has(src))
-          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, models: new Map() });
+          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: 0 }, models: new Map() });
         const sa = bySource.get(src);
         sa.totals.total_tokens += row.total_tokens || 0;
         sa.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -1428,8 +1444,9 @@ function createLocalApiHandler({ queuePath }) {
         sa.totals.cached_input_tokens += row.cached_input_tokens || 0;
         sa.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         sa.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
+        sa.totals.total_cost_usd += rowCost;
         if (!sa.models.has(mdl))
-          sa.models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" } });
+          sa.models.set(mdl, { model: mdl, model_id: mdl, authoritative_cost_rows: 0, estimated_cost_rows: 0, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: 0 } });
         const ma = sa.models.get(mdl);
         ma.totals.total_tokens += row.total_tokens || 0;
         ma.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -1438,22 +1455,30 @@ function createLocalApiHandler({ queuePath }) {
         ma.totals.cached_input_tokens += row.cached_input_tokens || 0;
         ma.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         ma.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
+        ma.totals.total_cost_usd += rowCost;
+        if (rowUsesAuthoritativeCost) ma.authoritative_cost_rows += 1;
+        else ma.estimated_cost_rows += 1;
       }
 
       const sources = Array.from(bySource.values()).map((s) => {
         s.models = Array.from(s.models.values())
           .map((m) => {
-            const cost = computeRowCost({
-              ...m.totals,
-              model: m.model,
-              source: s.source,
-            });
+            const cost = Number(m.totals.total_cost_usd || 0);
+            const costProvenance =
+              m.authoritative_cost_rows > 0 && m.estimated_cost_rows === 0
+                ? "hermes-actual"
+                : m.authoritative_cost_rows > 0
+                  ? "mixed"
+                  : "estimated";
             // How the price was resolved, so the dashboard can say "unpriced"
             // or "matched by substring" instead of inferring it from a $0 cost
             // — a genuinely free model and an unknown one both cost $0.
-            const { tier } = getModelPricingMeta(m.model, { source: s.source });
+            const tier = costProvenance === "hermes-actual"
+              ? "hermes:actual"
+              : getModelPricingMeta(m.model, { source: s.source }).tier;
             return {
               ...m,
+              cost_provenance: costProvenance,
               pricing_tier: tier,
               totals: { ...m.totals, total_cost_usd: cost.toFixed(6) },
             };

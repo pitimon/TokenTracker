@@ -24,6 +24,22 @@ async function callDaily(queuePath, day) {
   return JSON.parse(response.body);
 }
 
+async function callFunction(queuePath, pathname) {
+  const handler = createLocalApiHandler({ queuePath });
+  const url = new URL(`http://127.0.0.1${pathname}`);
+  const req = { method: "GET", headers: { host: "127.0.0.1" } };
+  const response = {
+    statusCode: null,
+    body: "",
+    writeHead(statusCode) { this.statusCode = statusCode; },
+    end(chunk) { this.body += chunk || ""; },
+  };
+  const handled = await handler(req, response, url);
+  assert.equal(handled, true);
+  assert.equal(response.statusCode, 200);
+  return JSON.parse(response.body);
+}
+
 test("daily API keeps the canonical appended Hermes correction after an uploaded legacy row", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-reconciliation-api-"));
   try {
@@ -90,6 +106,52 @@ test("daily API keeps the canonical appended Hermes correction after an uploaded
       "gpt-5.6-sol": 1150,
       "gpt-5.6-terra": 500,
     });
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("Hermes authoritative queue cost overrides fuzzy pricing across local cost endpoints", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-authoritative-cost-api-"));
+  try {
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const day = "2026-08-20";
+    await fs.writeFile(
+      queuePath,
+      JSON.stringify({
+        source: "hermes",
+        model: "logical-gateway-route",
+        hour_start: `${day}T00:00:00.000Z`,
+        input_tokens: 1000,
+        cached_input_tokens: 200,
+        cache_creation_input_tokens: 0,
+        output_tokens: 100,
+        reasoning_output_tokens: 0,
+        total_tokens: 1300,
+        billable_total_tokens: 1300,
+        conversation_count: 1,
+        actual_cost_usd: 0.0125,
+        cost_provenance: "hermes-actual",
+      }) + "\n",
+      "utf8",
+    );
+
+    const daily = await callDaily(queuePath, day);
+    const summary = await callFunction(
+      queuePath,
+      `/functions/tokentracker-usage-summary?from=${day}&to=${day}&tz=UTC`,
+    );
+    const breakdown = await callFunction(
+      queuePath,
+      `/functions/tokentracker-usage-model-breakdown?from=${day}&to=${day}&tz=UTC`,
+    );
+
+    assert.equal(daily.data[0].total_cost_usd, 0.0125);
+    assert.equal(summary.totals.total_cost_usd, "0.012500");
+    assert.equal(breakdown.sources[0].totals.total_cost_usd, "0.012500");
+    assert.equal(breakdown.sources[0].models[0].totals.total_cost_usd, "0.012500");
+    assert.equal(breakdown.sources[0].models[0].cost_provenance, "hermes-actual");
+    assert.deepEqual(breakdown.pricing.unpriced_models, []);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
