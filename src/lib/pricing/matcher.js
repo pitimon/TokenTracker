@@ -100,7 +100,26 @@ function lookupContainedExactCaseInsensitive(table, model) {
   return null;
 }
 
-function lookupPricing(model, { curated, litellm, source } = {}) {
+// Strips known "vendor build-label" noise so an already-priced model hiding
+// under an auto-pilot/canary wrapper name can still resolve without a
+// hand-added curated entry for every wrapped variant (issue #193). Scoped to
+// the exact shapes seen in production: an "-auto-pilot-" infix used as a
+// build-label separator, and a trailing "-vN-canary" / "-canary" release
+// marker. Deliberately does NOT touch "-preview"/"-beta"/reasoning-effort
+// suffixes (handled separately by stripReasoningSuffix) since those can carry
+// real pricing distinctions.
+const AUTO_PILOT_INFIX = /-auto-pilot-/g;
+const CANARY_SUFFIX = /-v\d+-canary$|-canary$/;
+
+function stripVendorRenameNoise(model) {
+  if (typeof model !== "string" || !model) return "";
+  let stripped = model.replace(AUTO_PILOT_INFIX, "-");
+  stripped = stripped.replace(CANARY_SUFFIX, "");
+  return stripped;
+}
+
+function lookupPricing(model, opts = {}) {
+  const { curated, litellm, source, _denoised = false } = opts;
   if (!model || typeof model !== "string") {
     return { hit: false, source: "empty", value: null };
   }
@@ -202,6 +221,21 @@ function lookupPricing(model, { curated, litellm, source } = {}) {
     }
   }
 
+  // 8. Vendor-rename denoise retry (issue #193). Runs LAST and only once (the
+  // `_denoised` guard prevents re-entering this branch on the recursive
+  // call), after every tier above has already had first crack at the raw
+  // model id — so a real curated/LiteLLM entry that happens to already
+  // contain "-auto-pilot-" or "-canary" is never shadowed by the stripped
+  // retry. Only fires when stripping actually changed the string, so it
+  // cannot loop or duplicate work for models with no vendor-rename noise.
+  if (!_denoised) {
+    const denoised = stripVendorRenameNoise(model);
+    if (denoised && denoised !== model) {
+      const retry = lookupPricing(denoised, { curated, litellm, source, _denoised: true });
+      if (retry.hit) return retry;
+    }
+  }
+
   return { hit: false, source: "miss", value: null };
 }
 
@@ -249,6 +283,7 @@ function buildLitellmPerMillionMap(rawData) {
 module.exports = {
   lookupPricing,
   stripReasoningSuffix,
+  stripVendorRenameNoise,
   normalizeAntigravityModel,
   convertLitellmEntry,
   buildLitellmPerMillionMap,

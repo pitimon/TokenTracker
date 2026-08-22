@@ -89,6 +89,43 @@ describe("ProviderBreakdownCard", () => {
     expect(screen.getByText("Top cost: fable-5")).toBeInTheDocument();
   });
 
+  it("shows a fuzzy-pricing caveat when a provider has fuzzy-matched models", () => {
+    render(
+      <ProviderBreakdownCard
+        fleetData={[
+          {
+            source: "claude",
+            label: "CLAUDE",
+            totalPercent: "100.0",
+            usage: 26_000_000,
+            usd: 3164.69,
+            topCostModel: { name: "claude-auto-pilot-fable-v1-canary" },
+            missingPricingModels: [],
+            fuzzyPricingModels: [{ name: "claude-auto-pilot-fable-v1-canary" }],
+            models: [
+              {
+                id: "claude-auto-pilot-fable-v1-canary",
+                name: "claude-auto-pilot-fable-v1-canary",
+                share: 100,
+                usage: 26_000_000,
+                cost: 3164.69,
+                pricingTier: "curated:fuzzy",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("1 pricing estimated")).toBeInTheDocument();
+  });
+
+  it("does not show the fuzzy-pricing caveat when every model resolved exactly", () => {
+    render(<ProviderBreakdownCard fleetData={claudeFleet} />);
+
+    expect(screen.queryByText(/pricing estimated/)).not.toBeInTheDocument();
+  });
+
   const claudeFleet = [
     {
       source: "claude",

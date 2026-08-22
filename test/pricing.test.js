@@ -262,6 +262,100 @@ test("matcher: lookupPricing reverse-substring picks longest matching key", () =
   assert.equal(r.value.input, 2);
 });
 
+test("matcher: stripVendorRenameNoise removes auto-pilot infix and canary suffix", () => {
+  assert.equal(
+    matcher.stripVendorRenameNoise("claude-auto-pilot-fable-v1-canary"),
+    "claude-fable",
+  );
+  assert.equal(
+    matcher.stripVendorRenameNoise("gpt-5.6-auto-pilot-055-v2"),
+    "gpt-5.6-055-v2",
+  );
+  assert.equal(
+    matcher.stripVendorRenameNoise("claude-sonnet-4-6"),
+    "claude-sonnet-4-6",
+    "no vendor-rename noise present — string passes through unchanged",
+  );
+  assert.equal(matcher.stripVendorRenameNoise(""), "");
+  assert.equal(matcher.stripVendorRenameNoise(null), "");
+});
+
+test("matcher: vendor-rename denoise retry (issue #193) resolves a renamed model with NO curated fuzzy rule needed", () => {
+  // The whole point of the denoise tier: a future auto-pilot/canary rename of
+  // an already-priced model must resolve WITHOUT anyone hand-adding a fuzzy
+  // rule for it, unlike the fable/mythos case that predates this tier.
+  const litellm = { "claude-opus-4-8": { input: 5, output: 25 } };
+  const r = matcher.lookupPricing("claude-auto-pilot-opus-4-8-v1-canary", {
+    curated: { exact: {}, alias: {}, fuzzy: [] },
+    litellm,
+  });
+  assert.equal(r.hit, true);
+  assert.equal(r.source, "litellm:exact");
+  assert.equal(r.value.input, 5);
+});
+
+test("matcher: vendor-rename denoise retry only fires after every other tier has missed on the raw id", () => {
+  // A model whose RAW id (with the auto-pilot/canary noise still present) is
+  // itself a real curated/LiteLLM entry must resolve on the raw id, not the
+  // stripped one — the denoise retry must never shadow a genuine exact match.
+  const curated = {
+    exact: {
+      "claude-auto-pilot-fable-v1-canary": { input: 999, output: 999 },
+    },
+    alias: {},
+    fuzzy: [],
+  };
+  const r = matcher.lookupPricing("claude-auto-pilot-fable-v1-canary", {
+    curated,
+    litellm: {},
+  });
+  assert.equal(r.hit, true);
+  assert.equal(r.source, "curated:exact");
+  assert.equal(r.value.input, 999, "raw-id exact match must win over the denoised retry");
+});
+
+test("matcher: vendor-rename denoise retry does not loop or hit twice for a string with no noise", () => {
+  const r = matcher.lookupPricing("totally-unknown-xyz-2099", {
+    curated: { exact: {}, alias: {}, fuzzy: [] },
+    litellm: {},
+  });
+  assert.equal(r.hit, false);
+});
+
+test("matcher: fable/mythos fuzzy rules are scoped to a claude- prefix, not bare substring match (issue #193)", () => {
+  // Regression for the risk #193 flagged: a bare `{match:"fable"}` rule would
+  // silently price ANY future model containing that substring at the Opus-tier
+  // Fable 5 rate. The rule must require "claude-fable"/"claude-mythos", not
+  // just "fable"/"mythos", so an unrelated non-Claude model is left unpriced
+  // (miss) rather than mispriced.
+  const curated = {
+    exact: { "claude-fable-5": { input: 10, output: 50 } },
+    alias: {},
+    fuzzy: [
+      { match: "claude-fable", ref: "claude-fable-5" },
+      { match: "claude-mythos", ref: "claude-mythos-5" },
+    ],
+  };
+  const unrelated = matcher.lookupPricing("some-vendor-fable-mini", {
+    curated,
+    litellm: {},
+  });
+  assert.equal(
+    unrelated.hit,
+    false,
+    "a non-Claude model merely containing the substring 'fable' must not inherit the Fable 5 price",
+  );
+
+  // The actual affected id still resolves — the prefix scope does not break it.
+  const affected = matcher.lookupPricing("claude-auto-pilot-fable-v1-canary", {
+    curated,
+    litellm: {},
+  });
+  assert.equal(affected.hit, true);
+  assert.equal(affected.source, "curated:fuzzy");
+  assert.equal(affected.value.input, 10);
+});
+
 test("matcher: lookupPricing returns miss for completely unknown model", () => {
   const r = matcher.lookupPricing("totally-unknown-xyz-2099", {
     curated: { exact: {}, alias: {}, fuzzy: [] },

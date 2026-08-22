@@ -77,6 +77,8 @@ export function ProviderBreakdownCard({ fleetData = [], from, to, showInlineCont
                 const isExpanded = expandedProvider === provider.label;
                 const providerMissingPricingCount = provider.missingPricingModels?.length || 0;
                 const hasProviderMissingPricing = Boolean(providerMissingPricingCount);
+                const providerFuzzyPricingCount = provider.fuzzyPricingModels?.length || 0;
+                const hasProviderFuzzyPricing = Boolean(providerFuzzyPricingCount);
                 const visibleModels = getVisibleModels(provider);
                 const hiddenModelCount = getHiddenModelCount(provider, visibleModels);
 
@@ -177,6 +179,13 @@ export function ProviderBreakdownCard({ fleetData = [], from, to, showInlineCont
                       <div className="mt-1.5 truncate text-[10px] font-semibold text-amber-700 dark:text-amber-300">
                         {copy("usage.overview.provider_missing_pricing", {
                           count: providerMissingPricingCount,
+                        })}
+                      </div>
+                    ) : null}
+                    {hasProviderFuzzyPricing ? (
+                      <div className="mt-1.5 truncate text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                        {copy("usage.overview.provider_fuzzy_pricing", {
+                          count: providerFuzzyPricingCount,
                         })}
                       </div>
                     ) : null}
