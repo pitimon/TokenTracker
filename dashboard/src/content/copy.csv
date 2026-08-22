@@ -232,6 +232,7 @@ usage.overview.top_usage_model,ui,DashboardPage,UsageOverview,top_usage_model,To
 usage.overview.missing_pricing_count,ui,DashboardPage,UsageOverview,missing_pricing_count,{{count}} pricing missing,,active
 usage.overview.provider_top_cost,ui,DashboardPage,UsageOverview,provider_top_cost,Top cost: {{model}},,active
 usage.overview.provider_missing_pricing,ui,DashboardPage,UsageOverview,provider_missing_pricing,{{count}} pricing missing,,active
+usage.overview.provider_fuzzy_pricing,ui,DashboardPage,UsageOverview,provider_fuzzy_pricing,{{count}} pricing estimated,Shown when any model in this provider resolved via substring/fuzzy match rather than an exact price,active
 usage.overview.provider_limit,ui,DashboardPage,UsageOverview,provider_limit,{{label}} · {{percent}}%,,active
 usage.overview.provider_limit_reset,ui,DashboardPage,UsageOverview,provider_limit_reset,{{label}} · {{percent}}% · resets in {{reset}},,active
 usage.overview.provider_limit_count,ui,DashboardPage,UsageOverview,provider_limit_count,{{used}}/{{limit}},,active
