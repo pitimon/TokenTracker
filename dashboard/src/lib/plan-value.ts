@@ -61,7 +61,7 @@ const toNumber = (value: unknown): number => {
 // price at all; the fuzzy tiers matched by substring, which is a guess that can
 // be wrong in either direction. Kept as an explicit list rather than a
 // "not exact" rule so a NEW tier has to be classified deliberately.
-const UNPRICED_TIERS = new Set(["miss", "empty", "unattributed"]);
+const UNPRICED_TIERS = new Set(["miss", "empty", "unattributed", "routed-unresolved"]);
 const FUZZY_TIERS = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip", "litellm:strip"]);
 
 function modelName(model: SourceModel): string {
