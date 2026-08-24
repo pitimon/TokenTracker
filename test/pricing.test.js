@@ -569,15 +569,12 @@ test("index: getModelPricing pins Claude Fable/Mythos 5 pricing from curated ove
     assert.equal(pinned.cache_write, 12.5);
   }
 
-  // Regression (issue #187): auto-pilot/canary variants wrap the pinned name
-  // with extra prefix/suffix segments (e.g. "claude-auto-pilot-fable-v1-canary"),
-  // so "fable"/"mythos" is not a contiguous substring of "claude-fable-5"/
-  // "claude-mythos-5" — every non-fuzzy resolution tier misses on these ids.
-  for (const model of ["claude-auto-pilot-fable-v1-canary", "claude-mythos-v1-canary"]) {
-    const pinned = pricing.getModelPricing(model);
-    assert.equal(pinned.input, 10, `${model} should resolve to the Fable/Mythos pin`);
-    assert.equal(pinned.output, 50, `${model} should resolve to the Fable/Mythos pin`);
-  }
+  // A simple renamed Mythos variant can still inherit the curated pin. The
+  // Fable auto-router label is intentionally excluded: it selects Sonnet,
+  // Opus, or Fable per request and cannot be priced as one child model.
+  const mythos = pricing.getModelPricing("claude-mythos-v1-canary");
+  assert.equal(mythos.input, 10);
+  assert.equal(mythos.output, 50);
 
   assert.equal(
     pricing.computeRowCost({

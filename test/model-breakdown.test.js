@@ -673,6 +673,12 @@ test("pricing_tier from the server beats the cost<=0 guess for missing pricing",
             pricing_tier: "miss",
             totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
           },
+          {
+            model: "claude-auto-pilot-fable-v1-canary",
+            model_id: "claude-auto-pilot-fable-v1-canary",
+            pricing_tier: "routed-unresolved",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+          },
         ],
       },
     ],
@@ -681,8 +687,8 @@ test("pricing_tier from the server beats the cost<=0 guess for missing pricing",
   const [provider] = buildFleetData(modelBreakdown);
   assert.deepEqual(
     provider.missingPricingModels.map((m) => m.name),
-    ["brand-new-model"],
-    "only the tier=miss model is unpriced",
+    ["brand-new-model", "claude-auto-pilot-fable-v1-canary"],
+    "both a miss and an unresolved composite route are unpriced",
   );
   assert.deepEqual(
     provider.fuzzyPricingModels.map((m) => m.name),
@@ -691,7 +697,10 @@ test("pricing_tier from the server beats the cost<=0 guess for missing pricing",
   );
 
   const insights = buildUsageInsights(modelBreakdown);
-  assert.deepEqual(insights.missingPricingModels.map((m) => m.name), ["brand-new-model"]);
+  assert.deepEqual(
+    insights.missingPricingModels.map((m) => m.name),
+    ["brand-new-model", "claude-auto-pilot-fable-v1-canary"],
+  );
   assert.deepEqual(insights.fuzzyPricingModels.map((m) => m.name), ["acme-9-turbo"]);
 });
 

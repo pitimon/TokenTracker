@@ -56,6 +56,17 @@ const FUZZY_SOURCES = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix
 // Closed set on purpose: a real model id must never be silently un-priced here.
 const UNATTRIBUTED_MODEL_IDS = new Set(["unknown"]);
 
+// These ids are logical routes that deliberately select a physical child model
+// per request. Their names can include one tier name, but that is not evidence
+// that every request used that tier. Do not run them through fuzzy pricing: a
+// route-level estimate would silently charge every request at the wrong child
+// rate. They stay visible as unpriced until per-request resolved-model or
+// authoritative cost data is persisted.
+const UNRESOLVED_LOGICAL_ROUTE_IDS = new Set([
+  "claude-auto-pilot-fable-v1-canary",
+]);
+const UNPRICED_TIERS = new Set(["miss", "routed-unresolved"]);
+
 // `last_refresh_error` is served over HTTP to the dashboard, so it is built
 // from CLOSED sets, never from an arbitrary value. A previous version accepted
 // anything symbol-shaped, which a QA pass broke immediately: a 32-character
@@ -235,6 +246,11 @@ function getModelPricingMeta(model, opts = {}) {
   const lookupSource = resolveLookupSource(opts);
   const cacheKey = lookupSource ? `${lookupSource}\0${model}` : model;
 
+  if (UNRESOLVED_LOGICAL_ROUTE_IDS.has(String(model || "").trim())) {
+    state.tiers.set(cacheKey, { model, source: lookupSource, tier: "routed-unresolved" });
+    return { pricing: ZERO_PRICING, tier: "routed-unresolved" };
+  }
+
   if (state.negativeCache.has(cacheKey)) {
     // Still unknown as of the current snapshot. If that snapshot has aged out,
     // a new model may have appeared upstream — refresh for the next caller.
@@ -287,7 +303,7 @@ function getPricingDiagnostics() {
   const unpriced = new Set();
   const fuzzy = [];
   for (const entry of state.tiers.values()) {
-    if (entry.tier === "miss") unpriced.add(entry.model);
+    if (UNPRICED_TIERS.has(entry.tier)) unpriced.add(entry.model);
     else if (FUZZY_SOURCES.has(entry.tier)) fuzzy.push({ model: entry.model, tier: entry.tier });
   }
   return {
