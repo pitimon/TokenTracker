@@ -3152,11 +3152,339 @@ test("parseHermesIncremental reconciles already-ingested mixed-model Hermes buck
       dbPath,
       cursors: mismatchCursors,
       queuePath: mismatchQueuePath,
+      queueStatePath,
       reconcileHistorical: true,
     });
     assert.equal(mismatchResult.eventsAggregated, 0);
-    assert.equal(mismatchCursors.migrations.hermesMixedModelReconciliationV1.status, "blocked_total_mismatch");
-    assert.equal(await fs.readFile(mismatchQueuePath, "utf8"), `${mismatchRow}\n`, "mismatch must not rewrite queue history");
+    // Per-bucket semantics: the differing bucket is corrected via an appended
+    // latest-wins row; queue history behind the offset stays untouched.
+    assert.equal(mismatchCursors.migrations.hermesMixedModelReconciliationV1.status, "applied");
+    // Original queue rows behind the offset must remain byte-identical.
+    assert.equal(
+      (await fs.readFile(mismatchQueuePath, "utf8")).slice(0, `${mismatchRow}\n`.length),
+      `${mismatchRow}\n`,
+      "mismatch must not rewrite queue history",
+    );
+    const correctedLatest = new Map();
+    for (const row of await readJsonLines(mismatchQueuePath)) {
+      if (row.source === "hermes") correctedLatest.set(`${row.model}|${row.hour_start}`, row);
+    }
+    assert.equal(correctedLatest.get(`gpt-5.6-sol|${bucketStart}`)?.total_tokens, 1150);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseHermesIncremental per-bucket reconciliation appends only differing buckets without requiring global equality", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-per-bucket-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const queueStatePath = path.join(tmp, "queue.state.json");
+    // Session inside retained coverage (started after retention boundary).
+    const startedAt = 1775993700;
+    const endedAt = 1775994000;
+    const bucketStart = new Date(Math.floor(endedAt / 1800) * 1800 * 1000).toISOString();
+    // Retention boundary: DB keeps sessions from this epoch onward.
+    const retentionBoundaryEpoch = startedAt - 3600;
+    createHermesDb(dbPath, [{
+      id: "misattributed",
+      model: "gpt-5.6-sol",
+      started_at: startedAt,
+      ended_at: endedAt,
+      input_tokens: 1000,
+      output_tokens: 100,
+      cache_read_tokens: 500,
+      cache_write_tokens: 20,
+      reasoning_tokens: 30,
+      message_count: 10,
+    }]);
+    cp.execFileSync("sqlite3", [dbPath, `
+      CREATE TABLE session_model_usage (
+        session_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        api_call_count INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        first_seen REAL,
+        last_seen REAL
+      );
+      INSERT INTO session_model_usage
+        (session_id, model, api_call_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, first_seen, last_seen)
+      VALUES
+        ('misattributed', 'gpt-5.6-sol', 7, 700, 70, 350, 10, 20, ${startedAt}, ${endedAt}),
+        ('misattributed', 'gpt-5.6-terra', 3, 300, 30, 150, 10, 10, ${startedAt}, ${endedAt});
+    `]);
+
+    const legacyTotals = {
+      input_tokens: 1000,
+      cached_input_tokens: 500,
+      cache_creation_input_tokens: 20,
+      output_tokens: 100,
+      reasoning_output_tokens: 30,
+      total_tokens: 1650,
+      billable_total_tokens: 1650,
+      conversation_count: 10,
+    };
+    // Orphan bucket predates the retention boundary: no canonical counterpart will exist.
+    const orphanBucketStart = new Date(retentionBoundaryEpoch * 1000).toISOString();
+    const orphanTotals = { ...legacyTotals };
+    // Existing sol bucket differs from canonical split; terra bucket absent entirely.
+    const existingTotals = { ...legacyTotals };
+    const cursors = {
+      version: 1,
+      hermes: { modelUsageVersion: 1 },
+      hourly: {
+        version: 3,
+        buckets: {
+          [`hermes|gpt-5.6-sol|${bucketStart}`]: { totals: existingTotals, queuedKey: "legacy" },
+          [`hermes|gpt-5.5|${orphanBucketStart}`]: { totals: orphanTotals, queuedKey: "legacy" },
+        },
+        groupQueued: {},
+      },
+    };
+    const originalRows = [
+      JSON.stringify({ source: "hermes", model: "gpt-5.6-sol", hour_start: bucketStart, ...existingTotals }),
+      JSON.stringify({ source: "hermes", model: "gpt-5.5", hour_start: orphanBucketStart, ...orphanTotals }),
+    ];
+    const originalQueue = `${originalRows.join("\n")}\n`;
+    await fs.writeFile(queuePath, originalQueue);
+    await fs.writeFile(queueStatePath, `${JSON.stringify({ offset: originalQueue.length, retained: "must-survive" })}\n`);
+
+    const result = await parseHermesIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      queueStatePath,
+      reconcileHistorical: true,
+    });
+    assert.equal(result.eventsAggregated, 0);
+    assert.equal(cursors.migrations?.hermesMixedModelReconciliationV1?.status, "applied");
+
+    const latest = new Map();
+    for (const row of await readJsonLines(queuePath)) {
+      if (row.source === "hermes") latest.set(`${row.model}|${row.hour_start}`, row);
+    }
+    const sol = latest.get(`gpt-5.6-sol|${bucketStart}`);
+    const terra = latest.get(`gpt-5.6-terra|${bucketStart}`);
+    const orphan = latest.get(`gpt-5.5|${orphanBucketStart}`);
+    assert.ok(sol, "differing bucket must get a correction row");
+    assert.equal(sol.total_tokens, 1150);
+    assert.ok(terra, "missing bucket must get a correction row");
+    assert.equal(terra.total_tokens, 500);
+    assert.ok(orphan, "orphan key stays resolvable via its zero-out row");
+    assert.equal(orphan.total_tokens, 0, "orphan outside retained coverage must be zeroed out");
+    assert.equal(sol.conversation_count, 7);
+    assert.equal(terra.conversation_count, 3);
+
+    const resetQueueState = JSON.parse(await fs.readFile(queueStatePath, "utf8"));
+    assert.equal(resetQueueState.offset, originalQueue.length, "corrections must remain after the already-uploaded queue offset");
+    assert.equal(resetQueueState.retained, "must-survive");
+    const uploadableTail = (await fs.readFile(queuePath, "utf8")).slice(resetQueueState.offset);
+    assert.ok(uploadableTail.includes('"model":"gpt-5.6-sol"'));
+    assert.ok(uploadableTail.includes('"model":"gpt-5.6-terra"'));
+    assert.ok(uploadableTail.includes('"model":"gpt-5.5"'));
+
+    // Idempotent rerun with reconcileHistorical again.
+    const beforeSecondRun = (await readJsonLines(queuePath)).length;
+    await parseHermesIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      queueStatePath,
+      reconcileHistorical: true,
+    });
+    assert.equal((await readJsonLines(queuePath)).length, beforeSecondRun, "second run must not append new rows");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseHermesIncremental per-bucket reconciliation zeroes stale observation placements of long-running sessions", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-stale-placement-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const queueStatePath = path.join(tmp, "queue.state.json");
+    // A long-running session whose incremental sync spread cumulative totals
+    // across two observation buckets; canonical places everything at the last one.
+    const startedAt = 1775993700;
+    const endedAt = startedAt + 7200;
+    const firstObservedBucket = new Date(Math.floor((endedAt - 3600) / 1800) * 1800 * 1000).toISOString();
+    const finalBucket = new Date(Math.floor(endedAt / 1800) * 1800 * 1000).toISOString();
+    createHermesDb(dbPath, [{
+      id: "long-runner",
+      model: "gpt-5.6-sol",
+      started_at: startedAt,
+      ended_at: endedAt,
+      input_tokens: 700,
+      output_tokens: 70,
+      cache_read_tokens: 350,
+      cache_write_tokens: 10,
+      reasoning_tokens: 20,
+      message_count: 7,
+    }]);
+    cp.execFileSync("sqlite3", [dbPath, `
+      CREATE TABLE session_model_usage (
+        session_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        api_call_count INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        first_seen REAL,
+        last_seen REAL
+      );
+      INSERT INTO session_model_usage VALUES
+        ('long-runner', 'gpt-5.6-sol', 7, 700, 70, 350, 10, 20, ${startedAt}, ${endedAt - 60});
+    `]);
+    const staleTotals = {
+      input_tokens: 400, cached_input_tokens: 200, cache_creation_input_tokens: 10,
+      output_tokens: 40, reasoning_output_tokens: 12,
+      total_tokens: 662, billable_total_tokens: 662, conversation_count: 4,
+    };
+    const cursors = {
+      version: 1,
+      hermes: { modelUsageVersion: 1 },
+      hourly: {
+        version: 3,
+        buckets: {
+          [`hermes|gpt-5.6-sol|${firstObservedBucket}`]: { totals: { ...staleTotals }, queuedKey: "legacy" },
+        },
+        groupQueued: {},
+      },
+    };
+    const originalQueue = `${JSON.stringify({ source: "hermes", model: "gpt-5.6-sol", hour_start: firstObservedBucket, ...staleTotals })}\n`;
+    await fs.writeFile(queuePath, originalQueue);
+    await fs.writeFile(queueStatePath, `${JSON.stringify({ offset: originalQueue.length })}\n`);
+
+    const result = await parseHermesIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      queueStatePath,
+      reconcileHistorical: true,
+    });
+    assert.equal(result.eventsAggregated, 0);
+    assert.equal(cursors.migrations?.hermesMixedModelReconciliationV1?.status, "applied");
+    assert.ok((cursors.migrations.hermesMixedModelReconciliationV1.stalePlacementsZeroed ?? 0) >= 1);
+
+    const latest = new Map();
+    for (const row of await readJsonLines(queuePath)) {
+      if (row.source === "hermes") latest.set(`${row.model}|${row.hour_start}`, row);
+    }
+    assert.equal(
+      latest.get(`gpt-5.6-sol|${firstObservedBucket}`)?.total_tokens, 0,
+      "stale observation placement must be retired with a zero-out latest-wins row",
+    );
+    assert.equal(latest.get(`gpt-5.6-sol|${finalBucket}`)?.total_tokens, 1150);
+    // Latest-wins Day view conserves the session total across both buckets.
+    assert.equal(0 + 1150, 1150);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseHermesIncremental per-bucket reconciliation skips buckets that already match and tolerates live growth", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-hermes-live-growth-"));
+  try {
+    const dbPath = path.join(tmp, "state.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const startedAt = 1775993700;
+    const endedAt = 1775994000;
+    const bucketStart = new Date(Math.floor(endedAt / 1800) * 1800 * 1000).toISOString();
+    createHermesDb(dbPath, [{
+      id: "stable",
+      model: "gpt-5.6-sol",
+      started_at: startedAt,
+      ended_at: endedAt,
+      input_tokens: 700,
+      output_tokens: 70,
+      cache_read_tokens: 350,
+      cache_write_tokens: 10,
+      reasoning_tokens: 20,
+      message_count: 7,
+    }, {
+      id: "live",
+      model: "gpt-5.6-terra",
+      started_at: startedAt + 60,
+      ended_at: null,
+      input_tokens: 100,
+      output_tokens: 10,
+      cache_read_tokens: 50,
+      cache_write_tokens: 0,
+      reasoning_tokens: 5,
+      message_count: 1,
+    }]);
+    cp.execFileSync("sqlite3", [dbPath, `
+      CREATE TABLE session_model_usage (
+        session_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        api_call_count INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        first_seen REAL,
+        last_seen REAL
+      );
+      INSERT INTO session_model_usage
+        (session_id, model, api_call_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, first_seen, last_seen)
+      VALUES
+        ('stable', 'gpt-5.6-sol', 7, 700, 70, 350, 10, 20, ${startedAt}, ${endedAt}),
+        ('live', 'gpt-5.6-terra', 1, 100, 10, 50, 0, 5, ${startedAt + 60}, ${endedAt - 30});
+    `]);
+    // The 'live' session is unfinished in DB but was ingested earlier with smaller totals;
+    // its authoritative total has since grown — global equality can never hold, yet the
+    // stable sol bucket matches exactly and must not be re-appended.
+    const matchedTotals = {
+      input_tokens: 700,
+      cached_input_tokens: 350,
+      cache_creation_input_tokens: 10,
+      output_tokens: 70,
+      reasoning_output_tokens: 20,
+      total_tokens: 1150,
+      billable_total_tokens: 1150,
+      conversation_count: 7,
+    };
+    const cursors = {
+      version: 1,
+      hermes: { modelUsageVersion: 1 },
+      hourly: {
+        version: 3,
+        buckets: {
+          [`hermes|gpt-5.6-sol|${bucketStart}`]: { totals: { ...matchedTotals }, queuedKey: "legacy" },
+        },
+        groupQueued: {},
+      },
+    };
+    const originalQueue = `${JSON.stringify({ source: "hermes", model: "gpt-5.6-sol", hour_start: bucketStart, ...matchedTotals })}\n`;
+    await fs.writeFile(queuePath, originalQueue);
+    const queueStatePath = path.join(tmp, "queue.state.json");
+    await fs.writeFile(queueStatePath, `${JSON.stringify({ offset: originalQueue.length })}\n`);
+
+    const result = await parseHermesIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      queueStatePath,
+      reconcileHistorical: true,
+    });
+    assert.equal(cursors.migrations?.hermesMixedModelReconciliationV1?.status, "applied");
+    // Only the live/changed bucket may be appended; the matched bucket must be skipped.
+    const appended = (await readJsonLines(queuePath)).slice((await fs.readFile(queueStatePath, "utf8") ? JSON.parse(await fs.readFile(queueStatePath, "utf8")).offset : originalQueue.length));
+    const tailText = (await fs.readFile(queuePath, "utf8")).slice(JSON.parse(await fs.readFile(queueStatePath, "utf8")).offset);
+    for (const line of tailText.split("\n").filter(Boolean)) {
+      const row = JSON.parse(line);
+      assert.notEqual(row.model, "gpt-5.6-sol", "matching bucket must not be re-appended");
+    }
+    assert.ok(tailText.includes('"model":"gpt-5.6-terra"'), "changed bucket must be corrected");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
