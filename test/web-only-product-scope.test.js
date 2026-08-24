@@ -22,7 +22,7 @@ test("active product authority is localhost browser plus CLI backend only", () =
 
 test("npm is the only active release path", () => {
   const pkg = JSON.parse(read("package.json"));
-  assert.equal(pkg.version, "0.39.55");
+  assert.equal(pkg.version, "0.39.56");
   assert.equal(pkg.scripts.version, undefined);
   assert.equal(pkg.scripts["validate:version-lockstep"], undefined);
   assert.doesNotMatch(pkg.scripts["ci:local"], /version-lockstep/);
