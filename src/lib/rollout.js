@@ -3570,12 +3570,16 @@ async function appendHermesReconciliationRows({ queuePath, queueStatePath, canon
   }
 }
 
-// One-time, fail-closed correction for the v0.39.48 adoption gate. That gate
+// One-time, per-bucket correction for the v0.39.48 adoption gate. That gate
 // intentionally avoided replaying legacy aggregate snapshots, which preserved
 // the grand total but left already-counted mixed-model usage on sessions.model.
-// Rebuild only when the authoritative Hermes model rows have exactly the same
-// token total as the existing Hermes accumulator; otherwise leave data intact
-// and let the normal incremental path catch up before retrying next sync.
+// Compares each canonical (model, half-hour) bucket against the existing
+// accumulator instead of requiring global grand-total equality: production
+// installs cannot satisfy exact equality (source retention deletes ingested
+// sessions, live sessions grow between reads). Differing canonical buckets are
+// appended as latest-wins correction rows after the consumed upload offset;
+// existing buckets with no canonical counterpart that predate retained source
+// coverage are zeroed out explicitly.
 async function reconcileHermesMixedModelUsage({ dbPaths, cursors, queuePath, queueStatePath, hermesState, updatedAt, sqliteOptions }) {
   if (!cursors || typeof cursors !== "object") return { status: "invalid_cursor" };
   const migrations = cursors.migrations && typeof cursors.migrations === "object" ? cursors.migrations : {};
@@ -3604,13 +3608,22 @@ async function reconcileHermesMixedModelUsage({ dbPaths, cursors, queuePath, que
   }
 
   const hourlyState = normalizeHourlyState(cursors.hourly);
-  const existingTotals = initTotals();
-  for (const [key, bucket] of Object.entries(hourlyState.buckets || {})) {
-    if (parseBucketKey(key).source === "hermes") addTotals(existingTotals, bucket?.totals);
+  // Retained source coverage boundary: the oldest session start still present in
+  // any authoritative database. Existing buckets whose hour starts before this
+  // boundary cannot have a surviving source row, so they are provably orphans.
+  let retentionBoundaryEpochSec = null;
+  for (const { rows } of rowsBySource) {
+    for (const row of rows) {
+      const startedAt = Number(row.started_at);
+      if (Number.isFinite(startedAt) && startedAt > 0) {
+        retentionBoundaryEpochSec = retentionBoundaryEpochSec == null
+          ? startedAt
+          : Math.min(retentionBoundaryEpochSec, startedAt);
+      }
+    }
   }
 
   const canonicalBuckets = {};
-  const authoritativeTotals = initTotals();
   for (const { rows } of rowsBySource) {
     for (const row of rows) {
       const totals = hermesRowTotals(row);
@@ -3621,46 +3634,82 @@ async function reconcileHermesMixedModelUsage({ dbPaths, cursors, queuePath, que
       const key = bucketKey("hermes", model, hourStart);
       const bucket = canonicalBuckets[key] ||= { totals: initTotals(), queuedKey: null };
       addTotals(bucket.totals, totals);
-      addTotals(authoritativeTotals, totals);
     }
   }
 
-  if (!sameHermesTokenTotals(existingTotals, authoritativeTotals)) {
-    cursors.migrations ||= {};
-    cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY] = {
-      status: "blocked_total_mismatch",
-      updatedAt,
-      existingTotalTokens: existingTotals.total_tokens,
-      authoritativeTotalTokens: authoritativeTotals.total_tokens,
-    };
-    return cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY];
+  function bucketHourStartToEpochSec(hourStart) {
+    const parsedMs = Date.parse(`${hourStart}Z`.replace(/Z+$/, "Z"));
+    return Number.isFinite(parsedMs) ? parsedMs / 1000 : null;
   }
 
-  for (const key of Object.keys(hourlyState.buckets || {})) {
-    if (parseBucketKey(key).source === "hermes") delete hourlyState.buckets[key];
-  }
-  for (const key of Object.keys(hourlyState.groupQueued || {})) {
-    if (key.startsWith("hermes|")) delete hourlyState.groupQueued[key];
-  }
-  const canonicalRows = [];
+  const existingHermesKeys = new Set(Object.keys(hourlyState.buckets || {})
+    .filter((key) => parseBucketKey(key).source === "hermes"));
+
+  const correctionRows = [];
+  let bucketsCorrected = 0;
+  let bucketsSkipped = 0;
+  let orphansZeroed = 0;
+  let stalePlacementsZeroed = 0;
+
+  // Corrections for canonical buckets that differ from the existing accumulator.
   for (const [key, bucket] of Object.entries(canonicalBuckets)) {
     const { model, hourStart } = parseBucketKey(key);
+    const existingBucket = hourlyState.buckets[key];
+    if (existingBucket && sameHermesTokenTotals(existingBucket?.totals, bucket.totals)) {
+      bucketsSkipped += 1;
+      continue;
+    }
     bucket.queuedKey = totalsKey(bucket.totals);
     hourlyState.buckets[key] = bucket;
-    canonicalRows.push(JSON.stringify({
+    correctionRows.push(JSON.stringify({
       source: "hermes",
       model,
       hour_start: hourStart,
       ...bucket.totals,
     }));
+    bucketsCorrected += 1;
   }
 
-  await appendHermesReconciliationRows({
-    queuePath,
-    queueStatePath,
-    canonicalRows,
-    updatedAt,
-  });
+  // Zero out existing buckets with no canonical counterpart. Outside retained
+  // coverage they are provably orphans (source rows deleted after ingestion).
+  // Inside coverage they are stale placements: the incremental path spread a
+  // session's cumulative totals across observation-time buckets while the
+  // canonical view places them at the session's current last_seen bucket.
+  // Latest-wins upserts make the zero row retire the stale placement without
+  // rewriting queue history; unfinished sessions re-emit growth at their new
+  // bucket on the next incremental sync.
+  for (const key of existingHermesKeys) {
+    if (canonicalBuckets[key]) continue;
+    const { model, hourStart } = parseBucketKey(key);
+    const existingBucketTotal = Number(hourlyState.buckets[key]?.totals?.total_tokens || 0);
+    if (existingBucketTotal === 0) continue;
+    const hourStartSec = bucketHourStartToEpochSec(hourStart);
+    const provablyOrphaned = hourStartSec != null
+      && retentionBoundaryEpochSec != null
+      && hourStartSec < retentionBoundaryEpochSec;
+    const zeroTotals = initTotals();
+    hourlyState.buckets[key] = { totals: zeroTotals, queuedKey: totalsKey(zeroTotals) };
+    correctionRows.push(JSON.stringify({
+      source: "hermes",
+      model,
+      hour_start: hourStart,
+      ...zeroTotals,
+    }));
+    if (provablyOrphaned) {
+      orphansZeroed += 1;
+    } else {
+      stalePlacementsZeroed += 1;
+    }
+  }
+
+  if (correctionRows.length > 0) {
+    await appendHermesReconciliationRows({
+      queuePath,
+      queueStatePath,
+      canonicalRows: correctionRows,
+      updatedAt,
+    });
+  }
 
   const nextHermesState = hermesState && typeof hermesState === "object" ? hermesState : {};
   for (const { profileName, rows } of rowsBySource) {
@@ -3677,13 +3726,21 @@ async function reconcileHermesMixedModelUsage({ dbPaths, cursors, queuePath, que
       );
     }
   }
+  for (const key of Object.keys(hourlyState.groupQueued || {})) {
+    if (key.startsWith("hermes|")) delete hourlyState.groupQueued[key];
+  }
   cursors.hourly = hourlyState;
   cursors.migrations ||= {};
   cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY] = {
     status: "applied",
     appliedAt: updatedAt,
-    totalTokens: authoritativeTotals.total_tokens,
-    bucketsRebuilt: canonicalRows.length,
+    totalTokens: Object.values(canonicalBuckets).reduce(
+      (sum, bucket) => sum + Number(bucket.totals.total_tokens || 0), 0),
+    bucketsRebuilt: Object.keys(canonicalBuckets).length,
+    bucketsCorrected,
+    bucketsSkipped,
+    orphansZeroed,
+    stalePlacementsZeroed,
   };
   return cursors.migrations[HERMES_MIXED_MODEL_RECONCILIATION_MIGRATION_KEY];
 }

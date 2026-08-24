@@ -255,67 +255,67 @@
       },
       {
         "name": "parseHermesIncremental",
-        "evidence": "src/lib/rollout.js:3699"
+        "evidence": "src/lib/rollout.js:3756"
       },
       {
         "name": "parseKiroCliIncremental",
-        "evidence": "src/lib/rollout.js:4403"
+        "evidence": "src/lib/rollout.js:4460"
       },
       {
         "name": "parseKimiIncremental",
-        "evidence": "src/lib/rollout.js:5048"
+        "evidence": "src/lib/rollout.js:5105"
       },
       {
         "name": "parseKimiCodeIncremental",
-        "evidence": "src/lib/rollout.js:5239"
+        "evidence": "src/lib/rollout.js:5296"
       },
       {
         "name": "parseCodebuddyIncremental",
-        "evidence": "src/lib/rollout.js:5463"
+        "evidence": "src/lib/rollout.js:5520"
       },
       {
         "name": "parseRoocodeIncremental",
-        "evidence": "src/lib/rollout.js:5966"
+        "evidence": "src/lib/rollout.js:6023"
       },
       {
         "name": "parseZedIncremental",
-        "evidence": "src/lib/rollout.js:6283"
+        "evidence": "src/lib/rollout.js:6340"
       },
       {
         "name": "parseGooseIncremental",
-        "evidence": "src/lib/rollout.js:6600"
+        "evidence": "src/lib/rollout.js:6657"
       },
       {
         "name": "parseDroidIncremental",
-        "evidence": "src/lib/rollout.js:6998"
+        "evidence": "src/lib/rollout.js:7055"
       },
       {
         "name": "parseKilocodeIncremental",
-        "evidence": "src/lib/rollout.js:7245"
+        "evidence": "src/lib/rollout.js:7302"
       },
       {
         "name": "parseOmpIncremental",
-        "evidence": "src/lib/rollout.js:7381"
+        "evidence": "src/lib/rollout.js:7438"
       },
       {
         "name": "parsePiIncremental",
-        "evidence": "src/lib/rollout.js:7634"
+        "evidence": "src/lib/rollout.js:7691"
       },
       {
         "name": "parseCraftIncremental",
-        "evidence": "src/lib/rollout.js:7918"
+        "evidence": "src/lib/rollout.js:7975"
       },
       {
         "name": "parseCopilotIncremental",
-        "evidence": "src/lib/rollout.js:8282"
+        "evidence": "src/lib/rollout.js:8339"
       },
       {
         "name": "parseGrokBuildIncremental",
-        "evidence": "src/lib/rollout.js:8748"
+        "evidence": "src/lib/rollout.js:8805"
       },
       {
         "name": "parseAntigravityIncremental",
-        "evidence": "src/lib/rollout.js:8920"
+        "evidence": "src/lib/rollout.js:8977"
       }
     ]
   }
