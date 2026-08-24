@@ -3446,6 +3446,7 @@ const HERMES_TOKEN_TOTAL_FIELDS = [
   "reasoning_output_tokens",
   "total_tokens",
   "billable_total_tokens",
+  "conversation_count",
 ];
 
 function hermesRowTotals(row) {
