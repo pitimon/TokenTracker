@@ -125,6 +125,11 @@ const CLAUDE_GROUND_TRUTH_REPAIR_KEY = "claudeGroundTruthRepair_2026_05_v4";
 
 async function cmdSync(argv) {
   const opts = parseArgs(argv);
+  if (opts.reconcileHermes) {
+    throw new Error(
+      "Historical Hermes reconciliation is disabled: session_model_usage has cumulative totals but no temporal delta ledger, so rebuilding daily/hourly buckets would misattribute long-running sessions."
+    );
+  }
   const home = os.homedir();
   const { trackerDir } = await resolveTrackerPaths({ home });
 
