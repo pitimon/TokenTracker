@@ -416,6 +416,32 @@ test("a real model that merely contains \"unknown\" is still priced or missed no
   assert.deepEqual(pricing.getPricingDiagnostics().unpriced_models, ["mystery-model"]);
 });
 
+test("a configured composite auto-router route is unpriced rather than fuzzy-matched as Fable", async () => {
+  const payload = {
+    current: {
+      "anthropic/claude-fable-5": entry(10e-6, 50e-6),
+    },
+  };
+  await loadWith(payload, tmpCachePath("composite-auto-router"));
+
+  const meta = pricing.getModelPricingMeta("claude-auto-pilot-fable-v1-canary", { source: "hermes" });
+  assert.equal(meta.tier, "routed-unresolved");
+  assert.deepEqual(meta.pricing, pricing.ZERO_PRICING);
+  assert.equal(
+    pricing.computeRowCost({
+      source: "hermes",
+      model: "claude-auto-pilot-fable-v1-canary",
+      cached_input_tokens: 1_000_000,
+    }),
+    0,
+  );
+  assert.deepEqual(
+    pricing.getPricingDiagnostics().unpriced_models,
+    ["claude-auto-pilot-fable-v1-canary"],
+  );
+  assert.deepEqual(pricing.getPricingDiagnostics().fuzzy_priced_models, []);
+});
+
 test("cost for an unattributed row is unchanged by the exemption", async () => {
   const payload = { current: { "acme-1": entry(1e-6, 2e-6) } };
   await loadWith(payload, tmpCachePath("unattributed-cost"));

@@ -30,7 +30,7 @@ const FUZZY_PRICING_TIERS = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:
 // all, but their tokens still count toward the total, so the same caveat applies
 // — they are excluded from the server's unpriced_models list (which exists to
 // name models needing a curated price) but must not silently read as priced.
-const UNPRICED_PRICING_TIERS = new Set(["miss", "unattributed", "empty"]);
+const UNPRICED_PRICING_TIERS = new Set(["miss", "unattributed", "empty", "routed-unresolved"]);
 
 function isKnownZeroCostModel(name: any) {
   const lower = String(name || "").toLowerCase();
