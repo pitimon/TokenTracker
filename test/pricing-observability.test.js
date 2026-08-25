@@ -416,30 +416,54 @@ test("a real model that merely contains \"unknown\" is still priced or missed no
   assert.deepEqual(pricing.getPricingDiagnostics().unpriced_models, ["mystery-model"]);
 });
 
-test("a configured composite auto-router route is unpriced rather than fuzzy-matched as Fable", async () => {
+test("configured auto-router routes use their approved child-model weighted estimates", async () => {
   const payload = {
     current: {
-      "anthropic/claude-fable-5": entry(10e-6, 50e-6),
+      "anthropic/claude-sonnet-5": {
+        input_cost_per_token: 2e-6,
+        output_cost_per_token: 10e-6,
+        cache_read_input_token_cost: 0.2e-6,
+        cache_creation_input_token_cost: 2.5e-6,
+      },
+      "anthropic/claude-opus-5": {
+        input_cost_per_token: 5e-6,
+        output_cost_per_token: 25e-6,
+        cache_read_input_token_cost: 0.5e-6,
+        cache_creation_input_token_cost: 6.25e-6,
+      },
+      "gpt-5.6-terra": {
+        input_cost_per_token: 2e-6,
+        output_cost_per_token: 12e-6,
+        cache_read_input_token_cost: 0.2e-6,
+        cache_creation_input_token_cost: 2.5e-6,
+      },
+      "gpt-5.6-sol": {
+        input_cost_per_token: 4e-6,
+        output_cost_per_token: 20e-6,
+        cache_read_input_token_cost: 0.4e-6,
+        cache_creation_input_token_cost: 5e-6,
+      },
     },
   };
   await loadWith(payload, tmpCachePath("composite-auto-router"));
 
-  const meta = pricing.getModelPricingMeta("claude-auto-pilot-fable-v1-canary", { source: "hermes" });
-  assert.equal(meta.tier, "routed-unresolved");
-  assert.deepEqual(meta.pricing, pricing.ZERO_PRICING);
-  assert.equal(
-    pricing.computeRowCost({
-      source: "hermes",
-      model: "claude-auto-pilot-fable-v1-canary",
-      cached_input_tokens: 1_000_000,
-    }),
-    0,
-  );
+  const claude = pricing.getModelPricingMeta("claude-auto-pilot-fable-v1-canary", { source: "hermes" });
+  assert.equal(claude.tier, "routed-estimated");
+  assert.deepEqual(claude.pricing, { input: 3.2, output: 16, cache_read: 0.32, cache_write: 4 });
+  const gpt = pricing.getModelPricingMeta("gpt-5.6-auto-pilot-055-v2", { source: "hermes" });
+  assert.equal(gpt.tier, "routed-estimated");
+  assert.deepEqual(gpt.pricing, { input: 2.8, output: 15.2, cache_read: 0.28, cache_write: 3.5 });
   assert.deepEqual(
     pricing.getPricingDiagnostics().unpriced_models,
-    ["claude-auto-pilot-fable-v1-canary"],
+    [],
   );
-  assert.deepEqual(pricing.getPricingDiagnostics().fuzzy_priced_models, []);
+  assert.deepEqual(
+    pricing.getPricingDiagnostics().fuzzy_priced_models,
+    [
+      { model: "claude-auto-pilot-fable-v1-canary", tier: "routed-estimated" },
+      { model: "gpt-5.6-auto-pilot-055-v2", tier: "routed-estimated" },
+    ],
+  );
 });
 
 test("cost for an unattributed row is unchanged by the exemption", async () => {

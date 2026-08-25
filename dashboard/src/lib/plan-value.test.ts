@@ -74,20 +74,21 @@ describe("computePlanValue", () => {
     expect(value.unpricedModels).toEqual(["unknown"]);
   });
 
-  it("counts an unresolved composite route as unpriced, not exact free usage", () => {
+  it("treats an approved composite-route blend as estimated, not exact", () => {
     const value = computePlanValue(
       source({
-        totals: { total_cost_usd: "0" },
+        totals: { total_cost_usd: "12" },
         models: [{
           model: "claude-auto-pilot-fable-v1-canary",
-          pricing_tier: "routed-unresolved",
+          pricing_tier: "routed-estimated",
         }],
       }),
       20,
     )!;
-    expect(value.listPriceUsd).toBe(0);
+    expect(value.listPriceUsd).toBe(12);
     expect(value.confidence).toBe("floor");
-    expect(value.unpricedModels).toEqual(["claude-auto-pilot-fable-v1-canary"]);
+    expect(value.unpricedModels).toEqual([]);
+    expect(value.fuzzyModels).toEqual(["claude-auto-pilot-fable-v1-canary"]);
   });
 
   it("is exact when every model priced exactly", () => {

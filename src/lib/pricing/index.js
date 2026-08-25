@@ -49,7 +49,12 @@ const RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
 // curated fuzzy rule rather than an exact id, so the price is plausible but may
 // belong to a different model. Worth surfacing — a wrong price never looks
 // wrong, unlike a $0 one.
-const FUZZY_SOURCES = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip"]);
+const FUZZY_SOURCES = new Set([
+  "curated:fuzzy",
+  "litellm:fuzzy",
+  "litellm:prefix-strip",
+  "routed-estimated",
+]);
 
 // Placeholder ids that stand in for "this row has no model", so they resolve to
 // the "unattributed" tier instead of being looked up and recorded as a miss.
@@ -66,6 +71,56 @@ const UNRESOLVED_LOGICAL_ROUTE_IDS = new Set([
   "claude-auto-pilot-fable-v1-canary",
 ]);
 const UNPRICED_TIERS = new Set(["miss", "routed-unresolved"]);
+
+// Owner-approved route mix estimates. The child-model ratios are a pricing
+// policy, not routing telemetry: callers must surface `routed-estimated` as a
+// non-exact price. Any configured child whose current price cannot be resolved
+// makes the route unpriced rather than silently using a partial blend.
+const ROUTED_ESTIMATE_POLICIES = new Map([
+  ["claude-auto-pilot-fable-v1-canary", [
+    { model: "anthropic/claude-sonnet-5", weight: 0.6 },
+    { model: "anthropic/claude-opus-5", weight: 0.4 },
+  ]],
+  ["gpt-5.6-auto-pilot", [
+    { model: "gpt-5.6-terra", weight: 0.6 },
+    { model: "gpt-5.6-sol", weight: 0.4 },
+  ]],
+  ["gpt-5.6-auto-pilot-045-canary", [
+    { model: "gpt-5.6-terra", weight: 0.6 },
+    { model: "gpt-5.6-sol", weight: 0.4 },
+  ]],
+  ["gpt-5.6-auto-pilot-055-v2", [
+    { model: "gpt-5.6-terra", weight: 0.6 },
+    { model: "gpt-5.6-sol", weight: 0.4 },
+  ]],
+  ["gpt-5.6-auto-pilot-056-claude-reasoning-canary", [
+    { model: "gpt-5.6-terra", weight: 0.6 },
+    { model: "gpt-5.6-sol", weight: 0.4 },
+  ]],
+]);
+
+function isPotentialGptAutoRoute(model) {
+  return /^gpt-5\.6-auto/i.test(String(model || "").trim());
+}
+
+function resolveRoutedEstimate(model, lookupSource) {
+  const policy = ROUTED_ESTIMATE_POLICIES.get(String(model || "").trim());
+  if (!policy) return null;
+  const mixed = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
+  for (const child of policy) {
+    const result = lookupPricing(child.model, {
+      curated: curatedOverrides,
+      litellm: state.litellmPerMillionMap,
+      source: lookupSource,
+    });
+    if (!result.hit || !result.value) return null;
+    for (const field of Object.keys(mixed)) {
+      if (!Number.isFinite(result.value[field])) return null;
+      mixed[field] += child.weight * result.value[field];
+    }
+  }
+  return mixed;
+}
 
 // `last_refresh_error` is served over HTTP to the dashboard, so it is built
 // from CLOSED sets, never from an arbitrary value. A previous version accepted
@@ -246,7 +301,16 @@ function getModelPricingMeta(model, opts = {}) {
   const lookupSource = resolveLookupSource(opts);
   const cacheKey = lookupSource ? `${lookupSource}\0${model}` : model;
 
-  if (UNRESOLVED_LOGICAL_ROUTE_IDS.has(String(model || "").trim())) {
+  const routedEstimate = resolveRoutedEstimate(model, lookupSource);
+  if (routedEstimate) {
+    state.tiers.set(cacheKey, { model, source: lookupSource, tier: "routed-estimated" });
+    return { pricing: routedEstimate, tier: "routed-estimated" };
+  }
+
+  if (
+    UNRESOLVED_LOGICAL_ROUTE_IDS.has(String(model || "").trim())
+    || isPotentialGptAutoRoute(model)
+  ) {
     state.tiers.set(cacheKey, { model, source: lookupSource, tier: "routed-unresolved" });
     return { pricing: ZERO_PRICING, tier: "routed-unresolved" };
   }

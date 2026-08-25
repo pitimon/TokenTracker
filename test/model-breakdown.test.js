@@ -676,8 +676,8 @@ test("pricing_tier from the server beats the cost<=0 guess for missing pricing",
           {
             model: "claude-auto-pilot-fable-v1-canary",
             model_id: "claude-auto-pilot-fable-v1-canary",
-            pricing_tier: "routed-unresolved",
-            totals: { billable_total_tokens: 1000, total_cost_usd: "0" },
+            pricing_tier: "routed-estimated",
+            totals: { billable_total_tokens: 1000, total_cost_usd: "3" },
           },
         ],
       },
@@ -687,21 +687,24 @@ test("pricing_tier from the server beats the cost<=0 guess for missing pricing",
   const [provider] = buildFleetData(modelBreakdown);
   assert.deepEqual(
     provider.missingPricingModels.map((m) => m.name),
-    ["brand-new-model", "claude-auto-pilot-fable-v1-canary"],
-    "both a miss and an unresolved composite route are unpriced",
+    ["brand-new-model"],
+    "only a true pricing miss is unpriced",
   );
   assert.deepEqual(
     provider.fuzzyPricingModels.map((m) => m.name),
-    ["acme-9-turbo"],
-    "a substring-matched price is surfaced even though it is non-zero",
+    ["acme-9-turbo", "claude-auto-pilot-fable-v1-canary"],
+    "both substring and routed estimates are surfaced as non-exact pricing",
   );
 
   const insights = buildUsageInsights(modelBreakdown);
   assert.deepEqual(
     insights.missingPricingModels.map((m) => m.name),
-    ["brand-new-model", "claude-auto-pilot-fable-v1-canary"],
+    ["brand-new-model"],
   );
-  assert.deepEqual(insights.fuzzyPricingModels.map((m) => m.name), ["acme-9-turbo"]);
+  assert.deepEqual(
+    insights.fuzzyPricingModels.map((m) => m.name),
+    ["acme-9-turbo", "claude-auto-pilot-fable-v1-canary"],
+  );
 });
 
 test("dashboard model data keeps Hermes authoritative cost provenance distinct from fuzzy pricing", async () => {
