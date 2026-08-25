@@ -23,7 +23,12 @@ function resolveModelName(model: any, fallback: any) {
 // Server-side resolution tiers that mean the price was guessed from a partial
 // match rather than an exact model id (src/lib/pricing/index.js). A guessed
 // price is plausible and therefore never looks wrong — worth flagging.
-const FUZZY_PRICING_TIERS = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip"]);
+const FUZZY_PRICING_TIERS = new Set([
+  "curated:fuzzy",
+  "litellm:fuzzy",
+  "litellm:prefix-strip",
+  "routed-estimated",
+]);
 
 // Server tiers that mean "$0 because we have no price", as opposed to a model
 // that genuinely costs nothing. "unattributed"/"empty" rows carry no model id at

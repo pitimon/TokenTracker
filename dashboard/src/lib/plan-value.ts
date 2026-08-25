@@ -62,7 +62,13 @@ const toNumber = (value: unknown): number => {
 // be wrong in either direction. Kept as an explicit list rather than a
 // "not exact" rule so a NEW tier has to be classified deliberately.
 const UNPRICED_TIERS = new Set(["miss", "empty", "unattributed", "routed-unresolved"]);
-const FUZZY_TIERS = new Set(["curated:fuzzy", "litellm:fuzzy", "litellm:prefix-strip", "litellm:strip"]);
+const FUZZY_TIERS = new Set([
+  "curated:fuzzy",
+  "litellm:fuzzy",
+  "litellm:prefix-strip",
+  "litellm:strip",
+  "routed-estimated",
+]);
 
 function modelName(model: SourceModel): string {
   return String(model.model || model.model_id || "").trim();
