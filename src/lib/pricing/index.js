@@ -78,8 +78,8 @@ const UNPRICED_TIERS = new Set(["miss", "routed-unresolved"]);
 // makes the route unpriced rather than silently using a partial blend.
 const ROUTED_ESTIMATE_POLICIES = new Map([
   ["claude-auto-pilot-fable-v1-canary", [
-    { model: "anthropic/claude-sonnet-5", weight: 0.6 },
-    { model: "anthropic/claude-opus-5", weight: 0.4 },
+    { model: "anthropic/claude-sonnet-5", pricingModel: "claude-sonnet-5", weight: 0.6 },
+    { model: "anthropic/claude-opus-5", pricingModel: "claude-opus-5", weight: 0.4 },
   ]],
   ["gpt-5.6-auto-pilot", [
     { model: "gpt-5.6-terra", weight: 0.6 },
@@ -98,6 +98,12 @@ const ROUTED_ESTIMATE_POLICIES = new Map([
     { model: "gpt-5.6-sol", weight: 0.4 },
   ]],
 ]);
+const ROUTE_CHILD_EXACT_TIERS = new Set([
+  "curated:exact",
+  "curated:exact-dot",
+  "litellm:exact",
+  "litellm:exact-dot",
+]);
 
 function isPotentialGptAutoRoute(model) {
   return /^gpt-5\.6-auto/i.test(String(model || "").trim());
@@ -108,12 +114,12 @@ function resolveRoutedEstimate(model, lookupSource) {
   if (!policy) return null;
   const mixed = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
   for (const child of policy) {
-    const result = lookupPricing(child.model, {
+    const result = lookupPricing(child.pricingModel || child.model, {
       curated: curatedOverrides,
       litellm: state.litellmPerMillionMap,
       source: lookupSource,
     });
-    if (!result.hit || !result.value) return null;
+    if (!result.hit || !result.value || !ROUTE_CHILD_EXACT_TIERS.has(result.source)) return null;
     for (const field of Object.keys(mixed)) {
       if (!Number.isFinite(result.value[field])) return null;
       mixed[field] += child.weight * result.value[field];

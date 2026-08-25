@@ -419,13 +419,13 @@ test("a real model that merely contains \"unknown\" is still priced or missed no
 test("configured auto-router routes use their approved child-model weighted estimates", async () => {
   const payload = {
     current: {
-      "anthropic/claude-sonnet-5": {
+      "claude-sonnet-5": {
         input_cost_per_token: 2e-6,
         output_cost_per_token: 10e-6,
         cache_read_input_token_cost: 0.2e-6,
         cache_creation_input_token_cost: 2.5e-6,
       },
-      "anthropic/claude-opus-5": {
+      "claude-opus-5": {
         input_cost_per_token: 5e-6,
         output_cost_per_token: 25e-6,
         cache_read_input_token_cost: 0.5e-6,
@@ -464,6 +464,37 @@ test("configured auto-router routes use their approved child-model weighted esti
       { model: "gpt-5.6-auto-pilot-055-v2", tier: "routed-estimated" },
     ],
   );
+});
+
+test("a routed estimate fails closed when any child price is only a fuzzy hit", async () => {
+  const payload = {
+    current: {
+      // The pricing policy asks for claude-sonnet-5. This shorter key would
+      // fuzzy-match it, but is not strong enough evidence for a weighted route.
+      "claude-sonnet": {
+        input_cost_per_token: 99e-6,
+        output_cost_per_token: 99e-6,
+        cache_read_input_token_cost: 99e-6,
+        cache_creation_input_token_cost: 99e-6,
+      },
+      "claude-opus-5": {
+        input_cost_per_token: 5e-6,
+        output_cost_per_token: 25e-6,
+        cache_read_input_token_cost: 0.5e-6,
+        cache_creation_input_token_cost: 6.25e-6,
+      },
+    },
+  };
+  await loadWith(payload, tmpCachePath("composite-child-fuzzy"));
+
+  const meta = pricing.getModelPricingMeta("claude-auto-pilot-fable-v1-canary", { source: "hermes" });
+  assert.equal(meta.tier, "routed-unresolved");
+  assert.deepEqual(meta.pricing, pricing.ZERO_PRICING);
+  assert.deepEqual(
+    pricing.getPricingDiagnostics().unpriced_models,
+    ["claude-auto-pilot-fable-v1-canary"],
+  );
+  assert.deepEqual(pricing.getPricingDiagnostics().fuzzy_priced_models, []);
 });
 
 test("cost for an unattributed row is unchanged by the exemption", async () => {
