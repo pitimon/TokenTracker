@@ -121,6 +121,18 @@ test("the real curated-overrides.json has no expired entries today", () => {
   assert.deepStrictEqual(errors, [], errors.join("\n"));
 });
 
+test("verified Sonnet 5 seed preserves standard pricing after the cutoff", () => {
+  const seed = require("../src/lib/pricing/seed-snapshot.json");
+  const sonnet = seed["claude-sonnet-5"];
+  assert.deepStrictEqual(sonnet, {
+    input_cost_per_token: 2e-6,
+    output_cost_per_token: 10e-6,
+    cache_read_input_token_cost: 0.2e-6,
+    cache_creation_input_token_cost: 2.5e-6,
+  });
+  assert.ok(!curated._meta.expiries.some((entry) => entry.id === "sonnet5-intro-price"));
+});
+
 test("deepseek-v4-pro carries post-promo pricing, not the expired 75%-off rates", () => {
   // Regression guard for issue #87: the promo rates were input 0.435 / output 0.87.
   const pro = curated.exact["deepseek-v4-pro"];
