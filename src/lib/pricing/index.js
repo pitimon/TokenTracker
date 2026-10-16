@@ -77,6 +77,15 @@ const UNPRICED_TIERS = new Set(["miss", "routed-unresolved"]);
 // non-exact price. Any configured child whose current price cannot be resolved
 // makes the route unpriced rather than silently using a partial blend.
 const ROUTED_ESTIMATE_POLICIES = new Map([
+  // Owner-approved 2026-10-16 gateway tariff snapshot (USD/MTok), not vendor
+  // list prices or historical billing. Keep rates local to this exact alias.
+  ["gpt-6-auto-jev-v2", [
+    { model: "gpt-6.1-sol", weight: 0.71, pricing: { input: 2, output: 10, cache_read: 0.1, cache_write: 2.5 } },
+    { model: "claude-opus-5-5", weight: 0.19, pricing: { input: 4, output: 20, cache_read: 0.2, cache_write: 5 } },
+    { model: "gpt-6-luna", weight: 0.05, pricing: { input: 0.1, output: 0.5, cache_read: 0.01, cache_write: 0.125 } },
+    { model: "gpt-6-sol", weight: 0.04, pricing: { input: 2, output: 10, cache_read: 0.2, cache_write: 2.5 } },
+    { model: "claude-sonnet-5-5", weight: 0.01, pricing: { input: 2, output: 10, cache_read: 0.1, cache_write: 2.5 } },
+  ]],
   ["claude-auto-pilot-fable-v1-canary", [
     { model: "anthropic/claude-sonnet-5", pricingModel: "claude-sonnet-5", weight: 0.6 },
     { model: "anthropic/claude-opus-5", pricingModel: "claude-opus-5", weight: 0.4 },
@@ -106,7 +115,7 @@ const ROUTE_CHILD_EXACT_TIERS = new Set([
 ]);
 
 function isPotentialGptAutoRoute(model) {
-  return /^gpt-5\.6-auto/i.test(String(model || "").trim());
+  return /^(?:gpt-5\.6-auto|gpt-6-auto-jev(?:-|$))/i.test(String(model || "").trim());
 }
 
 function resolveRoutedEstimate(model, lookupSource) {
@@ -114,15 +123,19 @@ function resolveRoutedEstimate(model, lookupSource) {
   if (!policy) return null;
   const mixed = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
   for (const child of policy) {
-    const result = lookupPricing(child.pricingModel || child.model, {
-      curated: curatedOverrides,
-      litellm: state.litellmPerMillionMap,
-      source: lookupSource,
-    });
-    if (!result.hit || !result.value || !ROUTE_CHILD_EXACT_TIERS.has(result.source)) return null;
+    let price = child.pricing;
+    if (!price) {
+      const result = lookupPricing(child.pricingModel || child.model, {
+        curated: curatedOverrides,
+        litellm: state.litellmPerMillionMap,
+        source: lookupSource,
+      });
+      if (!result.hit || !result.value || !ROUTE_CHILD_EXACT_TIERS.has(result.source)) return null;
+      price = result.value;
+    }
     for (const field of Object.keys(mixed)) {
-      if (!Number.isFinite(result.value[field])) return null;
-      mixed[field] += child.weight * result.value[field];
+      if (!Number.isFinite(price[field]) || price[field] < 0) return null;
+      mixed[field] += child.weight * price[field];
     }
   }
   return mixed;
