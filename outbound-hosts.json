@@ -309,7 +309,7 @@
       "data_from": [
         {
           "file": "src/lib/pricing/seed-snapshot.json",
-          "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+          "url": "https://raw.githubusercontent.com/BerriAI/litellm/e74e4e569331c1d99757ae6118685d8826c6f7c6/model_prices_and_context_window.json"
         }
       ]
     },

@@ -92,7 +92,8 @@ list prices. They do not overwrite physical-model pricing.
 This is `routed-estimated` / non-exact pricing (Plan Value remains a floor),
 not actual spend. Applying it to an older display period does not reconstruct
 historical routing or invoices. Qualified Hermes actual-cost rows still take
-precedence. Unknown Jev variants stay `routed-unresolved`; other routed
+precedence. Unconfigured IDs in the bare or hyphen-suffixed `gpt-6-auto-jev`
+family stay `routed-unresolved`; other routed
 policies still reject missing/fuzzy child prices. See [#212](https://github.com/pitimon/TokenTracker/issues/212).
 
 ## 📊 The dashboard

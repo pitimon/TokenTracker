@@ -10,8 +10,8 @@ The approved LiteLLM source at commit `e74e4e569331c1d99757ae6118685d8826c6f7c6`
 
 ## Action and scope
 
-- Ran the existing `npm run pricing:build-seed` generator and checked every generated model/rate against the pinned LiteLLM source (excluding generated timestamp/source metadata): exact equality.
-- Snapshot inventory: 2,633 to 3,382 entries; 1,088 additions, 339 removals and 298 changed existing entries. This is a full approved-source offline fallback refresh, **not a Sonnet-only snapshot change**. It requires review for the wider offline fallback effect; no global curated overrides were changed.
+- Ran the existing `npm run pricing:build-seed` generator, then checked every generated model/rate against the LiteLLM source at that commit (excluding generated timestamp/source metadata): exact equality. The generator now fetches that pinned commit instead of moving `main`, so `prepublishOnly` reproduces the reviewed seed; refreshing prices means bumping the SHA in a reviewed PR. Runtime price refresh is unchanged.
+- Snapshot inventory: 2,633 to 3,382 entries; 1,088 additions, 339 removals and 298 changed existing entries. This is a full approved-source offline fallback refresh, **not a Sonnet-only snapshot change**. It requires review for the wider offline fallback effect; no curated price entries were changed.
 - Removed only the resolved `sonnet5-intro-price` expiry item after source verification. Kept the expiry validator and its boundary/failure tests intact. No postponed deadline, frozen clock or skipped test.
 - No edge tables remain in this fork. No queue/cursor/history rewrite, automatic calendar repricing or running-service change.
 - A current fallback snapshot is not historical billing evidence. Existing curated-price precedence remains unchanged; this work does not verify private gateway/canary billing rates (#191).

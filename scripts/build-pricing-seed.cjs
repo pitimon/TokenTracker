@@ -6,8 +6,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
+// ponytail: pinned so publish ships the reviewed seed; bump the SHA in a
+// reviewed PR to refresh prices.
+const LITELLM_REF = "e74e4e569331c1d99757ae6118685d8826c6f7c6";
 const LITELLM_URL =
-  "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
+  `https://raw.githubusercontent.com/BerriAI/litellm/${LITELLM_REF}/model_prices_and_context_window.json`;
 const OUT_PATH = path.resolve(__dirname, "../src/lib/pricing/seed-snapshot.json");
 const TIMEOUT_MS = 30_000;
 
