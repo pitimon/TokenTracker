@@ -80,6 +80,22 @@ Historical Swift and C# source remains in the repository as an unsupported archi
 
 ---
 
+### Environment-specific route estimates
+
+`gpt-6-auto-jev-v2` uses an owner-approved policy: GPT-6.1 Sol 71%,
+Claude Opus 5.5 19%, GPT-6 Luna 5%, GPT-6 Sol (high tier) 4%, and
+Claude Sonnet 5.5 1%. Its route-scoped gateway tariff snapshot yields
+USD/MTok rates of **2.285 input, 11.425 output/reasoning, 0.1185 cache read,
+and 2.85625 cache write**. These are configured gateway rates, not vendor
+list prices. They do not overwrite physical-model pricing.
+
+This is `routed-estimated` / non-exact pricing (Plan Value remains a floor),
+not actual spend. Applying it to an older display period does not reconstruct
+historical routing or invoices. Qualified Hermes actual-cost rows still take
+precedence. Unconfigured IDs in the bare or hyphen-suffixed `gpt-6-auto-jev`
+family stay `routed-unresolved`; other routed
+policies still reject missing/fuzzy child prices. See [#212](https://github.com/pitimon/TokenTracker/issues/212).
+
 ## 📊 The dashboard
 
 | Dark | Light |

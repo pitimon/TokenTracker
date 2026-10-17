@@ -3,14 +3,7 @@
     "note": "Curated price overrides. Always wins over LiteLLM. Two reasons to live here: (1) self-defined alias names that LiteLLM will never carry (kiro-*, hy3-*, composer-*, kimi-for-coding, free-tier OpenRouter routes); (2) prices we want to pin even if LiteLLM has the model (e.g. cache_write fields LiteLLM often omits). Units: USD per million tokens. Edit this file to override pricing without redeploying.",
     "units": "usd_per_million_tokens",
     "expiries_note": "Time-boxed pricing facts. Machine-checked by scripts/validate-curated-expiry.cjs (npm run validate:curated-expiry, part of ci:local): once expires_at has passed, the check FAILS until a human applies `action` and then removes or advances the entry. Free-text expiry notes are not allowed here — a date nobody checks is how deepseek-v4-pro stayed on a 75%-off promo price for 55 days past its cutover (issue #87).",
-    "expiries": [
-      {
-        "id": "sonnet5-intro-price",
-        "expires_at": "2026-08-31",
-        "what": "Sonnet 5 introductory pricing (2/10) reverts to the 3/15 sticker price.",
-        "action": "No curated entry to edit — the src pricing path auto-tracks LiteLLM. Re-vendor the bundled seed (npm run pricing:build-seed) so a cold start also prices Sonnet 5 correctly, then delete this entry. See issue #16."
-      }
-    ]
+    "expiries": []
   },
   "exact": {
     "claude-fable-5": { "input": 10, "output": 50, "cache_read": 1, "cache_write": 12.5, "note": "Pinned from Anthropic public pricing until bundled LiteLLM seed carries Fable 5." },

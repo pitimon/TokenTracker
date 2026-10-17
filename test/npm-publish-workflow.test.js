@@ -76,6 +76,15 @@ test("package prepublish rebuilds dashboard before pricing seed", () => {
   assert.ok(dashboardIndex < pricingIndex, "dashboard build must precede pricing seed generation");
 });
 
+test("pricing seed generator fetches a pinned LiteLLM commit, not moving main", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "scripts", "build-pricing-seed.cjs"), "utf8");
+  assert.doesNotMatch(src, /\/litellm\/main\//, "publish must not regenerate the seed from moving main");
+  assert.match(src, /LITELLM_REF = "[0-9a-f]{40}"/, "seed source must be a full commit SHA");
+  const seed = require("../src/lib/pricing/seed-snapshot.json");
+  const ref = src.match(/LITELLM_REF = "([0-9a-f]{40})"/)[1];
+  assert.ok(seed._meta.source.includes(ref), "bundled seed must record the pinned source it was built from");
+});
+
 test("package publishes under the ipv9 npm scope", () => {
   const pkg = JSON.parse(
     fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")

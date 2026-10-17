@@ -497,6 +497,33 @@ test("a routed estimate fails closed when any child price is only a fuzzy hit", 
   assert.deepEqual(pricing.getPricingDiagnostics().fuzzy_priced_models, []);
 });
 
+test("Jev v2 uses its approved gateway tariff estimate without global model repricing", async () => {
+  await loadWith({ current: { "gpt-6.1-sol": entry(99e-6, 99e-6) } }, tmpCachePath("jev-v2"));
+  const meta = pricing.getModelPricingMeta("gpt-6-auto-jev-v2", { source: "hermes" });
+  assert.equal(meta.tier, "routed-estimated");
+  const expected = { input: 2.285, output: 11.425, cache_read: 0.1185, cache_write: 2.85625 };
+  for (const [field, rate] of Object.entries(expected)) {
+    assert.ok(Math.abs(meta.pricing[field] - rate) < 1e-12, `${field} tariff`);
+  }
+  assert.equal(pricing.getModelPricingMeta("gpt-6.1-sol").pricing.input, 99);
+  assert.ok(Math.abs(pricing.computeRowCost({
+    model: "gpt-6-auto-jev-v2", source: "hermes",
+    input_tokens: 1_000_000, output_tokens: 1_000_000,
+    cached_input_tokens: 1_000_000, cache_creation_input_tokens: 1_000_000,
+    reasoning_output_tokens: 0,
+  }) - Object.values(expected).reduce((sum, value) => sum + value, 0)) < 1e-12);
+  assert.deepEqual(pricing.getPricingDiagnostics().fuzzy_priced_models,
+    [{ model: "gpt-6-auto-jev-v2", tier: "routed-estimated" }]);
+  assert.deepEqual(pricing.getPricingDiagnostics().unpriced_models, []);
+});
+
+test("unknown Jev variants stay unpriced even with a tempting exact snapshot price", async () => {
+  await loadWith({ current: { "gpt-6-auto-jev-v3": entry(99e-6, 99e-6) } }, tmpCachePath("jev-unknown"));
+  const meta = pricing.getModelPricingMeta("gpt-6-auto-jev-v3");
+  assert.equal(meta.tier, "routed-unresolved");
+  assert.deepEqual(meta.pricing, pricing.ZERO_PRICING);
+});
+
 test("cost for an unattributed row is unchanged by the exemption", async () => {
   const payload = { current: { "acme-1": entry(1e-6, 2e-6) } };
   await loadWith(payload, tmpCachePath("unattributed-cost"));
