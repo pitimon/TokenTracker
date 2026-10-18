@@ -58,6 +58,14 @@ chmod 0755 "$LOCAL_SYNC_WRAPPER"
 launchctl bootout "gui/$(id -u)" "$DASHBOARD_PLIST" >/dev/null 2>&1 || true
 launchctl bootout "gui/$(id -u)" "$LOCAL_SYNC_PLIST" >/dev/null 2>&1 || true
 
+xml_escape() {
+  printf '%s' "$1" | /usr/bin/sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+HOME_XML="$(xml_escape "$HOME")"
+LOG_DIR_XML="$(xml_escape "$LOG_DIR")"
+LOCAL_SYNC_WRAPPER_XML="$(xml_escape "$LOCAL_SYNC_WRAPPER")"
+
 cat > "$DASHBOARD_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -85,15 +93,17 @@ cat > "$DASHBOARD_PLIST" <<PLIST
   <dict>
     <key>PATH</key>
     <string>$SERVICE_PATH</string>
+    <key>NPM_CONFIG_CACHE</key>
+    <string>$HOME_XML/.cache/tokentracker-npm</string>
     <key>TOKENTRACKER_NPM_PACKAGE</key>
     <string>$PACKAGE_NAME</string>
   </dict>
   <key>StandardOutPath</key>
-  <string>$LOG_DIR/dashboard.log</string>
+  <string>$LOG_DIR_XML/dashboard.log</string>
   <key>StandardErrorPath</key>
-  <string>$LOG_DIR/dashboard.err.log</string>
+  <string>$LOG_DIR_XML/dashboard.err.log</string>
   <key>WorkingDirectory</key>
-  <string>$HOME</string>
+  <string>$HOME_XML</string>
 </dict>
 </plist>
 PLIST
@@ -107,7 +117,7 @@ cat > "$LOCAL_SYNC_PLIST" <<PLIST
   <string>$LOCAL_SYNC_LABEL</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$LOCAL_SYNC_WRAPPER</string>
+    <string>$LOCAL_SYNC_WRAPPER_XML</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -117,17 +127,19 @@ cat > "$LOCAL_SYNC_PLIST" <<PLIST
   <dict>
     <key>PATH</key>
     <string>$SERVICE_PATH</string>
+    <key>NPM_CONFIG_CACHE</key>
+    <string>$HOME_XML/.cache/tokentracker-npm</string>
     <key>TOKENTRACKER_NPM_PACKAGE</key>
     <string>$PACKAGE_NAME</string>
     <key>TOKENTRACKER_SERVICE_PATH</key>
     <string>$SERVICE_PATH</string>
   </dict>
   <key>StandardOutPath</key>
-  <string>$LOG_DIR/local-sync.log</string>
+  <string>$LOG_DIR_XML/local-sync.log</string>
   <key>StandardErrorPath</key>
-  <string>$LOG_DIR/local-sync.err.log</string>
+  <string>$LOG_DIR_XML/local-sync.err.log</string>
   <key>WorkingDirectory</key>
-  <string>$HOME</string>
+  <string>$HOME_XML</string>
 </dict>
 </plist>
 PLIST

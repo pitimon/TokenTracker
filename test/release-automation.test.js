@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const fs = require("node:fs");
 const os = require("node:os");
+const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 
 const ROOT = path.join(__dirname, "..");
@@ -94,6 +95,56 @@ test("release helper uses structural plist tooling and unique backups", () => {
   const syncPreflight = content.indexOf("SYNC_PREFLIGHT=");
   const dashboardMutation = content.indexOf('repin "$PLIST"');
   assert.ok(syncPreflight >= 0 && syncPreflight < dashboardMutation, "local-sync must be validated before dashboard mutation");
+});
+
+test("local service reinstall retains dedicated npm cache for both LaunchAgents", { skip: process.platform !== "darwin" }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-service-install-"));
+  try {
+    const bin = path.join(dir, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, "launchctl"), '#!/bin/bash\nprintf "%s\\n" "$@" >> "$HOME/launchctl.calls"\n', { mode: 0o755 });
+    for (const name of ["home", "home with spaces & <xml> \"quotes\" 'apostrophe'"]) {
+      const home = path.join(dir, name);
+      const cache = path.join(home, ".cache", "tokentracker-npm");
+      fs.mkdirSync(cache, { recursive: true });
+      const marker = path.join(cache, "retained");
+      fs.writeFileSync(marker, "existing cache\n");
+      const env = {
+        HOME: home,
+        PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+        TOKENTRACKER_NPM_PACKAGE: `${PACKAGE}@0.39.50`,
+        NPM_CONFIG_CACHE: path.join(dir, "unrelated-shell-cache"),
+      };
+      for (let install = 0; install < 2; install += 1) {
+        const result = spawnSync("/bin/bash", [path.join(ROOT, "scripts", "install-local-service.sh")], { env, encoding: "utf8" });
+        assert.equal(result.status, 0, result.stderr);
+        for (const service of ["dashboard", "local-sync"]) {
+          const file = path.join(home, "Library", "LaunchAgents", `com.pitimon.tokentracker.${service}.plist`);
+          const xml = fs.readFileSync(file, "utf8");
+          assert.match(xml, /<key>NPM_CONFIG_CACHE<\/key>/, `${service} missing dedicated npm cache`);
+          const parsed = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", "--", file], { encoding: "utf8" });
+          assert.equal(parsed.status, 0, parsed.stdout + parsed.stderr);
+          const plist = JSON.parse(parsed.stdout);
+          assert.equal(plist.EnvironmentVariables.NPM_CONFIG_CACHE, cache);
+          assert.equal(plist.EnvironmentVariables.TOKENTRACKER_NPM_PACKAGE, env.TOKENTRACKER_NPM_PACKAGE);
+          assert.equal(plist.WorkingDirectory, home);
+          assert.equal(plist.StandardOutPath, path.join(home, ".tokentracker", "tracker", "logs", `${service}.log`));
+          assert.equal(plist.StandardErrorPath, path.join(home, ".tokentracker", "tracker", "logs", `${service}.err.log`));
+          if (service === "local-sync") {
+            assert.equal(plist.ProgramArguments[0], path.join(home, ".tokentracker", "bin", "tokentracker-local-sync-service.sh"));
+            const syntax = spawnSync("/bin/bash", ["-n", plist.ProgramArguments[0]], { encoding: "utf8" });
+            assert.equal(syntax.status, 0, syntax.stderr);
+          }
+        }
+        assert.equal(fs.readFileSync(marker, "utf8"), "existing cache\n");
+      }
+      const calls = fs.readFileSync(path.join(home, "launchctl.calls"), "utf8");
+      assert.equal(calls.split("\n").filter((line) => line === "bootstrap").length, 4);
+      assert.equal(calls.split("\n").filter((line) => line === "bootout").length, 4);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("registry verifier accepts target dashboard and rejects stale bundle", () => {
