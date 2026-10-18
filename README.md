@@ -176,6 +176,14 @@ This table is checked in CI against [`outbound-hosts.json`](outbound-hosts.json)
 
 ---
 
+## 🛡️ Security audit
+
+TokenTracker was audited on 18 October 2026 at commit `33c87e5`, using a methodology adapted from [Anthropic's OSS Scanner](https://github.com/anthropics/oss-scanner): a threat model first, then a sink-driven code review, then a dynamic round — live DNS-rebinding and CORS probes against the local server, hostile-file fuzzing of the session parsers, and a data-flow review of every HTML rendering path. **Result: 0 confirmed vulnerabilities.** Full report: [docs/security-scan-20261018.md](docs/security-scan-20261018.md).
+
+![Security scan summary — 0 confirmed findings](docs/security-scan-20261018.svg)
+
+---
+
 ## 📦 Configuration
 
 Most users never touch this — defaults are sensible.

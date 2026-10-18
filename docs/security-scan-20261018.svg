@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="700" viewBox="0 0 1240 700" font-family="'Noto Sans Thai','Noto Sans',sans-serif">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#081c33"/><stop offset=".55" stop-color="#0d2f57"/><stop offset="1" stop-color="#0a4d68"/></linearGradient></defs>
+<rect width="1240" height="700" fill="url(#bg)"/>
+<text x="40" y="38" font-size="13" fill="#cfe3f5" letter-spacing="3">SECURITY SCAN ◆ OSS-SCANNER PATTERN TRIAL</text>
+<text x="40" y="78" font-size="29" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">ผลสแกนความปลอดภัย </tspan><tspan font-weight="700" fill="#ffffff">TokenTracker</tspan><tspan font-weight="700" fill="#ffffff"> — ไม่พบช่องโหว่ (ตรวจครบ 2 รอบ)</tspan></text>
+<text x="40" y="104" font-size="14.5" fill="#a9c6e2">pitimon/TokenTracker @ 33c87e5 · JavaScript ~74,000 บรรทัด · parsers 22 เครื่องมือ · 18 ตุลาคม 2026 (เวลาไทย)</text>
+<rect x="40" y="120" width="252" height="118" rx="10" fill="#2ecc71" fill-opacity="0.13" stroke="#2ecc71" stroke-opacity="0.55"/>
+<text x="54" y="150" font-size="19" fill="#7ce6a3"><tspan font-weight="700" fill="#7ce6a3">✓ 0 confirmed</tspan></text>
+<text x="54" y="174" font-size="19" fill="#7ce6a3"><tspan font-weight="700" fill="#7ce6a3">findings</tspan></text>
+<text x="54" y="198" font-size="11.5" fill="#d9f2e3">รอบแรกอ่านโค้ด + รอบสองตรวจเชิงลึก</text>
+<text x="54" y="213" font-size="11.5" fill="#d9f2e3">(รันจริง, fuzz, ไล่ data flow) — จุดเสี่ยง</text>
+<text x="54" y="228" font-size="11.5" fill="#d9f2e3">ที่ตั้งคำถามไว้ถูกปิดครบทุกข้อ</text>
+<rect x="40" y="248" width="121" height="96" rx="10" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.16"/>
+<text x="52" y="280" font-size="20" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">9 จุด</tspan></text>
+<text x="52" y="304" font-size="10.5" fill="#a9c6e2">การป้องกันที่ยืนยัน</text>
+<text x="52" y="319" font-size="10.5" fill="#a9c6e2">แล้วว่าแข็งแรง</text>
+<rect x="171" y="248" width="121" height="96" rx="10" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.16"/>
+<text x="183" y="280" font-size="20" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">3/3</tspan></text>
+<text x="183" y="304" font-size="10.5" fill="#a9c6e2">deep probes ปิดครบ</text>
+<text x="183" y="319" font-size="10.5" fill="#a9c6e2">ไม่เหลือจุดค้างตัดสิน</text>
+<rect x="40" y="354" width="121" height="96" rx="10" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.16"/>
+<text x="52" y="386" font-size="20" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">7/7</tspan></text>
+<text x="52" y="410" font-size="10.5" fill="#a9c6e2">กรณีทดสอบ DNS</text>
+<text x="52" y="425" font-size="10.5" fill="#a9c6e2">rebinding ผ่านทั้งหมด</text>
+<rect x="171" y="354" width="121" height="96" rx="10" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.16"/>
+<text x="183" y="386" font-size="20" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">169 ms</tspan></text>
+<text x="183" y="410" font-size="10.5" fill="#a9c6e2">fuzz ไฟล์ประสงค์ร้าย</text>
+<text x="183" y="425" font-size="10.5" fill="#a9c6e2">30 MB จบโดยไม่พัง</text>
+<rect x="308" y="120" width="448" height="336" rx="10" fill="#ffffff" fill-opacity="0.96"/>
+<text x="324" y="148" font-size="16" fill="#0d2f57"><tspan font-weight="700" fill="#0d2f57">✓ รอบแรก — อ่านโค้ด (sink-driven)</tspan></text>
+<text x="324" y="178" font-size="12.5" fill="#159947" font-weight="700">✓</text>
+<text x="340" y="178.0" font-size="12.5" fill="#10283f"><tspan font-weight="700" fill="#0d2f57">Bind 127.0.0.1</tspan> เป็นค่าตั้งต้น</text>
+<text x="340" y="195.5" font-size="12.5" fill="#10283f">มีเทสต์ล็อกพฤติกรรม</text>
+<text x="324" y="221.0" font-size="12.5" fill="#159947" font-weight="700">✓</text>
+<text x="340" y="221.0" font-size="12.5" fill="#10283f"><tspan font-weight="700" fill="#0d2f57">Mutation ต้องมี token + Origin</tspan></text>
+<text x="340" y="238.5" font-size="12.5" fill="#10283f">token สุ่มต่อโปรเซส (24 bytes),</text>
+<text x="340" y="256.0" font-size="12.5" fill="#10283f">Origin ต้องเป็น loopback</text>
+<text x="324" y="281.5" font-size="12.5" fill="#159947" font-weight="700">✓</text>
+<text x="340" y="281.5" font-size="12.5" fill="#10283f"><tspan font-weight="700" fill="#0d2f57">Proxy จำกัดแน่น</tspan> — GET/HEAD เท่านั้น,</text>
+<text x="340" y="299.0" font-size="12.5" fill="#10283f">allowlist ของ path, กัน IP ภายใน</text>
+<text x="340" y="316.5" font-size="12.5" fill="#10283f">169.254.169.254, ไม่ส่งต่อ credentials</text>
+<text x="324" y="342.0" font-size="12.5" fill="#159947" font-weight="700">✓</text>
+<text x="340" y="342.0" font-size="12.5" fill="#10283f"><tspan font-weight="700" fill="#0d2f57">ไม่มี shell injection</tspan> — เรียก process</text>
+<text x="340" y="359.5" font-size="12.5" fill="#10283f">นอกด้วย argument array ทุกจุด</text>
+<text x="324" y="385.0" font-size="12.5" fill="#159947" font-weight="700">✓</text>
+<text x="340" y="385.0" font-size="12.5" fill="#10283f"><tspan font-weight="700" fill="#0d2f57">Sync เป็น local ล้วน</tspan> + avatar proxy</text>
+<text x="340" y="402.5" font-size="12.5" fill="#10283f">บังคับ image/* และมีเทสต์ outbound-</text>
+<text x="340" y="420.0" font-size="12.5" fill="#10283f">inventory คุมจุดออก network</text>
+<rect x="772" y="120" width="428" height="336" rx="10" fill="#ffffff" fill-opacity="0.96"/>
+<text x="788" y="148" font-size="16" fill="#0d2f57"><tspan font-weight="700" fill="#0d2f57">✓ รอบสอง — ตรวจเชิงลึก (ปิด 3 probes)</tspan></text>
+<text x="788" y="178" font-size="12.5" fill="#159947" font-weight="700">✓</text>
+<text x="804" y="178.0" font-size="12.5" fill="#10283f"><tspan font-weight="700" fill="#0d2f57">DNS rebinding / CORS</tspan> — <tspan font-weight="700" fill="#0d2f57">ป้องกันครบ</tspan></text>
+<text x="804" y="195.5" font-size="12.5" fill="#10283f">Host allowlist ตอบ 403 ต่อโดเมน</text>
+<text x="804" y="213.0" font-size="12.5" fill="#10283f">ภายนอกและ Host แบบ userinfo,</text>
+<text x="804" y="230.5" font-size="12.5" fill="#10283f">CORS ไม่มี Allow-Origin ให้อ่านข้าม</text>
+<text x="804" y="248.0" font-size="12.5" fill="#10283f">origin, FQDN localhost. ผ่านตามออกแบบ</text>
+<text x="788" y="273.5" font-size="12.5" fill="#159947" font-weight="700">✓</text>
+<text x="804" y="273.5" font-size="12.5" fill="#10283f"><tspan font-weight="700" fill="#0d2f57">Fuzz parsers</tspan> — <tspan font-weight="700" fill="#0d2f57">ผ่าน</tspan>: ไฟล์ขยะ 30 MB,</text>
+<text x="804" y="291.0" font-size="12.5" fill="#10283f">JSON ซ้อน 20,000 ชั้น, __proto__</text>
+<text x="804" y="308.5" font-size="12.5" fill="#10283f">4 ตำแหน่ง, UTF-8 เสีย → ไม่ crash,</text>
+<text x="804" y="326.0" font-size="12.5" fill="#10283f">ไม่เกิด prototype pollution, ตัวอ่าน</text>
+<text x="804" y="343.5" font-size="12.5" fill="#10283f">SQLite คืนสถานะ typed ไม่ throw</text>
+<text x="788" y="369.0" font-size="12.5" fill="#159947" font-weight="700">✓</text>
+<text x="804" y="369.0" font-size="12.5" fill="#10283f"><tspan font-weight="700" fill="#0d2f57">HTML escaping</tspan> — <tspan font-weight="700" fill="#0d2f57">มีวินัยครบ</tspan>: wrapped</text>
+<text x="804" y="386.5" font-size="12.5" fill="#10283f">เป็น ASCII ล้วน, dashboard ใช้ React</text>
+<text x="804" y="404.0" font-size="12.5" fill="#10283f">ยกเว้น IpCheckPage ซึ่งมี esc() ครอบ</text>
+<text x="804" y="421.5" font-size="12.5" fill="#10283f">ทุกค่าจาก upstream (stored-XSS point</text>
+<text x="804" y="439.0" font-size="12.5" fill="#10283f">ที่แท้จริงของระบบ)</text>
+<rect x="40" y="472" width="1160" height="150" rx="10" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.16"/>
+<text x="56" y="498" font-size="14" fill="#ffb020" letter-spacing="1"><tspan font-weight="700" fill="#ffb020">METHODOLOGY — ดัดแปลงจาก ANTHROPIC OSS SCANNER</tspan></text>
+<rect x="56" y="510" width="216" height="62" rx="10" fill="#ffffff" fill-opacity="0.08"/>
+<text x="66" y="531" font-size="12" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">1 · Threat Model ก่อนสแกน</tspan></text>
+<text x="66" y="550" font-size="10.5" fill="#eaf1f8">scope, ตัวคุกคาม, เกณฑ์ severity</text>
+<text x="66" y="565" font-size="10.5" fill="#eaf1f8">(ต้นแบบ: threat_model.md)</text>
+<text x="274" y="548" font-size="13" fill="#ffb020"><tspan font-weight="700" fill="#ffb020">→</tspan></text>
+<rect x="284" y="510" width="216" height="62" rx="10" fill="#ffffff" fill-opacity="0.08"/>
+<text x="294" y="531" font-size="12" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">2 · Build &amp; Map</tspan></text>
+<text x="294" y="550" font-size="10.5" fill="#eaf1f8">clone ลงสภาพแวดล้อมแยก</text>
+<text x="294" y="565" font-size="10.5" fill="#eaf1f8">สำรวจ attack surface</text>
+<text x="502" y="548" font-size="13" fill="#ffb020"><tspan font-weight="700" fill="#ffb020">→</tspan></text>
+<rect x="512" y="510" width="216" height="62" rx="10" fill="#ffffff" fill-opacity="0.08"/>
+<text x="522" y="531" font-size="12" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">3 · สแกนเชิงลึก</tspan></text>
+<text x="522" y="550" font-size="10.5" fill="#eaf1f8">ไล่ sinks/entry points ในสภาพ</text>
+<text x="522" y="565" font-size="10.5" fill="#eaf1f8">แวดล้อมปิด ไม่ส่งโค้ดออก</text>
+<text x="730" y="548" font-size="13" fill="#ffb020"><tspan font-weight="700" fill="#ffb020">→</tspan></text>
+<rect x="740" y="510" width="216" height="62" rx="10" fill="#ffffff" fill-opacity="0.08"/>
+<text x="750" y="531" font-size="12" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">4 · ตรวจทานตามหลักฐาน</tspan></text>
+<text x="750" y="550" font-size="10.5" fill="#eaf1f8">แยก Verified / Inference / Gap</text>
+<text x="750" y="565" font-size="10.5" fill="#eaf1f8">ยืนยันไม่ได้ ไม่รายงานเป็น finding</text>
+<text x="958" y="548" font-size="13" fill="#ffb020"><tspan font-weight="700" fill="#ffb020">→</tspan></text>
+<rect x="968" y="510" width="216" height="62" rx="10" fill="#ffffff" fill-opacity="0.08"/>
+<text x="978" y="531" font-size="12" fill="#ffffff"><tspan font-weight="700" fill="#ffffff">5 · รายงานถึงเจ้าของ</tspan></text>
+<text x="978" y="550" font-size="10.5" fill="#eaf1f8">คำอธิบาย เส้นทางโจมตี แนว patch</text>
+<text x="978" y="565" font-size="10.5" fill="#eaf1f8">ไม่เผยแพร่</text>
+<text x="56" y="598" font-size="11" fill="#a9c6e2">ต่างจากต้นแบบ: Anthropic ใช้หลายเอเจนต์ + งบ token สูง และส่งโดยไม่มีมนุษย์ตรวจ — ชุดนี้เอเจนต์เดียว 2 รอบตรวจ และเจ้าของ repo ตรวจทานผลก่อนเสมอ</text>
+<text x="56" y="614" font-size="11" fill="#a9c6e2">ขอบเขต: ยังไม่รวมการไล่อ่าน parser ทุกบรรทัด (rollout.js ~9,300 บรรทัด) ผล "ไม่พบ" คือไม่พบในขอบเขตที่ระบุ</text>
+<text x="40" y="650" font-size="10" fill="#8fb0cd">หลักฐาน: รันเซิร์ฟเวอร์จริง 7 กรณี · fuzz parsers จริง · อ่านโค้ด serve.js / local-api.js / sqlite-reader.js / IpCheckPage.jsx</text>
+<text x="1200" y="650" font-size="10" fill="#8fb0cd" text-anchor="end">REF TT-SCAN-20261018</text>
+</svg>
