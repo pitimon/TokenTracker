@@ -109,8 +109,12 @@ test("local service reinstall retains dedicated npm cache for both LaunchAgents"
       fs.mkdirSync(cache, { recursive: true });
       const marker = path.join(cache, "retained");
       fs.writeFileSync(marker, "existing cache\n");
+      const tools = path.join(home, "bin & <tools>");
+      fs.mkdirSync(tools);
+      const servicePath = `${tools}:/usr/bin:/bin:/usr/sbin:/sbin`;
       const env = {
         HOME: home,
+        TOKENTRACKER_SERVICE_PATH: servicePath,
         PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
         TOKENTRACKER_NPM_PACKAGE: `${PACKAGE}@0.39.50`,
         NPM_CONFIG_CACHE: path.join(dir, "unrelated-shell-cache"),
@@ -125,12 +129,14 @@ test("local service reinstall retains dedicated npm cache for both LaunchAgents"
           const parsed = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", "--", file], { encoding: "utf8" });
           assert.equal(parsed.status, 0, parsed.stdout + parsed.stderr);
           const plist = JSON.parse(parsed.stdout);
+          assert.equal(plist.EnvironmentVariables.PATH, servicePath);
           assert.equal(plist.EnvironmentVariables.NPM_CONFIG_CACHE, cache);
           assert.equal(plist.EnvironmentVariables.TOKENTRACKER_NPM_PACKAGE, env.TOKENTRACKER_NPM_PACKAGE);
           assert.equal(plist.WorkingDirectory, home);
           assert.equal(plist.StandardOutPath, path.join(home, ".tokentracker", "tracker", "logs", `${service}.log`));
           assert.equal(plist.StandardErrorPath, path.join(home, ".tokentracker", "tracker", "logs", `${service}.err.log`));
           if (service === "local-sync") {
+            assert.equal(plist.EnvironmentVariables.TOKENTRACKER_SERVICE_PATH, servicePath);
             assert.equal(plist.ProgramArguments[0], path.join(home, ".tokentracker", "bin", "tokentracker-local-sync-service.sh"));
             const syntax = spawnSync("/bin/bash", ["-n", plist.ProgramArguments[0]], { encoding: "utf8" });
             assert.equal(syntax.status, 0, syntax.stderr);

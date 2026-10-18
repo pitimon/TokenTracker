@@ -65,6 +65,7 @@ xml_escape() {
 HOME_XML="$(xml_escape "$HOME")"
 LOG_DIR_XML="$(xml_escape "$LOG_DIR")"
 LOCAL_SYNC_WRAPPER_XML="$(xml_escape "$LOCAL_SYNC_WRAPPER")"
+SERVICE_PATH_XML="$(xml_escape "$SERVICE_PATH")"
 
 cat > "$DASHBOARD_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -92,7 +93,7 @@ cat > "$DASHBOARD_PLIST" <<PLIST
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>$SERVICE_PATH</string>
+    <string>$SERVICE_PATH_XML</string>
     <key>NPM_CONFIG_CACHE</key>
     <string>$HOME_XML/.cache/tokentracker-npm</string>
     <key>TOKENTRACKER_NPM_PACKAGE</key>
@@ -126,13 +127,13 @@ cat > "$LOCAL_SYNC_PLIST" <<PLIST
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>$SERVICE_PATH</string>
+    <string>$SERVICE_PATH_XML</string>
     <key>NPM_CONFIG_CACHE</key>
     <string>$HOME_XML/.cache/tokentracker-npm</string>
     <key>TOKENTRACKER_NPM_PACKAGE</key>
     <string>$PACKAGE_NAME</string>
     <key>TOKENTRACKER_SERVICE_PATH</key>
-    <string>$SERVICE_PATH</string>
+    <string>$SERVICE_PATH_XML</string>
   </dict>
   <key>StandardOutPath</key>
   <string>$LOG_DIR_XML/local-sync.log</string>
